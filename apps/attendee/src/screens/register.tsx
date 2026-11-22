@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, NavLink, useNavigate, useParams } from "react-router-dom";
 import { Wordmark } from "../brand/wordmark";
+import SiteHeader from "../components/site-header";
 import {
   clearDraft,
   findEvent,
@@ -14,6 +15,18 @@ import {
   type RegistrationDraft,
 } from "../data/registration";
 
+function SkipLink() {
+  return (
+    <a
+      href="#content"
+      className="focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:block focus:bg-background focus:p-2 focus:text-brand focus:underline focus:underline-offset-2"
+      style={{ position: "absolute", left: "-9999px", top: 0 }}
+    >
+      Skip to content
+    </a>
+  );
+}
+
 export type Step = "identity" | "profile" | "confirm";
 
 const steps: { id: Step; label: string }[] = [
@@ -23,16 +36,16 @@ const steps: { id: Step; label: string }[] = [
 ];
 
 const fieldClass =
-  "w-full border border-border bg-transparent px-3 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-brand aria-[invalid=true]:border-destructive";
+  "w-full border border-border bg-transparent px-3 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-brand aria-[invalid=true]:border-destructive motion-reduce:transition-none";
 
 const primaryButton =
-  "inline-flex items-center justify-center bg-foreground px-5 py-2.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase text-background transition-opacity hover:opacity-90 disabled:opacity-50";
+  "inline-flex items-center justify-center bg-foreground px-5 py-2.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase text-background transition-opacity hover:opacity-90 disabled:opacity-50 motion-reduce:transition-none";
 
 const secondaryButton =
-  "inline-flex items-center justify-center border border-border px-5 py-2.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors hover:border-brand hover:text-brand";
+  "inline-flex items-center justify-center border border-border px-5 py-2.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors hover:border-brand hover:text-brand motion-reduce:transition-none";
 
 const checkboxClass =
-  "mt-0.5 size-4 shrink-0 appearance-none border border-border bg-transparent transition-colors checked:border-brand checked:bg-brand focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand";
+  "mt-0.5 size-4 shrink-0 appearance-none border border-border bg-transparent transition-colors checked:border-brand checked:bg-brand focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand motion-reduce:transition-none";
 
 function Field({
   id,
@@ -74,11 +87,46 @@ function formatAnswer(value: string | string[] | undefined): string {
   return value && value.trim() !== "" ? value : "—";
 }
 
+function SiteNav() {
+  return (
+    <nav aria-label="Main navigation" className="flex items-center gap-6 sm:gap-8">
+      <NavLink
+        to="/"
+        className={({ isActive }) => `focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand px-2 py-1.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none ${
+            isActive
+              ? "text-brand border-b border-brand"
+              : "text-muted-foreground hover:text-foreground"
+          }`
+        }
+      >
+        Events
+      </NavLink>
+      <NavLink
+        to="/pass"
+        className={({ isActive }) => `focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand px-2 py-1.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none ${
+            isActive
+              ? "text-brand border-b border-brand"
+              : "text-muted-foreground hover:text-foreground"
+          }`
+        }
+      >
+        My pass
+      </NavLink>
+    </nav>
+  );
+}
+
 export default function Register({ step }: { step: Step }) {
   const { slug = "" } = useParams();
   const navigate = useNavigate();
   const event = findEvent(slug);
   const fields = profileFor(slug);
+  const isIdentityStep = step === "identity";
+  const isProfileStep = step === "profile";
+
+  useEffect(() => {
+    document.title = "Register · Connexia";
+  }, []);
 
   const [draft, setDraft] = useState<RegistrationDraft>(() => loadDraft(slug));
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -161,7 +209,15 @@ export default function Register({ step }: { step: Step }) {
     formEvent.preventDefault();
     const next = validateIdentity(draft);
     setErrors(next);
-    if (Object.keys(next).length > 0) return;
+    if (Object.keys(next).length > 0) {
+      // Focus first invalid field
+      const firstErrorKey = Object.keys(next)[0];
+      if (firstErrorKey) {
+        const el = document.getElementById(firstErrorKey);
+        el?.focus();
+      }
+      return;
+    }
 
     if (isDuplicateEmail(draft.email)) {
       setDuplicate(true);
@@ -175,7 +231,15 @@ export default function Register({ step }: { step: Step }) {
     formEvent.preventDefault();
     const next = validateProfile(fields, draft.answers);
     setErrors(next);
-    if (Object.keys(next).length > 0) return;
+    if (Object.keys(next).length > 0) {
+      // Focus first invalid field
+      const firstErrorKey = Object.keys(next)[0];
+      if (firstErrorKey) {
+        const el = document.getElementById(firstErrorKey);
+        el?.focus();
+      }
+      return;
+    }
     navigate(`/events/${slug}/register/confirm`);
   }
 
@@ -192,14 +256,16 @@ export default function Register({ step }: { step: Step }) {
   if (!event) {
     return (
       <main className="bg-background text-foreground flex min-h-dvh flex-col">
+        <SkipLink />
         <header className="border-border border-b">
-          <div className="mx-auto w-full max-w-2xl px-6 py-5 md:px-10">
+          <div className="mx-auto w-full max-w-[1600px] flex items-center justify-between gap-4 px-6 py-5 md:px-10 xl:px-16">
             <Link to="/" aria-label="Connexia home">
               <Wordmark className="h-6 w-auto" />
             </Link>
+            <SiteHeader />
           </div>
         </header>
-        <div className="mx-auto w-full max-w-2xl px-6 py-20 md:px-10">
+        <div id="content" className="mx-auto w-full max-w-[1600px] px-6 py-20 md:px-10 xl:px-16">
           <h1 className="font-serif text-3xl">Registration unavailable.</h1>
           <p className="mt-3 text-sm text-muted-foreground">
             This event does not exist, or registration has not opened.
@@ -232,21 +298,17 @@ export default function Register({ step }: { step: Step }) {
 
   return (
     <main className="bg-background text-foreground min-h-dvh">
+      <SkipLink />
       <header className="border-border border-b">
-        <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-4 px-6 py-5 md:px-10">
+        <div className="mx-auto w-full max-w-[1600px] flex items-center justify-between gap-4 px-6 py-5 md:px-10 xl:px-16">
           <Link to="/" aria-label="Connexia home">
             <Wordmark className="h-6 w-auto" />
           </Link>
-          <Link
-            to={`/events/${slug}`}
-            className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-brand"
-          >
-            Event details
-          </Link>
+          <SiteHeader />
         </div>
       </header>
 
-      <div className="mx-auto w-full max-w-2xl px-6 pt-10 pb-24 md:px-10">
+      <div id="content" className="mx-auto w-full max-w-[1600px] px-6 pt-10 pb-24 md:px-10 xl:px-16">
         <p className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase">
           {dateLine} · {event.city}
         </p>
@@ -341,57 +403,61 @@ export default function Register({ step }: { step: Step }) {
             </section>
           ) : (
             <form noValidate onSubmit={submitIdentity} className="flex flex-col gap-6 pt-8">
-              <Field id="name" label="Full name" error={errors.name}>
-                <input
-                  id="name"
-                  name="name"
-                  type="text"
-                  autoComplete="name"
-                  value={draft.name}
-                  onChange={(inputEvent) => updateField("name", inputEvent.target.value)}
-                  aria-invalid={errors.name ? true : undefined}
-                  aria-describedby={errors.name ? "name-error" : undefined}
-                  className={fieldClass}
-                />
-              </Field>
+              <div className="grid gap-8 md:grid-cols-2">
+                <Field id="name" label="Full name" error={errors.name}>
+                  <input
+                    id="name"
+                    name="name"
+                    type="text"
+                    autoComplete="name"
+                    value={draft.name}
+                    onChange={(inputEvent) => updateField("name", inputEvent.target.value)}
+                    aria-invalid={errors.name ? true : undefined}
+                    aria-describedby={errors.name ? "name-error" : undefined}
+                    className={fieldClass}
+                  />
+                </Field>
 
-              <Field id="email" label="Email" error={errors.email}>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  value={draft.email}
-                  onChange={(inputEvent) => updateField("email", inputEvent.target.value)}
-                  aria-invalid={errors.email ? true : undefined}
-                  aria-describedby={errors.email ? "email-error" : undefined}
-                  className={fieldClass}
-                />
-              </Field>
+                <Field id="email" label="Email" error={errors.email}>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    value={draft.email}
+                    onChange={(inputEvent) => updateField("email", inputEvent.target.value)}
+                    aria-invalid={errors.email ? true : undefined}
+                    aria-describedby={errors.email ? "email-error" : undefined}
+                    className={fieldClass}
+                  />
+                </Field>
 
-              <Field
-                id="phone"
-                label="Phone (optional)"
-                hint="Only used at the desk if the gate needs to reach you."
-                error={errors.phone}
-              >
-                <input
-                  id="phone"
-                  name="phone"
-                  type="tel"
-                  autoComplete="tel"
-                  value={draft.phone}
-                  onChange={(inputEvent) => updateField("phone", inputEvent.target.value)}
-                  aria-invalid={errors.phone ? true : undefined}
-                  aria-describedby={errors.phone ? "phone-error" : undefined}
-                  className={fieldClass}
-                />
-              </Field>
+                <div className="md:col-span-2">
+                  <Field
+                    id="phone"
+                    label="Phone (optional)"
+                    hint="Only used at the desk if the gate needs to reach you."
+                    error={errors.phone}
+                  >
+                    <input
+                      id="phone"
+                      name="phone"
+                      type="tel"
+                      autoComplete="tel"
+                      value={draft.phone}
+                      onChange={(inputEvent) => updateField("phone", inputEvent.target.value)}
+                      aria-invalid={errors.phone ? true : undefined}
+                      aria-describedby={errors.phone ? "phone-error" : undefined}
+                      className={fieldClass}
+                    />
+                  </Field>
+                </div>
+              </div>
 
               <div className="border-border flex items-center justify-between gap-4 border-t pt-6">
                 <Link
                   to={`/events/${slug}`}
-                  className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-brand"
+                  className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-brand motion-reduce:transition-none"
                 >
                   Cancel
                 </Link>
@@ -403,91 +469,95 @@ export default function Register({ step }: { step: Step }) {
           )
         ) : step === "profile" ? (
           <form noValidate onSubmit={submitProfile} className="flex flex-col gap-6 pt-8">
-            {fields.map((field: ProfileField) => {
-              if (field.kind === "multi") {
+            <div className="grid gap-8 md:grid-cols-2">
+              {fields.map((field: ProfileField) => {
+                if (field.kind === "multi") {
+                  const value = draft.answers[field.id];
+                  const selected = Array.isArray(value) ? value : [];
+                  return (
+                    <fieldset key={field.id} className="flex flex-col gap-3 border-0 p-0 md:col-span-2">
+                      <legend className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase">
+                        {field.label}
+                      </legend>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {field.options.map((option) => (
+                          <label key={option} className="flex cursor-pointer items-start gap-3 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={selected.includes(option)}
+                              onChange={() => toggleAnswer(field.id, option)}
+                              className={checkboxClass}
+                            />
+                            {option}
+                          </label>
+                        ))}
+                      </div>
+                      {field.hint && !errors[field.id] && (
+                        <p className="text-xs leading-relaxed text-muted-foreground">{field.hint}</p>
+                      )}
+                      {errors[field.id] && (
+                        <p className="font-mono text-[0.625rem] tracking-[0.08em] text-destructive uppercase">
+                          {errors[field.id]}
+                        </p>
+                      )}
+                    </fieldset>
+                  );
+                }
+
                 const value = draft.answers[field.id];
-                const selected = Array.isArray(value) ? value : [];
-                return (
-                  <fieldset key={field.id} className="flex flex-col gap-3 border-0 p-0">
-                    <legend className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase">
-                      {field.label}
-                    </legend>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {field.options.map((option) => (
-                        <label key={option} className="flex cursor-pointer items-start gap-3 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={selected.includes(option)}
-                            onChange={() => toggleAnswer(field.id, option)}
-                            className={checkboxClass}
-                          />
-                          {option}
-                        </label>
-                      ))}
-                    </div>
-                    {field.hint && !errors[field.id] && (
-                      <p className="text-xs leading-relaxed text-muted-foreground">{field.hint}</p>
-                    )}
-                    {errors[field.id] && (
-                      <p className="font-mono text-[0.625rem] tracking-[0.08em] text-destructive uppercase">
-                        {errors[field.id]}
-                      </p>
-                    )}
-                  </fieldset>
-                );
-              }
+                const current = typeof value === "string" ? value : "";
 
-              const value = draft.answers[field.id];
-              const current = typeof value === "string" ? value : "";
+                if (field.kind === "select") {
+                  return (
+                    <Field
+                      key={field.id}
+                      id={field.id}
+                      label={field.label}
+                      error={errors[field.id]}
+                    >
+                      <select
+                        id={field.id}
+                        value={current}
+                        onChange={(changeEvent) => setAnswer(field.id, changeEvent.target.value)}
+                        aria-invalid={errors[field.id] ? true : undefined}
+                        aria-describedby={errors[field.id] ? `${field.id}-error` : undefined}
+                        className={`${fieldClass} bg-background`}
+                      >
+                        <option value="" disabled>
+                          Select
+                        </option>
+                        {field.options.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  );
+                }
 
-              if (field.kind === "select") {
                 return (
                   <Field
                     key={field.id}
                     id={field.id}
                     label={field.label}
+                    hint={field.hint}
                     error={errors[field.id]}
                   >
-                    <select
+                    <input
                       id={field.id}
+                      type="text"
                       value={current}
-                      onChange={(changeEvent) => setAnswer(field.id, changeEvent.target.value)}
+                      placeholder={field.placeholder}
+                      onChange={(inputEvent) => setAnswer(field.id, inputEvent.target.value)}
                       aria-invalid={errors[field.id] ? true : undefined}
-                      className={`${fieldClass} bg-background`}
-                    >
-                      <option value="" disabled>
-                        Select
-                      </option>
-                      {field.options.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
+                      aria-describedby={errors[field.id] ? `${field.id}-error` : undefined}
+                      className={fieldClass}
+                    />
                   </Field>
                 );
-              }
-
-              return (
-                <Field
-                  key={field.id}
-                  id={field.id}
-                  label={field.label}
-                  hint={field.hint}
-                  error={errors[field.id]}
-                >
-                  <input
-                    id={field.id}
-                    type="text"
-                    value={current}
-                    placeholder={field.placeholder}
-                    onChange={(inputEvent) => setAnswer(field.id, inputEvent.target.value)}
-                    aria-invalid={errors[field.id] ? true : undefined}
-                    className={fieldClass}
-                  />
-                </Field>
-              );
-            })}
+              })}
+            </div>
 
             <div className="border-border border-t pt-6">
               <label className="flex cursor-pointer items-start gap-3">
@@ -506,7 +576,7 @@ export default function Register({ step }: { step: Step }) {
                 </span>
               </label>
               <details className="mt-3 pl-7">
-                <summary className="cursor-pointer font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-brand">
+                <summary className="cursor-pointer font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-brand motion-reduce:transition-none">
                   What we store
                 </summary>
                 <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted-foreground">
@@ -521,7 +591,7 @@ export default function Register({ step }: { step: Step }) {
             <div className="border-border flex items-center justify-between gap-4 border-t pt-6">
               <Link
                 to={`/events/${slug}/register/identity`}
-                className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-brand"
+                className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-brand motion-reduce:transition-none"
               >
                 Back
               </Link>
@@ -534,7 +604,7 @@ export default function Register({ step }: { step: Step }) {
           <form noValidate onSubmit={submitConfirm} className="flex flex-col gap-8 pt-8">
             <dl className="border-border divide-border divide-y border-y">
               {summaryRows.map((row) => (
-                <div key={row.label} className="grid grid-cols-[8rem_1fr] gap-4 py-3">
+                <div key={row.label} className="grid grid-cols-[12rem_1fr] gap-4 py-3">
                   <dt className="font-mono text-[0.625rem] tracking-[0.08em] text-muted-foreground uppercase">
                     {row.label}
                   </dt>
@@ -546,7 +616,7 @@ export default function Register({ step }: { step: Step }) {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <Link
                 to={`/events/${slug}/register/profile`}
-                className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-brand"
+                className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-brand motion-reduce:transition-none"
               >
                 Back
               </Link>

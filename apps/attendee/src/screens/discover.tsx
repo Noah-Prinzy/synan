@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, NavLink } from "react-router-dom";
 import { Wordmark } from "../brand/wordmark";
 import { events, type EventSummary } from "../data/events";
 
@@ -52,7 +52,7 @@ function EventRow({ event }: { event: EventSummary }) {
     <li>
       <Link
         to={`/events/${event.slug}`}
-        className="hover:bg-card/50 grid grid-cols-[3.75rem_1fr] gap-x-5 px-6 py-6 transition-colors sm:grid-cols-[5rem_1fr_10rem] sm:items-center md:px-10"
+        className="hover:bg-card/50 grid grid-cols-[3.75rem_1fr] gap-x-5 px-6 py-6 transition-colors sm:grid-cols-[5rem_1fr_10rem] sm:items-center md:px-10 motion-reduce:transition-none"
       >
         <span className="text-muted-foreground pt-1 font-mono text-[0.6875rem] leading-relaxed tracking-[0.08em] uppercase">
           <span className="block">{weekday}</span>
@@ -84,8 +84,24 @@ function EventRow({ event }: { event: EventSummary }) {
   );
 }
 
+function SkipLink() {
+  return (
+    <a
+      href="#content"
+      className="focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:block focus:bg-background focus:p-2 focus:text-brand focus:underline focus:underline-offset-2 motion-reduce:transition-none"
+      style={{ position: "absolute", left: "-9999px", top: 0 }}
+    >
+      Skip to content
+    </a>
+  );
+}
+
 export default function Discover() {
   const [filter, setFilter] = useState<Filter>("all");
+
+  useEffect(() => {
+    document.title = "Connexia";
+  }, []);
 
   const visible = events.filter((event) => {
     if (filter === "live") return event.state === "live";
@@ -96,24 +112,53 @@ export default function Discover() {
 
   return (
     <main className="bg-background text-foreground min-h-dvh pb-24">
+      <SkipLink />
       <header className="border-border border-b">
-        <div className="mx-auto max-w-4xl px-6 pt-10 pb-8 md:px-10">
-          <Wordmark className="text-foreground h-9 w-auto md:h-11" />
-          <p className="text-muted-foreground mt-5 max-w-sm text-sm leading-relaxed">
-            Real-time access, occupancy and gate operations for live events.
-          </p>
+        <div className="mx-auto w-full max-w-[1600px] px-6 pt-10 pb-6 md:px-10 xl:px-16">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <Wordmark className="text-foreground h-9 w-auto md:h-11" />
+              <p className="text-muted-foreground mt-5 max-w-sm text-sm leading-relaxed">
+                Real-time access, occupancy and gate operations for live events.
+              </p>
+            </div>
+            <nav aria-label="Main navigation" className="flex items-center gap-6 sm:gap-8">
+              <NavLink
+                to="/"
+                className={({ isActive }) => {
+                  const base = "focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand px-2 py-1.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none";
+                  return isActive
+                    ? `${base} text-brand border-b border-brand`
+                    : `${base} text-muted-foreground hover:text-foreground`;
+                }}
+              >
+                Events
+              </NavLink>
+              <NavLink
+                to="/pass"
+                className={({ isActive }) => {
+                  const base = "focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand px-2 py-1.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none";
+                  return isActive
+                    ? `${base} text-brand border-b border-brand`
+                    : `${base} text-muted-foreground hover:text-foreground`;
+                }}
+              >
+                My pass
+              </NavLink>
+            </nav>
+          </div>
         </div>
       </header>
 
       <nav aria-label="Filter events" className="border-border border-b">
-        <div className="mx-auto flex max-w-4xl gap-7 px-6 md:px-10">
+        <div className="mx-auto w-full max-w-[1600px] flex flex-wrap gap-6 px-6 py-4 md:px-10 xl:px-16">
           {filters.map(({ id, label }) => (
             <button
               key={id}
               type="button"
               aria-pressed={filter === id}
               onClick={() => setFilter(id)}
-              className={`-mb-px border-b py-3 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors ${
+              className={`-mb-px border-b pb-3 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none ${
                 filter === id
                   ? "border-brand text-brand"
                   : "text-muted-foreground hover:text-foreground border-transparent"
@@ -125,7 +170,8 @@ export default function Discover() {
         </div>
       </nav>
 
-      <div className="mx-auto max-w-4xl">
+      <div id="content" className="mx-auto w-full max-w-[1600px] px-6 md:px-10 xl:px-16 py-4">
+        <h1 className="sr-only">Events</h1>
         {visible.length > 0 ? (
           <ul className="divide-border divide-y">
             {visible.map((event) => (
@@ -141,7 +187,7 @@ export default function Discover() {
             <button
               type="button"
               onClick={() => setFilter("all")}
-              className="border-border hover:border-brand hover:text-brand mt-2 border px-3 py-1.5 font-mono text-[0.625rem] tracking-[0.12em] uppercase transition-colors"
+              className="border-border hover:border-brand hover:text-brand mt-2 border px-3 py-1.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none"
             >
               Show all events
             </button>
@@ -150,16 +196,21 @@ export default function Discover() {
       </div>
 
       <div className="border-border bg-background/95 fixed inset-x-0 bottom-0 border-t backdrop-blur">
-        <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 px-6 py-3 md:px-10">
+        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-4 px-6 py-3 md:px-10 xl:px-16">
           <span className="text-muted-foreground font-mono text-[0.625rem] tracking-[0.12em] uppercase">
             Sun 22 Nov · Kampala
           </span>
-          <Link
+          <NavLink
             to="/pass"
-            className="border-border hover:border-brand hover:text-brand border px-4 py-2 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors"
+            className={({ isActive }) => {
+              const base = "border-border hover:border-brand hover:text-brand border px-4 py-2 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none";
+              return isActive
+                ? `${base} text-brand border-brand`
+                : base;
+            }}
           >
             My pass
-          </Link>
+          </NavLink>
         </div>
       </div>
     </main>

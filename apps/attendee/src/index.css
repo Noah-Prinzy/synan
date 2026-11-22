@@ -142,3 +142,24 @@ body::before {
     pointer-events: none;
     z-index: 60;
 }
+
+/* Ambient wash: a faint teal light at the top edge, never on controls or data. */
+main {
+    background-image:
+        radial-gradient(
+            1100px 520px at 10% -12%,
+            color-mix(in srgb, var(--brand) 8%, transparent),
+            transparent 65%
+        ),
+        radial-gradient(
+            900px 460px at 90% -18%,
+            color-mix(in srgb, var(--brand) 5%, transparent),
+            transparent 60%
+        );
+}
+
+/* Focus visible: brand ring for keyboard navigation */
+:focus-visible {
+  outline: 1px solid var(--brand);
+  outline-offset: 1px;
+}

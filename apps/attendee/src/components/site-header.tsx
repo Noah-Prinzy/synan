@@ -1,0 +1,42 @@
+import { NavLink, Link } from "react-router-dom";
+import { Wordmark } from "../brand/wordmark";
+
+export interface SiteHeaderProps {
+  title?: string;
+}
+
+export default function SiteHeader({ title }: SiteHeaderProps) {
+  return (
+    <header className="border-border border-b px-6 py-4 md:px-10">
+      <div className="mx-auto w-full max-w-[1600px] flex items-center justify-between gap-6">
+        <Link to="/" aria-label="Connexia home" className="shrink-0">
+          <Wordmark className="h-7 w-auto" />
+        </Link>
+        <nav aria-label="Main navigation" className="flex items-center gap-6 sm:gap-8">
+          <NavLink
+            to="/"
+            className={({ isActive }) => {
+              const base = "focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand px-2 py-1.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none";
+              return isActive
+                ? `${base} text-brand border-b border-brand`
+                : `${base} text-muted-foreground hover:text-foreground`;
+            }}
+          >
+            Events
+          </NavLink>
+          <NavLink
+            to="/pass"
+            className={({ isActive }) => {
+              const base = "focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand px-2 py-1.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none";
+              return isActive
+                ? `${base} text-brand border-b border-brand`
+                : `${base} text-muted-foreground hover:text-foreground`;
+            }}
+          >
+            My pass
+          </NavLink>
+        </nav>
+      </div>
+    </header>
+  );
+}
