@@ -64,19 +64,20 @@ Dark is the default and the only shipped mode; the light block exists because th
 --muted-fg    oklch(0.556 0 0)         --muted-fg    oklch(0.708 0 0)   #A1A1A1
 --border      oklch(0.922 0 0)         --border      oklch(1 0 0 / 10%)
 --input       oklch(0.922 0 0)         --input       oklch(1 0 0 / 15%)
---ring        oklch(0.708 0 0)         --ring        oklch(0.556 0 0)   #737373
+--ring        #0AA7C2                    --ring        #0AA7C2
 --destructive oklch(0.577 0.245 27.3)  --destructive oklch(0.704 0.191 22.2)  #FF6467
 --brand       #0AA7C2                  --brand       #0AA7C2
 --radius      0                        --radius      0
 ```
 
-There is one brand hue, and it is not available to the interface. The supplied wordmark carries teal
-only in the X (`--brand #0AA7C2`); that is the single chromatic element in the identity and it is never
-reused for buttons, links or states. Emphasis everywhere else comes from value contrast, type and rules.
-One chromatic accent across a 60-room map would compete with the occupancy states, which are the only
-things that should ever attract the eye.
+There is one brand hue, `--brand #0AA7C2`, taken from the X in the wordmark. It is an accent, never a
+surface: a 1px thread at the top page edge, focus rings and text selection, the active rule on filter
+tabs and the registration stepper, and checked controls. It never fills buttons, cards or rows, never
+sets body or link text at rest, and never carries a state — success, warning and stop keep that job. If
+the accent starts to read as decoration, remove it; the page should look monochrome at a glance and
+teal only where the interface is asking to be touched.
 
-Signals are the only chroma, added on top of the preset:
+Signals remain the only semantic chroma, added on top of the preset:
 
 ```
 --success  #43C07A   admitted / healthy
