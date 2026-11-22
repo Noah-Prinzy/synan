@@ -1,4 +1,5 @@
 import type { EventSummary } from "./events";
+import { getSession } from "./auth";
 
 export type CredentialState = "READY" | "NOT YET BOUND" | "REVOKED" | "REPLACED";
 
@@ -27,15 +28,66 @@ const basePass: Pass = {
   },
   state: "READY",
   token: "cnx:cred:9f31c7d0-4a2e-11f1-9b4d-0aa7c2e1f0a2",
-  band: { uid: "04A29F31C7D0" },
+  band: null,
   nearestDesk: "Desk 2 · North entrance",
 };
 
 export function passVariant(state?: string | null, band?: string | null): Pass {
   const nextState = credentialStates.find((item) => item === state) ?? basePass.state;
-  return { ...basePass, state: nextState, band: band === "0" ? null : basePass.band };
+  // Get the user's band from session if available
+  const session = getSession();
+  let userBand: { uid: string } | null = null;
+  
+  if (session && !band) {
+    // Check if session has a band stored
+    try {
+      const sessionData = localStorage.getItem("cnx.session");
+      if (sessionData) {
+        const parsed = JSON.parse(sessionData);
+        if (parsed.bandUid) {
+          userBand = { uid: parsed.bandUid };
+        }
+      }
+    } catch {
+      // Fallback to default
+    }
+  }
+  
+  return { 
+    ...basePass, 
+    state: nextState, 
+    band: band === "0" ? null : (band ? { uid: band } : userBand) 
+  };
 }
 
 export function shortUid(uid: string): string {
   return `${uid.slice(0, 4)}…${uid.slice(-2)}`;
+}
+
+// Persist band binding to session
+export function persistBandForSession(bandUid: string): void {
+  try {
+    const sessionData = localStorage.getItem("cnx.session");
+    if (sessionData) {
+      const parsed = JSON.parse(sessionData);
+      parsed.bandUid = bandUid;
+      localStorage.setItem("cnx.session", JSON.stringify(parsed));
+    }
+  } catch {
+    // Storage not available
+  }
+}
+
+// Clear band from session
+export function clearBandFromSession(): void {
+  try {
+    const sessionData = localStorage.getItem("cnx.session");
+    if (sessionData) {
+      const parsed = JSON.parse(sessionData);
+      delete parsed.bandUid;
+      localStorage.setItem("cnx.session", JSON.stringify(parsed));
+    }
+  } catch {
+    // Storage not available
+  }
 }
