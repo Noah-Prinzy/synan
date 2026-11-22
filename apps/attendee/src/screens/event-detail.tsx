@@ -36,15 +36,15 @@ function OccupancyChip({ occupancy, capacity }: { occupancy: number; capacity: n
 
 function SessionRow({ session, event }: { session: EventDetail["sessions"][number]; event: EventDetail }) {
   return (
-    <li className="px-6 py-4 md:px-10">
-      <div className="flex flex-col gap-1 sm:grid sm:grid-cols-[8rem_minmax(8rem,1fr)_minmax(0,1fr)_8rem] sm:gap-x-5">
+    <li className="py-4">
+      <div className="flex flex-col gap-1 sm:grid sm:grid-cols-[8rem_8rem_minmax(0,1fr)_4rem] sm:gap-x-5">
         <span className="text-muted-foreground font-mono text-[0.6875rem] tabular-nums">
           {timeRange(session.startsAt, session.endsAt)}
         </span>
         <span className="text-muted-foreground font-mono text-[0.6875rem] tabular-nums sm:justify-self-end">
           {session.room}
         </span>
-        <span className="min-w-0 truncate font-serif text-lg leading-tight font-normal sm:col-start-3">
+        <span className="min-w-0 font-serif text-lg leading-snug font-normal sm:col-start-3">
           {session.title}
         </span>
         {event.state === "live" && session.occupancy > 0 ? (
@@ -98,7 +98,7 @@ function StatusSection({ event }: { event: EventDetail }) {
 function DayGroup({ day, sessions, event }: { day: string; sessions: EventDetail["sessions"]; event: EventDetail }) {
   return (
     <div className="mt-4">
-      <h3 className="text-muted-foreground mb-2 font-mono text-[0.625rem] tracking-[0.12em] uppercase px-6 md:px-10">
+      <h3 className="text-muted-foreground mb-2 font-mono text-[0.625rem] tracking-[0.12em] uppercase">
         {day}
       </h3>
       <ul className="divide-border divide-y">
@@ -124,8 +124,7 @@ function SkipLink() {
   return (
     <a
       href="#content"
-      className="focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:block focus:bg-background focus:p-2 focus:text-brand focus:underline focus:underline-offset-2"
-      style={{ position: "absolute", left: "-9999px", top: 0 }}
+      className="absolute top-0 -left-[9999px] focus:left-4 focus:top-4 focus:z-50 focus:block focus:border focus:border-brand focus:bg-background focus:px-3 focus:py-2 focus:font-mono focus:text-[0.6875rem] focus:tracking-[0.12em] focus:text-brand focus:uppercase focus:underline focus:underline-offset-2"
     >
       Skip to content
     </a>
@@ -169,7 +168,7 @@ export default function EventDetail() {
           {formatDate(event)}
           <span className="ml-2">· {event.timezone}</span>
         </span>
-        <h1 className="font-serif text-[2.25rem] leading-tight font-normal mt-2 sm:text-3xl md:text-[2.75rem] lg:text-[3rem]">
+        <h1 className="font-serif mt-2 text-4xl leading-tight font-normal md:text-5xl">
           {event.title}
         </h1>
         <p className="text-muted-foreground mt-2 text-sm">
@@ -179,12 +178,14 @@ export default function EventDetail() {
 
         <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-12 mt-8">
           <div className="min-w-0">
-            <StatusSection event={event} />
+            <div className="lg:hidden">
+              <StatusSection event={event} />
+            </div>
             {dayGroups.map((group) => (
               <DayGroup key={group.day} day={group.day} sessions={group.sessions} event={event} />
             ))}
           </div>
-          <aside className="hidden lg:block pt-12 sticky top-16">
+          <aside className="sticky top-20 hidden self-start lg:block">
             <StatusSection event={event} />
           </aside>
         </div>

@@ -1,6 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Link, NavLink, useNavigate, useParams } from "react-router-dom";
-import { Wordmark } from "../brand/wordmark";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import SiteHeader from "../components/site-header";
 import {
   clearDraft,
@@ -19,8 +18,7 @@ function SkipLink() {
   return (
     <a
       href="#content"
-      className="focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:block focus:bg-background focus:p-2 focus:text-brand focus:underline focus:underline-offset-2"
-      style={{ position: "absolute", left: "-9999px", top: 0 }}
+      className="absolute top-0 -left-[9999px] focus:left-4 focus:top-4 focus:z-50 focus:block focus:border focus:border-brand focus:bg-background focus:px-3 focus:py-2 focus:font-mono focus:text-[0.6875rem] focus:tracking-[0.12em] focus:text-brand focus:uppercase focus:underline focus:underline-offset-2"
     >
       Skip to content
     </a>
@@ -85,35 +83,6 @@ function Field({
 function formatAnswer(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value.length > 0 ? value.join(", ") : "—";
   return value && value.trim() !== "" ? value : "—";
-}
-
-function SiteNav() {
-  return (
-    <nav aria-label="Main navigation" className="flex items-center gap-6 sm:gap-8">
-      <NavLink
-        to="/"
-        className={({ isActive }) => `focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand px-2 py-1.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none ${
-            isActive
-              ? "text-brand border-b border-brand"
-              : "text-muted-foreground hover:text-foreground"
-          }`
-        }
-      >
-        Events
-      </NavLink>
-      <NavLink
-        to="/pass"
-        className={({ isActive }) => `focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand px-2 py-1.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none ${
-            isActive
-              ? "text-brand border-b border-brand"
-              : "text-muted-foreground hover:text-foreground"
-          }`
-        }
-      >
-        My pass
-      </NavLink>
-    </nav>
-  );
 }
 
 export default function Register({ step }: { step: Step }) {
@@ -257,14 +226,7 @@ export default function Register({ step }: { step: Step }) {
     return (
       <main className="bg-background text-foreground flex min-h-dvh flex-col">
         <SkipLink />
-        <header className="border-border border-b">
-          <div className="mx-auto w-full max-w-[1600px] flex items-center justify-between gap-4 px-6 py-5 md:px-10 xl:px-16">
-            <Link to="/" aria-label="Connexia home">
-              <Wordmark className="h-6 w-auto" />
-            </Link>
-            <SiteHeader />
-          </div>
-        </header>
+        <SiteHeader />
         <div id="content" className="mx-auto w-full max-w-[1600px] px-6 py-20 md:px-10 xl:px-16">
           <h1 className="font-serif text-3xl">Registration unavailable.</h1>
           <p className="mt-3 text-sm text-muted-foreground">
@@ -299,14 +261,7 @@ export default function Register({ step }: { step: Step }) {
   return (
     <main className="bg-background text-foreground min-h-dvh">
       <SkipLink />
-      <header className="border-border border-b">
-        <div className="mx-auto w-full max-w-[1600px] flex items-center justify-between gap-4 px-6 py-5 md:px-10 xl:px-16">
-          <Link to="/" aria-label="Connexia home">
-            <Wordmark className="h-6 w-auto" />
-          </Link>
-          <SiteHeader />
-        </div>
-      </header>
+      <SiteHeader />
 
       <div id="content" className="mx-auto w-full max-w-[1600px] px-6 pt-10 pb-24 md:px-10 xl:px-16">
         <p className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase">

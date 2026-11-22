@@ -88,8 +88,7 @@ function SkipLink() {
   return (
     <a
       href="#content"
-      className="focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:block focus:bg-background focus:p-2 focus:text-brand focus:underline focus:underline-offset-2 motion-reduce:transition-none"
-      style={{ position: "absolute", left: "-9999px", top: 0 }}
+      className="absolute top-0 -left-[9999px] focus:left-4 focus:top-4 focus:z-50 focus:block focus:border focus:border-brand focus:bg-background focus:px-3 focus:py-2 focus:font-mono focus:text-[0.6875rem] focus:tracking-[0.12em] focus:text-brand focus:uppercase focus:underline focus:underline-offset-2"
     >
       Skip to content
     </a>

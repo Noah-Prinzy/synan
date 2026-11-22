@@ -1,16 +1,14 @@
 import { useState, useSyncExternalStore, useEffect } from "react";
-import { Link, NavLink, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
-import SiteHeader from "../components/site-header"
-import { Wordmark } from "../brand/wordmark";
+import SiteHeader from "../components/site-header";
 import { passVariant, shortUid, type CredentialState } from "../data/pass";
 
 function SkipLink() {
   return (
     <a
       href="#content"
-      className="focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:block focus:bg-background focus:p-2 focus:text-brand focus:underline focus:underline-offset-2"
-      style={{ position: "absolute", left: "-9999px", top: 0 }}
+      className="absolute top-0 -left-[9999px] focus:left-4 focus:top-4 focus:z-50 focus:block focus:border focus:border-brand focus:bg-background focus:px-3 focus:py-2 focus:font-mono focus:text-[0.6875rem] focus:tracking-[0.12em] focus:text-brand focus:uppercase focus:underline focus:underline-offset-2"
     >
       Skip to content
     </a>
@@ -63,35 +61,6 @@ function StateDescription({ state }: { state: CredentialState }) {
     REPLACED: "This pass was replaced. Your credential now lives on the band issued at the desk.",
   };
   return <p className="max-w-[16rem] text-sm leading-relaxed">{descriptions[state]}</p>;
-}
-
-function SiteNav() {
-  return (
-    <nav aria-label="Main navigation" className="flex items-center gap-6 sm:gap-8">
-      <NavLink
-        to="/"
-        className={({ isActive }) => `focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand px-2 py-1.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none ${
-            isActive
-              ? "text-brand border-b border-brand"
-              : "text-muted-foreground hover:text-foreground"
-          }`
-        }
-      >
-        Events
-      </NavLink>
-      <NavLink
-        to="/pass"
-        className={({ isActive }) => `focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand px-2 py-1.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none ${
-            isActive
-              ? "text-brand border-b border-brand"
-              : "text-muted-foreground hover:text-foreground"
-          }`
-        }
-      >
-        My pass
-      </NavLink>
-    </nav>
-  );
 }
 
 function useOnline(): boolean {
@@ -151,14 +120,7 @@ export default function Pass() {
   return (
     <main className="bg-background text-foreground flex min-h-dvh flex-col">
       <SkipLink />
-      <header className="border-border border-b">
-        <div className="mx-auto w-full max-w-[1600px] flex items-center justify-between gap-4 px-6 py-5 md:px-10 xl:px-16">
-          <Link to="/" aria-label="Connexia home">
-            <Wordmark className="h-6 w-auto" />
-          </Link>
-          <SiteHeader />
-        </div>
-      </header>
+      <SiteHeader />
 
       <div id="content" className="mx-auto w-full max-w-[1600px] flex-1 px-6 pb-16 md:px-10 xl:px-16">
         <div className="mx-auto w-full max-w-[420px] pt-10">
