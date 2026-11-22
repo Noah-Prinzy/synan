@@ -86,7 +86,7 @@ export default function Pass() {
           </Link>
           <Link
             to={`/events/${pass.event.slug}`}
-            className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-foreground"
+            className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-brand"
           >
             Event details
           </Link>
@@ -162,7 +162,7 @@ export default function Pass() {
           {!pass.band && (
             <Link
               to="/pass/pair"
-              className="border-border hover:border-foreground shrink-0 border px-3 py-2 font-mono text-[0.625rem] tracking-[0.12em] uppercase transition-colors"
+              className="border-border hover:border-brand hover:text-brand shrink-0 border px-3 py-2 font-mono text-[0.625rem] tracking-[0.12em] uppercase transition-colors"
             >
               Bind
             </Link>

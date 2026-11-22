@@ -23,16 +23,16 @@ const steps: { id: Step; label: string }[] = [
 ];
 
 const fieldClass =
-  "w-full border border-border bg-transparent px-3 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-foreground aria-[invalid=true]:border-destructive";
+  "w-full border border-border bg-transparent px-3 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-brand aria-[invalid=true]:border-destructive";
 
 const primaryButton =
   "inline-flex items-center justify-center bg-foreground px-5 py-2.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase text-background transition-opacity hover:opacity-90 disabled:opacity-50";
 
 const secondaryButton =
-  "inline-flex items-center justify-center border border-border px-5 py-2.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors hover:border-foreground";
+  "inline-flex items-center justify-center border border-border px-5 py-2.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors hover:border-brand hover:text-brand";
 
 const checkboxClass =
-  "mt-0.5 size-4 shrink-0 appearance-none border border-border bg-transparent transition-colors checked:border-foreground checked:bg-foreground focus-visible:outline focus-visible:outline-1 focus-visible:outline-foreground";
+  "mt-0.5 size-4 shrink-0 appearance-none border border-border bg-transparent transition-colors checked:border-brand checked:bg-brand focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand";
 
 function Field({
   id,
@@ -239,7 +239,7 @@ export default function Register({ step }: { step: Step }) {
           </Link>
           <Link
             to={`/events/${slug}`}
-            className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-foreground"
+            className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-brand"
           >
             Event details
           </Link>
@@ -276,7 +276,7 @@ export default function Register({ step }: { step: Step }) {
               <li
                 key={item.id}
                 className={`relative -mb-px border-b-2 ${
-                  state === "current" ? "border-foreground" : "border-transparent"
+                  state === "current" ? "border-brand" : "border-transparent"
                 }`}
               >
                 {state === "done" ? (
@@ -391,7 +391,7 @@ export default function Register({ step }: { step: Step }) {
               <div className="border-border flex items-center justify-between gap-4 border-t pt-6">
                 <Link
                   to={`/events/${slug}`}
-                  className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-foreground"
+                  className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-brand"
                 >
                   Cancel
                 </Link>
@@ -506,7 +506,7 @@ export default function Register({ step }: { step: Step }) {
                 </span>
               </label>
               <details className="mt-3 pl-7">
-                <summary className="cursor-pointer font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-foreground">
+                <summary className="cursor-pointer font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-brand">
                   What we store
                 </summary>
                 <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted-foreground">
@@ -521,7 +521,7 @@ export default function Register({ step }: { step: Step }) {
             <div className="border-border flex items-center justify-between gap-4 border-t pt-6">
               <Link
                 to={`/events/${slug}/register/identity`}
-                className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-foreground"
+                className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-brand"
               >
                 Back
               </Link>
@@ -546,7 +546,7 @@ export default function Register({ step }: { step: Step }) {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <Link
                 to={`/events/${slug}/register/profile`}
-                className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-foreground"
+                className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-brand"
               >
                 Back
               </Link>

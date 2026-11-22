@@ -115,7 +115,7 @@ export default function Discover() {
               onClick={() => setFilter(id)}
               className={`-mb-px border-b py-3 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors ${
                 filter === id
-                  ? "border-foreground text-foreground"
+                  ? "border-brand text-brand"
                   : "text-muted-foreground hover:text-foreground border-transparent"
               }`}
             >
@@ -141,7 +141,7 @@ export default function Discover() {
             <button
               type="button"
               onClick={() => setFilter("all")}
-              className="border-border hover:border-foreground mt-2 border px-3 py-1.5 font-mono text-[0.625rem] tracking-[0.12em] uppercase transition-colors"
+              className="border-border hover:border-brand hover:text-brand mt-2 border px-3 py-1.5 font-mono text-[0.625rem] tracking-[0.12em] uppercase transition-colors"
             >
               Show all events
             </button>
@@ -156,7 +156,7 @@ export default function Discover() {
           </span>
           <Link
             to="/pass"
-            className="border-border hover:border-foreground border px-4 py-2 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors"
+            className="border-border hover:border-brand hover:text-brand border px-4 py-2 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors"
           >
             My pass
           </Link>
