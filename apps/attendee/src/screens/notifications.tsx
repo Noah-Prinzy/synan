@@ -4,17 +4,6 @@ import { getNotifications, markAllRead, hasUnread } from "../data/notifications"
 import { useSession } from "../data/auth";
 import { PageShell, Eyebrow } from "../components/page";
 
-function SkipLink() {
-  return (
-    <a
-      href="#content"
-      className="absolute left-0 top-0 -translate-y-full bg-background px-4 py-3 text-sm text-foreground focus:translate-y-0 focus:outline-none"
-    >
-      Skip to content
-    </a>
-  );
-}
-
 function formatDate(iso: string): string {
   const date = new Date(iso);
   return new Intl.DateTimeFormat("en-GB", {
@@ -27,18 +16,18 @@ function formatDate(iso: string): string {
 
 function NotificationRow({ notification, hasUnreadFlag }: { notification: any; hasUnreadFlag: boolean }) {
   return (
-    <li className={`border-border border-b py-4 first:border-t-0 ${hasUnreadFlag ? "border-l-2 border-foreground" : ""}`}>
-      <div className="flex gap-4">
+    <li className={`border-border border-b py-5 first:border-t-0 ${hasUnreadFlag ? "border-l-2 border-l-foreground" : ""}`}>
+      <div className="flex gap-4 pl-4">
         <div className="shrink-0">
-          <p className="font-mono text-[0.6875rem] uppercase tracking-wider text-muted-foreground">
+          <p className="font-mono text-[0.625rem] uppercase tracking-[0.12em] text-muted-foreground">
             {formatDate(notification.at)}
           </p>
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-serif text-[1rem] leading-tight">{notification.title}</p>
+          <p className="font-serif text-[1.125rem] leading-tight">{notification.title}</p>
           <p className="mt-1 text-sm text-muted-foreground">{notification.body}</p>
           {hasUnreadFlag && (
-            <p className="font-mono text-[0.6875rem] mt-1 uppercase tracking-wider text-muted-foreground">
+            <p className="font-mono text-[0.625rem] mt-1 uppercase tracking-[0.12em] text-muted-foreground">
               Unread
             </p>
           )}
@@ -68,14 +57,13 @@ export default function Notifications() {
 
   return (
     <PageShell>
-      <SkipLink />
-      <div className="pt-10 md:pt-14 xl:pt-16">
+      <div className="max-w-[48rem]">
         <Eyebrow>Updates</Eyebrow>
-        <h1 className="mt-2 font-serif text-2xl leading-tight">Updates</h1>
+        <h1 className="mt-2 font-serif text-[1.75rem] leading-tight">Updates</h1>
 
         {!hasNotifications && (
           <div className="mt-12 text-center">
-            <p className="font-serif text-[1.125rem] leading-tight">
+            <p className="font-serif text-[1.125rem] leading-tight text-muted-foreground">
               Nothing yet — we&apos;ll only message you when it matters.
             </p>
           </div>
@@ -86,7 +74,7 @@ export default function Notifications() {
             {unreadExists && (
               <button
                 onClick={handleMarkAllRead}
-                className="mt-6 font-mono text-[0.6875rem] uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                className="mt-6 font-mono text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground hover:text-foreground motion-reduce:transition-none"
               >
                 Mark all read
               </button>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { useSession, getSession } from "../data/auth";
-import { bindBand, devCodeHint, getBand, type BindResult } from "../data/pair";
+import { bindBand, devCodeHint, type BindResult } from "../data/pair";
 import { persistBandForSession } from "../data/pass";
 import { PageShell, Eyebrow, Panel } from "../components/page";
 
@@ -111,23 +111,22 @@ export default function PassPair() {
   if (state === "success" && result?.ok) {
     return (
       <PageShell>
-        <SkipLink />
-        <div className="pt-10 md:pt-14 xl:pt-16">
+        <div className="max-w-[24rem]">
           <Eyebrow>Bind band</Eyebrow>
-          <h1 className="mt-2 font-serif text-2xl leading-tight">Band bound</h1>
+          <h1 className="mt-2 font-serif text-[1.75rem] leading-tight">Band bound</h1>
           <Panel className="mt-8">
-            <p className="font-mono text-[0.6875rem] tracking-[0.12em] uppercase text-muted-foreground">
+            <p className="font-mono text-[0.625rem] tracking-[0.12em] uppercase text-muted-foreground">
               Band UID
             </p>
             <p className="mt-2 font-mono text-[0.875rem] tracking-wider uppercase">
               {result.band.uid}
             </p>
-            <p className="mt-4 text-sm">This band is now you.</p>
+            <p className="mt-4 text-sm text-muted-foreground">This band is now you.</p>
           </Panel>
           <div className="mt-8">
             <Link
               to="/pass"
-              className="bg-brand hover:bg-brand/90 border-border h-12 flex items-center justify-center px-8 text-white font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none"
+              className="border-border hover:bg-card/50 inline-block border px-4 py-2.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none"
             >
               View my pass
             </Link>
@@ -139,25 +138,29 @@ export default function PassPair() {
 
   return (
     <PageShell>
-      <SkipLink />
-      <div className="pt-10 md:pt-14 xl:pt-16">
+      <div className="max-w-[28rem]">
         <Eyebrow>Bind band</Eyebrow>
-        <h1 className="mt-2 font-serif text-2xl leading-tight">Bind your band</h1>
+        <h1 className="mt-2 font-serif text-[1.75rem] leading-tight">Bind your band</h1>
 
         {hasBand && (
-          <Panel className="mt-6 border-border bg-warning/10 border-warning">
-            <p className="text-sm">{session.name}, you already have a band bound.</p>
+          <Panel className="mt-6">
+            <p className="font-mono text-[0.625rem] tracking-[0.12em] uppercase text-warning">
+              Already bound
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {session.name}, you already have a band bound.
+            </p>
           </Panel>
         )}
 
         <div className="border-border mt-8 border-b">
-          <nav className="flex gap-8" aria-label="Binding method">
+          <nav className="flex gap-6" aria-label="Binding method">
             <button
               onClick={() => handleTabChange("tap")}
               disabled={!nfcSupported}
-              className={`border-border pb-3 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none ${
+              className={`pb-3 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none ${
                 activeTab === "tap"
-                  ? "text-brand border-b border-brand"
+                  ? "border-b border-brand text-brand"
                   : "text-muted-foreground hover:text-foreground"
               } ${!nfcSupported ? "opacity-50 cursor-not-allowed" : ""}`}
               type="button"
@@ -166,9 +169,9 @@ export default function PassPair() {
             </button>
             <button
               onClick={() => handleTabChange("code")}
-              className={`border-border pb-3 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none ${
+              className={`pb-3 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none ${
                 activeTab === "code"
-                  ? "text-brand border-b border-brand"
+                  ? "border-b border-brand text-brand"
                   : "text-muted-foreground hover:text-foreground"
               }`}
               type="button"
@@ -181,8 +184,8 @@ export default function PassPair() {
         {activeTab === "tap" ? (
           <div className="mt-6">
             {nfcSupported ? (
-              <div className="flex flex-col items-center justify-center gap-8 py-16">
-                <div className="border-border w-full max-w-[280px] aspect-square border flex items-center justify-center">
+              <div className="flex flex-col items-center justify-center gap-6 py-14">
+                <div className="border-border w-full max-w-[240px] aspect-square border flex items-center justify-center">
                   <span className="font-mono text-[0.6875rem] text-muted-foreground uppercase tracking-wider">
                     Tap band here
                   </span>
@@ -193,14 +196,14 @@ export default function PassPair() {
               </div>
             ) : (
               <Panel className="mt-6 text-center">
-                <p className="font-mono text-[0.6875rem] tracking-[0.12em] uppercase text-muted-foreground">
+                <p className="font-mono text-[0.625rem] tracking-[0.12em] uppercase text-muted-foreground">
                   NFC unavailable
                 </p>
-                <p className="mt-2 text-sm">
+                <p className="mt-3 text-sm text-muted-foreground">
                   NFC is not available on this device.
                   <button
                     onClick={() => setActiveTab("code")}
-                    className="text-brand ml-2 underline"
+                    className="text-foreground ml-2 underline"
                   >
                     Use desk code
                   </button>
@@ -213,7 +216,7 @@ export default function PassPair() {
             <p className="text-sm text-muted-foreground">
               Enter the 6-character code from your wristband receipt.
             </p>
-            <p className="mt-1 font-mono text-[0.6875rem] text-muted-foreground uppercase tracking-wider">
+            <p className="mt-1 font-mono text-[0.625rem] text-muted-foreground uppercase tracking-wider">
               Dev hint: {devCodeHint}
             </p>
             
@@ -227,18 +230,20 @@ export default function PassPair() {
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
                 maxLength={6}
-                className="border-border bg-card mt-2 w-full border px-3 py-2.5 font-mono text-[1rem] tracking-wider uppercase focus:outline-brand"
+                className="border-input bg-background mt-2 w-full border px-3 py-2.5 font-mono text-[1rem] tracking-wider uppercase focus:outline-1 focus:outline-brand"
                 placeholder="K4M2PZ"
                 disabled={state === "loading"}
                 autoFocus
               />
               
               {state === "error" && errorType && (
-                <div className="mt-3 min-h-4">
+                <div className="mt-4 min-h-4">
                   {errorType === "already_bound" ? (
                     <p className="text-sm text-destructive">
                       Already bound to another attendee.
-                      <Link to="/account" className="ml-2 underline">Get help</Link>
+                      <Link to="/account" className="ml-2 underline">
+                        Get help
+                      </Link>
                     </p>
                   ) : (
                     <p className="text-sm text-destructive">
@@ -261,7 +266,7 @@ export default function PassPair() {
 
               <button
                 type="submit"
-                className="bg-brand hover:bg-brand/90 border-border mt-6 h-12 w-full border text-white font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none disabled:opacity-50"
+                className="hover:bg-card/50 border-border mt-6 h-10 w-full border font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none disabled:opacity-50"
                 disabled={!code.trim() || state === "loading"}
               >
                 {state === "loading" ? "Checking..." : "Bind band"}

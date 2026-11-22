@@ -3,17 +3,6 @@ import { Link, Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { signIn, verifyToken, useSession, getSession, signOut } from "../data/auth";
 import { PageShell, Eyebrow, Panel } from "../components/page";
 
-function SkipLink() {
-  return (
-    <a
-      href="#content"
-      className="absolute left-0 top-0 -translate-y-full bg-background px-4 py-3 text-sm text-foreground focus:translate-y-0 focus:outline-none"
-    >
-      Skip to content
-    </a>
-  );
-}
-
 type SignInState = "idle" | "submitting" | "sent";
 
 function SignInScreen() {
@@ -54,21 +43,20 @@ function SignInScreen() {
   if (state === "sent") {
     return (
       <PageShell>
-        <SkipLink />
-        <div className="pt-10 md:pt-14 xl:pt-16">
+        <div className="max-w-[24rem]">
           <Eyebrow>Sign in</Eyebrow>
-          <h1 className="mt-2 font-serif text-2xl leading-tight">Check your email</h1>
-          <p className="mt-4 max-w-[24rem] text-sm leading-relaxed">
+          <h1 className="mt-2 font-serif text-[1.75rem] leading-tight">Check your email</h1>
+          <p className="mt-4 max-w-[20rem] text-sm leading-relaxed text-muted-foreground">
             We sent a sign-in link to {email.trim()}. It should arrive within a minute.
           </p>
           <Panel className="mt-8">
-            <p className="font-mono text-[0.6875rem] text-muted-foreground uppercase tracking-wider">
+            <p className="font-mono text-[0.625rem] tracking-[0.12em] uppercase text-muted-foreground">
               Dev link
             </p>
-            <p className="mt-2">
+            <p className="mt-2 break-all font-mono text-[0.6875rem] tracking-[0.08em]">
               <Link
                 to={`/verify?token=cnx-magic-${encodeURIComponent(email.trim())}`}
-                className="break-all text-sm underline"
+                className="text-brand underline"
               >
                 /verify?token=cnx-magic-{email.trim()}
               </Link>
@@ -77,7 +65,7 @@ function SignInScreen() {
           <div className="mt-8">
             <Link
               to={`/sign-in?email=${encodeURIComponent(email)}`}
-              className="border-border hover:border-foreground hover:bg-card/50 flex h-12 items-center justify-center px-6 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none"
+              className="border-border hover:bg-card/50 inline-block border px-4 py-2.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none"
             >
               Resend link
             </Link>
@@ -89,14 +77,13 @@ function SignInScreen() {
 
   return (
     <PageShell>
-      <SkipLink />
-      <div className="pt-10 md:pt-14 xl:pt-16">
+      <div className="max-w-[24rem]">
         <Eyebrow>Sign in</Eyebrow>
-        <h1 className="mt-2 font-serif text-2xl leading-tight">Sign in to Connexia</h1>
-        <p className="mt-4 max-w-[24rem] text-sm leading-relaxed">
+        <h1 className="mt-2 font-serif text-[1.75rem] leading-tight">Sign in to Connexia</h1>
+        <p className="mt-4 max-w-[20rem] text-sm leading-relaxed text-muted-foreground">
           Enter your email address and we&apos;ll send you a secure link to sign in.
         </p>
-        <form onSubmit={handleSubmit} className="mt-8 max-w-[24rem]">
+        <form onSubmit={handleSubmit} className="mt-8 max-w-[20rem]">
           <label htmlFor="email" className="font-mono text-[0.6875rem] tracking-[0.12em] uppercase text-muted-foreground">
             Email
           </label>
@@ -105,7 +92,7 @@ function SignInScreen() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="border-border bg-card mt-2 w-full border px-3 py-2.5 font-mono text-[0.875rem] placeholder:text-muted-foreground focus:outline-brand"
+            className="border-input bg-background mt-2 w-full border px-3 py-2.5 font-mono text-[0.875rem] placeholder:text-muted-foreground focus:outline-1 focus:outline-brand"
             placeholder="you@example.com"
             disabled={state === "submitting"}
             autoFocus
@@ -115,7 +102,7 @@ function SignInScreen() {
           )}
           <button
             type="submit"
-            className="bg-brand hover:bg-brand/90 border-border mt-6 h-12 w-full border text-white font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none disabled:opacity-50"
+            className="border-border hover:bg-card/50 mt-6 h-10 w-full border font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none disabled:opacity-50"
             disabled={state === "submitting"}
           >
             {state === "submitting" ? "Sending..." : "Email me a link"}
@@ -164,10 +151,9 @@ function VerifyScreen() {
   if (state === "success") {
     return (
       <PageShell>
-        <SkipLink />
-        <div className="flex flex-col items-center justify-center pt-10 md:pt-14 xl:pt-16">
-          <h1 className="font-serif text-2xl leading-tight">You&apos;re in</h1>
-          <p className="mt-4 text-sm text-muted-foreground">
+        <div className="flex flex-col items-center justify-center">
+          <h1 className="font-serif text-[1.75rem] leading-tight">You&apos;re in</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
             Redirecting to {next ?? "your pass"}...
           </p>
         </div>
@@ -177,18 +163,17 @@ function VerifyScreen() {
 
   return (
     <PageShell>
-      <SkipLink />
-      <div className="pt-10 md:pt-14 xl:pt-16">
+      <div className="max-w-[24rem]">
         <Eyebrow>Verify</Eyebrow>
-        <h1 className="mt-2 font-serif text-2xl leading-tight">Sign in failed</h1>
-        <p className="mt-4 max-w-[24rem] text-sm leading-relaxed">
+        <h1 className="mt-2 font-serif text-[1.75rem] leading-tight">Sign in failed</h1>
+        <p className="mt-4 max-w-[20rem] text-sm leading-relaxed text-muted-foreground">
           {token ? "That sign-in link is no longer valid. " : "Missing token. "}
           Send a new link below.
         </p>
         <div className="mt-8">
           <Link
             to="/sign-in"
-            className="bg-brand hover:bg-brand/90 border-border mt-6 inline-block h-12 px-6 border text-white font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none"
+            className="border-border hover:bg-card/50 inline-block border px-4 py-2.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none"
           >
             Send a new link
           </Link>
@@ -211,13 +196,12 @@ function AlreadySignedInScreen() {
 
   return (
     <PageShell>
-      <SkipLink />
-      <div className="pt-10 md:pt-14 xl:pt-16">
+      <div className="max-w-[24rem]">
         <Eyebrow>Signed in</Eyebrow>
-        <h1 className="mt-2 font-serif text-2xl leading-tight">
+        <h1 className="mt-2 font-serif text-[1.75rem] leading-tight">
           Signed in as {session.name}
         </h1>
-        <p className="mt-4 max-w-[24rem] text-sm leading-relaxed">
+        <p className="mt-4 max-w-[20rem] text-sm leading-relaxed text-muted-foreground">
           You are currently signed in. If you&apos;d like to switch accounts, sign out first.
         </p>
         <div className="mt-8">
@@ -226,7 +210,7 @@ function AlreadySignedInScreen() {
               signOut();
               window.location.href = "/";
             }}
-            className="border-border hover:border-destructive hover:text-destructive flex h-12 items-center justify-center px-6 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none"
+            className="border-border hover:text-destructive flex h-10 items-center justify-center px-4 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none"
           >
             Sign out
           </button>

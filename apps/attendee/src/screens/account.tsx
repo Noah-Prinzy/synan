@@ -1,19 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useSession, getSession, signOut } from "../data/auth";
-import { getBand, isBandBound } from "../data/pair";
+import { isBandBound } from "../data/pair";
 import { PageShell, Eyebrow, Panel } from "../components/page";
-
-function SkipLink() {
-  return (
-    <a
-      href="#content"
-      className="absolute left-0 top-0 -translate-y-full bg-background px-4 py-3 text-sm text-foreground focus:translate-y-0 focus:outline-none"
-    >
-      Skip to content
-    </a>
-  );
-}
 
 export default function Account() {
   useEffect(() => {
@@ -77,34 +66,33 @@ export default function Account() {
 
   return (
     <PageShell>
-      <SkipLink />
-      <div className="pt-10 md:pt-14 xl:pt-16">
+      <div className="max-w-[32rem]">
         <Eyebrow>Account</Eyebrow>
-        <h1 className="mt-2 font-serif text-2xl leading-tight">Account</h1>
+        <h1 className="mt-2 font-serif text-[1.75rem] leading-tight">Account</h1>
 
         {/* Profile Section */}
         <section className="border-border mt-10 border-t pt-8">
-          <h2 className="font-mono text-[0.6875rem] tracking-[0.18em] uppercase text-muted-foreground mb-4">
+          <h2 className="font-mono text-[0.625rem] tracking-[0.18em] uppercase text-muted-foreground mb-4">
             Profile
           </h2>
           
           <Panel>
             <div className="space-y-4">
               <div>
-                <label className="font-mono text-[0.6875rem] tracking-[0.12em] uppercase text-muted-foreground">
+                <label className="font-mono text-[0.625rem] tracking-[0.12em] uppercase text-muted-foreground">
                   Email
                 </label>
                 <p className="mt-1 font-mono text-[0.875rem]">{session.email}</p>
               </div>
               <div>
-                <label htmlFor="name" className="font-mono text-[0.6875rem] tracking-[0.12em] uppercase text-muted-foreground">
+                <label htmlFor="name" className="font-mono text-[0.625rem] tracking-[0.12em] uppercase text-muted-foreground">
                   Name
                 </label>
                 <input
                   id="name"
                   type="text"
                   defaultValue={session.name}
-                  className="border-border bg-card mt-1 w-full max-w-[20rem] border px-3 py-2 font-mono text-[0.875rem] focus:outline-brand"
+                  className="border-input bg-background mt-1 w-full max-w-[20rem] border px-3 py-2 font-mono text-[0.875rem] focus:outline-1 focus:outline-brand motion-reduce:transition-none"
                   disabled
                 />
               </div>
@@ -117,14 +105,14 @@ export default function Account() {
 
         {/* Credential Section */}
         <section className="border-border mt-8 border-t pt-8">
-          <h2 className="font-mono text-[0.6875rem] tracking-[0.18em] uppercase text-muted-foreground mb-4">
+          <h2 className="font-mono text-[0.625rem] tracking-[0.18em] uppercase text-muted-foreground mb-4">
             Credential
           </h2>
           
           <Panel>
             <div className="space-y-4">
               <div>
-                <p className="font-mono text-[0.6875rem] tracking-[0.12em] uppercase text-muted-foreground">
+                <p className="font-mono text-[0.625rem] tracking-[0.12em] uppercase text-muted-foreground">
                   State
                 </p>
                 <p className="mt-1 font-mono text-[0.875rem] tracking-wider uppercase">
@@ -132,7 +120,7 @@ export default function Account() {
                 </p>
               </div>
               <div>
-                <p className="font-mono text-[0.6875rem] tracking-[0.12em] uppercase text-muted-foreground">
+                <p className="font-mono text-[0.625rem] tracking-[0.12em] uppercase text-muted-foreground">
                   Wristband
                 </p>
                 {bandBound && bandUid ? (
@@ -141,14 +129,14 @@ export default function Account() {
                       <span className="bg-success size-1.5" aria-hidden />
                       Bound
                     </p>
-                    <p className="mt-1 font-mono text-[0.6875rem] text-muted-foreground uppercase">
+                    <p className="mt-1 font-mono text-[0.625rem] text-muted-foreground uppercase">
                       UID: {bandUid}
                     </p>
                   </>
                 ) : (
                   <p className="mt-1 text-sm">
                     Not bound — 
-                    <Link to="/pass/pair" className="text-brand underline">
+                    <Link to="/pass/pair" className="underline">
                       bind at the desk
                     </Link>
                   </p>
@@ -158,7 +146,7 @@ export default function Account() {
               <button
                 type="button"
                 onClick={() => setShowPopover(true)}
-                className="border-border hover:border-destructive hover:text-destructive flex h-10 items-center justify-center px-4 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none"
+                className="border-border hover:text-destructive flex h-10 w-full items-center justify-center font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none"
               >
                 Report lost band
               </button>
@@ -168,25 +156,25 @@ export default function Account() {
 
         {/* Privacy Section */}
         <section className="border-border mt-8 border-t pt-8">
-          <h2 className="font-mono text-[0.6875rem] tracking-[0.18em] uppercase text-muted-foreground mb-4">
+          <h2 className="font-mono text-[0.625rem] tracking-[0.18em] uppercase text-muted-foreground mb-4">
             Privacy
           </h2>
           
           <Panel>
             <div className="space-y-4">
-              <p className="text-sm leading-relaxed">
+              <p className="text-sm leading-relaxed text-muted-foreground">
                 We store your name, email, registration details and event access history for 30 days after the event ends, then delete.
               </p>
-              <div className="flex flex-wrap gap-4">
+              <div className="flex flex-wrap gap-2">
                 <Link
                   to="#"
-                  className="border-border hover:border-foreground hover:bg-card/50 flex h-10 items-center px-4 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none"
+                  className="border-border hover:bg-card/50 flex h-9 items-center px-3 font-mono text-[0.625rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none"
                 >
                   Export my data
                 </Link>
                 <Link
                   to="#"
-                  className="border-border hover:border-destructive hover:text-destructive flex h-10 items-center px-4 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none"
+                  className="border-border hover:border-destructive hover:text-destructive flex h-9 items-center px-3 font-mono text-[0.625rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none"
                 >
                   Delete my data
                 </Link>
@@ -199,7 +187,7 @@ export default function Account() {
         <section className="border-border mt-8 border-t py-8">
           <button
             onClick={handleSignOut}
-            className="border-border hover:border-destructive hover:text-destructive flex h-12 w-full max-w-[20rem] items-center justify-center font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none"
+            className="border-border hover:text-destructive flex h-10 w-full max-w-[20rem] items-center justify-center font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none"
           >
             Sign out
           </button>
@@ -214,22 +202,22 @@ export default function Account() {
             <Panel className="cursor-auto max-w-[24rem] bg-background">
               {confirmLost ? (
                 <>
-                  <p className="text-sm leading-relaxed">
+                  <p className="text-sm leading-relaxed text-muted-foreground">
                     Are you sure? This will immediately invalidate the band it is bound to and revoke any existing credential.
                   </p>
                   <p className="text-sm text-muted-foreground mt-2">
                     You will need to collect a replacement at the desk.
                   </p>
-                  <div className="flex gap-4 mt-6">
+                  <div className="border-border border-t mt-6 flex gap-2 pt-4">
                     <button
                       onClick={() => setConfirmLost(false)}
-                      className="border-border hover:bg-card/50 flex-1 font-mono text-[0.6875rem] uppercase tracking-wider py-2.5 transition-colors motion-reduce:transition-none"
+                      className="hover:bg-card/50 flex-1 font-mono text-[0.6875rem] uppercase tracking-wider py-2.5 transition-colors motion-reduce:transition-none"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={handleConfirmLost}
-                      className="bg-destructive hover:bg-destructive/90 text-white flex-1 font-mono text-[0.6875rem] uppercase tracking-wider py-2.5 transition-colors motion-reduce:transition-none"
+                      className="bg-destructive hover:bg-destructive/90 text-destructive-foreground flex-1 font-mono text-[0.6875rem] uppercase tracking-wider py-2.5 transition-colors motion-reduce:transition-none"
                     >
                       Confirm lost
                     </button>
@@ -237,19 +225,19 @@ export default function Account() {
                 </>
               ) : (
                 <>
-                  <p className="text-sm leading-relaxed">
+                  <p className="text-sm leading-relaxed text-muted-foreground">
                     Confirmed bands can be replaced at the desk; you can bind a replacement band yourself and this one will stop working.
                   </p>
-                  <div className="flex gap-4 mt-6">
+                  <div className="border-border border-t mt-6 flex gap-2 pt-4">
                     <button
                       onClick={() => setShowPopover(false)}
-                      className="border-border hover:bg-card/50 flex-1 font-mono text-[0.6875rem] uppercase tracking-wider py-2.5 transition-colors motion-reduce:transition-none"
+                      className="hover:bg-card/50 flex-1 font-mono text-[0.6875rem] uppercase tracking-wider py-2.5 transition-colors motion-reduce:transition-none"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={handleReportLost}
-                      className="bg-brand hover:bg-brand/90 text-white flex-1 font-mono text-[0.6875rem] uppercase tracking-wider py-2.5 transition-colors motion-reduce:transition-none"
+                      className="hover:bg-card/50 flex-1 font-mono text-[0.6875rem] uppercase tracking-wider py-2.5 transition-colors motion-reduce:transition-none"
                     >
                       Mark my band lost
                     </button>

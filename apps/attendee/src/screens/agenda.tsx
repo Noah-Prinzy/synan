@@ -2,18 +2,7 @@ import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { groupAgenda, getSpaceLeft, type AgendaGroupItem } from "../data/agenda";
 import { useSession } from "../data/auth";
-import { PageShell, Eyebrow, Panel } from "../components/page";
-
-function SkipLink() {
-  return (
-    <a
-      href="#content"
-      className="absolute left-0 top-0 -translate-y-full bg-background px-4 py-3 text-sm text-foreground focus:translate-y-0 focus:outline-none"
-    >
-      Skip to content
-    </a>
-  );
-}
+import { PageShell, Eyebrow } from "../components/page";
 
 function formatTime(start: string, end: string): string {
   const startTime = new Date(start);
@@ -49,14 +38,13 @@ export default function Agenda() {
 
   return (
     <PageShell>
-      <SkipLink />
-      <div className="pt-10 md:pt-14 xl:pt-16">
+      <div className="max-w-[68rem]">
         <Eyebrow>My schedule</Eyebrow>
-        <h1 className="mt-2 font-serif text-2xl leading-tight">My agenda</h1>
+        <h1 className="mt-2 font-serif text-[1.75rem] leading-tight">My agenda</h1>
 
         {!hasSessions && (
           <div className="mt-12 text-center">
-            <p className="font-mono text-[0.6875rem] tracking-[0.12em] uppercase text-muted-foreground">
+            <p className="text-muted-foreground">
               No sessions in your agenda
             </p>
           </div>
@@ -79,10 +67,10 @@ function AgendaSection({ group }: { group: AgendaGroupItem }) {
 
   return (
     <section className="border-border border-t py-8 first:border-t-0">
-      <h2 className="font-mono text-[0.6875rem] tracking-[0.18em] uppercase text-muted-foreground mb-6">
+      <h2 className="font-mono text-[0.625rem] tracking-[0.18em] uppercase text-muted-foreground mb-6">
         {group.group}
       </h2>
-      <div className="space-y-3">
+      <div className="space-y-1">
         {sessions.map((session) => {
           const spaceLeft = getSpaceLeft(session);
           const isNow = group.group === "NOW";
@@ -91,8 +79,8 @@ function AgendaSection({ group }: { group: AgendaGroupItem }) {
             <Link
               key={session.id}
               to={`/events/${session.eventSlug}#session-${session.id}`}
-              className={`border-border flex items-center justify-between gap-4 rounded-none border p-4 hover:bg-card/50 transition-colors motion-reduce:transition-none ${
-                isNow ? "border-l-2 border-foreground" : "border-l-0"
+              className={`border-border flex items-center justify-between gap-4 border-y p-4 hover:bg-card/50 transition-colors motion-reduce:transition-none ${
+                isNow ? "border-l-2 border-l-foreground" : ""
               }`}
             >
               <div className="min-w-0">
@@ -102,7 +90,7 @@ function AgendaSection({ group }: { group: AgendaGroupItem }) {
                 <p className="font-serif text-[1.125rem] leading-tight mt-1 truncate">
                   {session.title}
                 </p>
-                <p className="font-mono text-[0.6875rem] tracking-[0.08em] uppercase text-muted-foreground mt-1">
+                <p className="font-mono text-[0.625rem] tracking-[0.08em] uppercase text-muted-foreground mt-1">
                   {session.eventTitle}
                 </p>
               </div>
