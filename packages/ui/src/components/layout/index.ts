@@ -1,7 +1,7 @@
 /**
  * Layout Components
- * 
- * Re-export all layout components.
  */
 
-// Placeholder - we'll add layout components here
+export * from "./badge";
+export * from "./card";
+export * from "./separator";

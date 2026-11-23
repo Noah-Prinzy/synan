@@ -1,7 +1,15 @@
 import { useState, useEffect } from "react";
-import { Link, NavLink } from "react-router-dom";
-import { Wordmark } from "../brand/wordmark";
+import { Link } from "react-router-dom";
+import { PageShell, Eyebrow } from "../components/page";
 import { events, type EventSummary } from "../data/events";
+import {
+  AnimatedBar,
+  AnimatedUnderline,
+  Badge,
+  Button,
+  Card,
+  buttonClass,
+} from "@connexia/ui/components";
 
 type Filter = "all" | "live" | "upcoming" | "near";
 
@@ -24,74 +32,142 @@ function dateParts(event: EventSummary) {
   return { weekday: pick("weekday"), day: pick("day"), month: pick("month") };
 }
 
-function Capacity({ event }: { event: EventSummary }) {
-  const pct = Math.round((event.admitted / event.capacity) * 100);
-  const tone = pct >= 100 ? "bg-destructive" : pct >= 85 ? "bg-warning" : "bg-foreground";
-  const label = pct >= 100 ? "text-destructive" : pct >= 85 ? "text-warning" : "text-muted-foreground";
-
-  return (
-    <div className="flex flex-col items-end gap-2">
-      <span className="flex items-center gap-1.5 font-mono text-[0.625rem] tracking-[0.12em] uppercase">
-        <span className="bg-success size-1" aria-hidden />
-        Live
-      </span>
-      <div className="flex items-center gap-2.5">
-        <span className={`font-mono text-[0.6875rem] tabular-nums ${label}`}>{pct}%</span>
-        <span className="bg-border block h-px w-14">
-          <span className={`block h-px ${tone}`} style={{ width: `${Math.min(pct, 100)}%` }} />
-        </span>
-      </div>
-    </div>
-  );
+function occupancy(event: EventSummary): number {
+  if (event.state !== "live" || event.capacity === 0) return 0;
+  return Math.round((event.admitted / event.capacity) * 100);
 }
 
-function EventRow({ event }: { event: EventSummary }) {
+function occupancyTone(pct: number): "success" | "warning" | "destructive" {
+  if (pct >= 100) return "destructive";
+  if (pct >= 85) return "warning";
+  return "success";
+}
+
+function barTone(pct: number): "neutral" | "warning" | "destructive" {
+  if (pct >= 100) return "destructive";
+  if (pct >= 85) return "warning";
+  return "neutral";
+}
+
+function FeaturedEvent({ event }: { event: EventSummary }) {
+  const pct = occupancy(event);
   const { weekday, day, month } = dateParts(event);
 
   return (
-    <li>
-      <Link
-        to={`/events/${event.slug}`}
-        className="hover:bg-card/50 grid grid-cols-[3.75rem_1fr] gap-x-5 px-6 py-6 transition-colors sm:grid-cols-[5rem_1fr_10rem] sm:items-center md:px-10 motion-reduce:transition-none"
-      >
-        <span className="text-muted-foreground pt-1 font-mono text-[0.6875rem] leading-relaxed tracking-[0.08em] uppercase">
-          <span className="block">{weekday}</span>
-          <span className="text-foreground block">
-            {day} {month}
-          </span>
-        </span>
+    <section aria-labelledby="featured-heading" className="border-b border-border pb-10 md:pb-14">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-end lg:gap-16">
+        <div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Badge tone="success" dot pulse>
+              Live now
+            </Badge>
+            <Eyebrow>
+              {weekday} {day} {month} · {event.city}
+            </Eyebrow>
+          </div>
 
-        <span className="flex min-w-0 flex-col gap-1.5">
-          <span className="font-serif text-2xl leading-tight font-normal md:text-[1.75rem]">
-            {event.title}
-          </span>
-          <span className="text-muted-foreground text-sm">
+          <h2 id="featured-heading" className="mt-5 max-w-[18ch] font-serif text-4xl leading-[1.05] font-normal md:text-6xl xl:text-7xl">
+            <Link
+              to={`/events/${event.slug}`}
+              className="transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] hover:text-brand focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand motion-reduce:transition-none"
+            >
+              {event.title}
+            </Link>
+          </h2>
+
+          <p className="mt-4 text-sm text-muted-foreground">
             {event.venue} · {event.city}
-          </span>
-        </span>
+          </p>
 
-        <span className="hidden justify-self-end sm:block">
-          {event.state === "live" ? (
-            <Capacity event={event} />
-          ) : (
-            <span className="text-muted-foreground font-mono text-[0.625rem] tracking-[0.12em] uppercase">
-              Upcoming
-            </span>
-          )}
-        </span>
-      </Link>
-    </li>
+          <div className="mt-8">
+            <Link to={`/events/${event.slug}`} className={buttonClass("primary", "md")}>
+              View event
+            </Link>
+          </div>
+        </div>
+
+        <Card className="bg-transparent">
+          <div className="px-5 pt-4 pb-5">
+            <Eyebrow>Admitted</Eyebrow>
+            <p className="mt-2 font-serif text-5xl leading-none tabular-nums">
+              {event.admitted.toLocaleString("en-GB")}
+              <span className="ml-2 font-mono text-xs text-muted-foreground">
+                / {event.capacity.toLocaleString("en-GB")}
+              </span>
+            </p>
+            <div className="mt-6">
+              <AnimatedBar value={pct} tone={barTone(pct)} label={`${pct}% of capacity admitted`} />
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <span className="font-mono text-[0.6875rem] tabular-nums text-muted-foreground">
+                {pct}% of capacity
+              </span>
+              <Badge tone={occupancyTone(pct)} dot>
+                {pct >= 85 ? "Near capacity" : "Within capacity"}
+              </Badge>
+            </div>
+          </div>
+        </Card>
+      </div>
+    </section>
   );
 }
 
-function SkipLink() {
+function EventCard({ event }: { event: EventSummary }) {
+  const { weekday, day, month } = dateParts(event);
+  const pct = occupancy(event);
+
   return (
-    <a
-      href="#content"
-      className="absolute top-0 -left-[9999px] focus:left-4 focus:top-4 focus:z-50 focus:block focus:border focus:border-brand focus:bg-background focus:px-3 focus:py-2 focus:font-mono focus:text-[0.6875rem] focus:tracking-[0.12em] focus:text-brand focus:uppercase focus:underline focus:underline-offset-2"
-    >
-      Skip to content
-    </a>
+    <Card className="group h-full transition-colors duration-[180ms] ease-[cubic-bezier(.2,0,0,1)] hover:border-brand/60 motion-reduce:transition-none">
+      <Link to={`/events/${event.slug}`} className="flex h-full flex-col focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand">
+        <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+          <p className="font-mono text-[0.6875rem] uppercase tracking-[0.08em] text-muted-foreground">
+            <span className="block">{weekday}</span>
+            <span className="block text-foreground">
+              {day} {month}
+            </span>
+          </p>
+          {event.state === "live" ? (
+            <Badge tone="success" dot pulse={pct >= 85}>
+              Live
+            </Badge>
+          ) : (
+            <Badge tone="neutral">Upcoming</Badge>
+          )}
+        </div>
+
+        <div className="flex flex-1 flex-col justify-between gap-6 px-5 py-5">
+          <div>
+            <h2 className="font-serif text-2xl leading-tight font-normal">{event.title}</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {event.venue} · {event.city}
+            </p>
+          </div>
+
+          {event.state === "live" ? (
+            <div>
+              <div className="mb-2 flex items-baseline justify-between gap-3">
+                <span className="font-mono text-[0.625rem] uppercase tracking-[0.12em] text-muted-foreground">
+                  Occupancy
+                </span>
+                <span
+                  className={`font-mono text-[0.6875rem] tabular-nums ${
+                    pct >= 100 ? "text-destructive" : pct >= 85 ? "text-warning" : "text-foreground"
+                  }`}
+                >
+                  {pct}%
+                </span>
+              </div>
+              <AnimatedBar value={pct} tone={barTone(pct)} label={`${event.title} occupancy`} />
+            </div>
+          ) : (
+            <p className="font-mono text-[0.625rem] uppercase tracking-[0.12em] text-muted-foreground">
+              Capacity {event.capacity.toLocaleString("en-GB")}
+            </p>
+          )}
+        </div>
+      </Link>
+    </Card>
   );
 }
 
@@ -109,109 +185,65 @@ export default function Discover() {
     return true;
   });
 
-  return (
-    <main className="bg-background text-foreground min-h-dvh pb-24">
-      <SkipLink />
-      <header className="border-border border-b">
-        <div className="mx-auto w-full max-w-[1600px] px-6 pt-10 pb-6 md:px-10 xl:px-16">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <Wordmark className="text-foreground h-9 w-auto md:h-11" />
-              <p className="text-muted-foreground mt-5 max-w-sm text-sm leading-relaxed">
-                Real-time access, occupancy and gate operations for live events.
-              </p>
-            </div>
-            <nav aria-label="Main navigation" className="flex items-center gap-6 sm:gap-8">
-              <NavLink
-                to="/"
-                className={({ isActive }) => {
-                  const base = "focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand px-2 py-1.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none";
-                  return isActive
-                    ? `${base} text-brand border-b border-brand`
-                    : `${base} text-muted-foreground hover:text-foreground`;
-                }}
-              >
-                Events
-              </NavLink>
-              <NavLink
-                to="/pass"
-                className={({ isActive }) => {
-                  const base = "focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand px-2 py-1.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none";
-                  return isActive
-                    ? `${base} text-brand border-b border-brand`
-                    : `${base} text-muted-foreground hover:text-foreground`;
-                }}
-              >
-                My pass
-              </NavLink>
-            </nav>
-          </div>
-        </div>
-      </header>
+  const featured = events.find((event) => event.state === "live");
 
-      <nav aria-label="Filter events" className="border-border border-b">
-        <div className="mx-auto w-full max-w-[1600px] flex flex-wrap gap-6 px-6 py-4 md:px-10 xl:px-16">
+  return (
+    <PageShell>
+      <h1 className="sr-only">Events</h1>
+
+      {featured && (filter === "all" || filter === "live" || filter === "near") ? (
+        <FeaturedEvent event={featured} />
+      ) : null}
+
+      <nav aria-label="Filter events" className="border-b border-border">
+        <div className="flex flex-wrap gap-7">
           {filters.map(({ id, label }) => (
             <button
               key={id}
               type="button"
               aria-pressed={filter === id}
               onClick={() => setFilter(id)}
-              className={`-mb-px border-b pb-3 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none ${
-                filter === id
-                  ? "border-brand text-brand"
-                  : "text-muted-foreground hover:text-foreground border-transparent"
+              className={`relative pt-3 pb-3 font-mono text-[0.6875rem] uppercase tracking-[0.12em] transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand motion-reduce:transition-none ${
+                filter === id ? "text-brand" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {label}
+              <AnimatedUnderline active={filter === id} />
             </button>
           ))}
         </div>
       </nav>
 
-      <div id="content" className="mx-auto w-full max-w-[1600px] px-6 md:px-10 xl:px-16 py-4">
-        <h1 className="sr-only">Events</h1>
+      <section aria-labelledby="all-events-heading" className="pt-8 pb-24">
+        <div className="mb-5 flex items-baseline justify-between gap-4">
+          <h2 id="all-events-heading" className="font-mono text-[0.625rem] uppercase tracking-[0.18em] text-muted-foreground">
+            {filter === "all" ? "All events" : filters.find((f) => f.id === filter)?.label}
+          </h2>
+          <span className="font-mono text-[0.625rem] tabular-nums text-muted-foreground">
+            {visible.length.toString().padStart(2, "0")}
+          </span>
+        </div>
+
         {visible.length > 0 ? (
-          <ul className="divide-border divide-y">
+          <ul className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
             {visible.map((event) => (
-              <EventRow key={event.slug} event={event} />
+              <li key={event.slug}>
+                <EventCard event={event} />
+              </li>
             ))}
           </ul>
         ) : (
-          <div className="border-border flex flex-col items-start gap-3 border-b px-6 py-16 md:px-10">
+          <div className="flex flex-col items-start gap-3 border border-border px-6 py-14">
             <p className="font-serif text-xl">Nothing in this view.</p>
-            <p className="text-muted-foreground text-sm">
+            <p className="text-sm text-muted-foreground">
               There are no events for this filter right now.
             </p>
-            <button
-              type="button"
-              onClick={() => setFilter("all")}
-              className="border-border hover:border-brand hover:text-brand mt-2 border px-3 py-1.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none"
-            >
+            <Button variant="secondary" size="sm" onClick={() => setFilter("all")} className="mt-2">
               Show all events
-            </button>
+            </Button>
           </div>
         )}
-      </div>
-
-      <div className="border-border bg-background/95 fixed inset-x-0 bottom-0 border-t backdrop-blur">
-        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-4 px-6 py-3 md:px-10 xl:px-16">
-          <span className="text-muted-foreground font-mono text-[0.625rem] tracking-[0.12em] uppercase">
-            Sun 22 Nov · Kampala
-          </span>
-          <NavLink
-            to="/pass"
-            className={({ isActive }) => {
-              const base = "border-border hover:border-brand hover:text-brand border px-4 py-2 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none";
-              return isActive
-                ? `${base} text-brand border-brand`
-                : base;
-            }}
-          >
-            My pass
-          </NavLink>
-        </div>
-      </div>
-    </main>
+      </section>
+    </PageShell>
   );
 }

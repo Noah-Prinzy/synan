@@ -5,15 +5,12 @@ import { useSession } from "../data/auth";
 import { PageShell, Eyebrow } from "../components/page";
 
 function formatTime(start: string, end: string): string {
-  const startTime = new Date(start);
-  const endTime = new Date(end);
-  
-  const startHours = startTime.getHours().toString().padStart(2, "0");
-  const startMins = startTime.getMinutes().toString().padStart(2, "0");
-  const endHours = endTime.getHours().toString().padStart(2, "0");
-  const endMins = endTime.getMinutes().toString().padStart(2, "0");
-  
-  return `${startHours}:${startMins}–${endHours}:${endMins}`;
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Africa/Kampala",
+  });
+  return `${formatter.format(new Date(start))}–${formatter.format(new Date(end))}`;
 }
 
 function formatDay(dateStr: string): string {

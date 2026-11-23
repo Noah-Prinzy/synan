@@ -1,28 +1,19 @@
 /**
- * Connexia Motion - CSS Animations
- * 
- * CSS-based animations that respect the Connexia design constraints:
- * - No bounce, no spring, no parallax (from frontend plan §2.3)
- * - Motion: 120ms/180ms, cubic-bezier(.2,0,0,1)
- * - Reduced motion support
- * 
- * All animations use ONLY cubic-bezier easing curves.
- * No spring physics are used anywhere.
- * 
- * Usage:
- *   @import '@connexia/ui/styles';
- *   
- *   .my-element {
- *     animation: fadeIn 180ms var(--ease-default) forwards;
- *   }
+ * Connexia Motion - CSS animations and transition utilities
+ *
+ * Rules (frontend plan §2.3):
+ * - cubic-bezier easing only - no spring, no bounce, no parallax
+ * - state 120ms / panels 180ms with cubic-bezier(.2,0,0,1)
+ * - occupancy bars animate with transform: scaleX, never width
+ *
+ * This file contains no global element styles. Ambient page treatment is
+ * owned by each app so it can be tuned per surface.
  */
 
 /* ============================================================================
-   KEYFRAME ANIMATIONS
-   All use cubic-bezier easing - NO spring, NO parallax
+   KEYFRAMES
    ============================================================================ */
 
-/* Fade animations */
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -33,7 +24,6 @@
   to { opacity: 0; }
 }
 
-/* Fade with movement */
 @keyframes fadeInUp {
   from {
     opacity: 0;
@@ -78,7 +68,6 @@
   }
 }
 
-/* Scale animations */
 @keyframes scaleIn {
   from {
     opacity: 0;
@@ -101,90 +90,59 @@
   }
 }
 
-/* Slide animations */
 @keyframes slideInLeft {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(0);
-  }
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
 }
 
 @keyframes slideInRight {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
-  }
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
 }
 
 @keyframes slideInTop {
-  from {
-    transform: translateY(-100%);
-  }
-  to {
-    transform: translateY(0);
-  }
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
 }
 
 @keyframes slideInBottom {
-  from {
-    transform: translateY(100%);
-  }
-  to {
-    transform: translateY(0);
-  }
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
 }
 
-/* Spin animation - for loading indicators only
-   Uses linear easing, not spring */
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
 
-/* Shake animation for errors
-   Uses cubic-bezier, not spring */
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   20%, 60% { transform: translateX(-5px); }
   40%, 80% { transform: translateX(5px); }
 }
 
-/* Width animation using transform: scaleX (not width property)
-   Per frontend plan §9: "occupancy bars animate with transform: scaleX, not width" */
+/* Occupancy / capacity bars: transform-only growth */
 @keyframes scaleXIn {
   from { transform: scaleX(0); }
   to { transform: scaleX(1); }
 }
 
-/* Height animation */
-@keyframes heightIn {
-  from { height: 0; }
-  to { height: var(--target-height, auto); }
+/* Status dot pulse: opacity only, no movement */
+@keyframes statusPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 
-/* Drift animation for background gradients
-   Very slow, subtle movement for ambient effect */
-@keyframes drift {
-  0% { background-position: 0% 0%; }
-  100% { background-position: 200% 200%; }
-}
-
-/* Brand flow animation for the top brand thread
-   Slow horizontal movement */
-@keyframes brandFlow {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+/* Skeleton sweep: horizontal transform only */
+@keyframes skeletonSweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
 }
 
 /* ============================================================================
-   ANIMATION UTILITY CLASSES
+   ANIMATION UTILITIES
    ============================================================================ */
 
-/* Animation names */
 .animate-fade-in { animation-name: fadeIn; }
 .animate-fade-out { animation-name: fadeOut; }
 .animate-fade-in-up { animation-name: fadeInUp; }
@@ -197,250 +155,72 @@
 .animate-slide-in-right { animation-name: slideInRight; }
 .animate-slide-in-top { animation-name: slideInTop; }
 .animate-slide-in-bottom { animation-name: slideInBottom; }
-.animate-spin { animation-name: spin; }
+.animate-spin { animation-name: spin; animation-timing-function: linear; }
 .animate-shake { animation-name: shake; }
 .animate-scale-x-in { animation-name: scaleXIn; }
-.animate-height-in { animation-name: heightIn; }
-.animate-drift { animation-name: drift; }
-.animate-brand-flow { animation-name: brandFlow; }
+.animate-status-pulse { animation-name: statusPulse; }
+.animate-skeleton-sweep { animation: skeletonSweep 1600ms linear infinite; }
 
-/* Animation durations */
-.animate-duration-xs { animation-duration: var(--duration-xs, 100ms); }
-.animate-duration-sm { animation-duration: var(--duration-sm, 120ms); }
-.animate-duration-md { animation-duration: var(--duration-md, 180ms); }
-.animate-duration-lg { animation-duration: var(--duration-lg, 240ms); }
-.animate-duration-xl { animation-duration: var(--duration-xl, 320ms); }
+.animate-duration-sm { animation-duration: 120ms; }
+.animate-duration-md { animation-duration: 180ms; }
+.animate-duration-lg { animation-duration: 240ms; }
 
-/* Animation timing functions */
-.animate-ease-default { animation-timing-function: var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
-.animate-ease-fluid { animation-timing-function: var(--ease-fluid, cubic-bezier(0.25, 0.1, 0.25, 1)); }
-.animate-ease-smooth { animation-timing-function: var(--ease-smooth, cubic-bezier(0.4, 0, 0.2, 1)); }
-.animate-ease-subtle { animation-timing-function: var(--ease-subtle, cubic-bezier(0.36, 0.1, 0.36, 1)); }
+.animate-ease-default { animation-timing-function: cubic-bezier(0.2, 0, 0, 1); }
 .animate-ease-linear { animation-timing-function: linear; }
 
-/* Animation delays */
-.animate-delay-0 { animation-delay: var(--delay-0, 0ms); }
-.animate-delay-40 { animation-delay: var(--delay-40, 40ms); }
-.animate-delay-80 { animation-delay: var(--delay-80, 80ms); }
-.animate-delay-120 { animation-delay: var(--delay-120, 120ms); }
-.animate-delay-160 { animation-delay: var(--delay-160, 160ms); }
-
-/* Animation fill modes */
-.animate-fill-none { animation-fill-mode: none; }
 .animate-fill-forwards { animation-fill-mode: forwards; }
 .animate-fill-backwards { animation-fill-mode: backwards; }
 .animate-fill-both { animation-fill-mode: both; }
 
-/* Animation iteration counts */
 .animate-once { animation-iteration-count: 1; }
 .animate-loop { animation-iteration-count: infinite; }
 
-/* ============================================================================
-   COMBINED ANIMATION CLASSES
-   ============================================================================ */
-
-/* Fade in animations */
-.animate-fade-in-sm { animation: fadeIn var(--duration-sm, 120ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
-.animate-fade-in-md { animation: fadeIn var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
-
-/* Fade in up animations */
-.animate-fade-in-up-sm { animation: fadeInUp var(--duration-sm, 120ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
-.animate-fade-in-up-md { animation: fadeInUp var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
-
-/* Scale in animations */
-.animate-scale-in-sm { animation: scaleIn var(--duration-sm, 120ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
-.animate-scale-in-md { animation: scaleIn var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
-
-/* Slide in animations */
-.animate-slide-in-left-md { animation: slideInLeft var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
-.animate-slide-in-right-md { animation: slideInRight var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
-
-/* Background animations - very slow, subtle */
-.animate-drift-slow { animation: drift 60s var(--ease-fluid, cubic-bezier(0.25, 0.1, 0.25, 1)) infinite; }
-.animate-brand-flow-slow { animation: brandFlow 40s linear infinite; }
+.animate-fade-in-sm { animation: fadeIn 120ms cubic-bezier(0.2, 0, 0, 1) forwards; }
+.animate-fade-in-md { animation: fadeIn 180ms cubic-bezier(0.2, 0, 0, 1) forwards; }
+.animate-fade-in-up-md { animation: fadeInUp 180ms cubic-bezier(0.2, 0, 0, 1) forwards; }
+.animate-scale-in-md { animation: scaleIn 180ms cubic-bezier(0.2, 0, 0, 1) forwards; }
+.animate-slide-in-left-md { animation: slideInLeft 180ms cubic-bezier(0.2, 0, 0, 1) forwards; }
+.animate-slide-in-right-md { animation: slideInRight 180ms cubic-bezier(0.2, 0, 0, 1) forwards; }
 
 /* ============================================================================
-   TRANSITION UTILITY CLASSES
+   TRANSITION UTILITIES
    ============================================================================ */
 
-/* Transition property */
 .transition-none { transition-property: none; }
 .transition-all { transition-property: all; }
 .transition-colors { transition-property: color, background-color, border-color, fill, stroke; }
 .transition-opacity { transition-property: opacity; }
 .transition-transform { transition-property: transform; }
 .transition-border { transition-property: border-color; }
-.transition-width { transition-property: width; }
-.transition-height { transition-property: height; }
 
-/* Transition duration */
-.transition-duration-sm { transition-duration: var(--duration-sm, 120ms); }
-.transition-duration-md { transition-duration: var(--duration-md, 180ms); }
-.transition-duration-lg { transition-duration: var(--duration-lg, 240ms); }
+.transition-duration-sm { transition-duration: 120ms; }
+.transition-duration-md { transition-duration: 180ms; }
+.transition-duration-lg { transition-duration: 240ms; }
 
-/* Transition timing function */
-.transition-ease-default { transition-timing-function: var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
-.transition-ease-fluid { transition-timing-function: var(--ease-fluid, cubic-bezier(0.25, 0.1, 0.25, 1)); }
+.transition-ease-default { transition-timing-function: cubic-bezier(0.2, 0, 0, 1); }
 
-/* Transition delay */
-.transition-delay-0 { transition-delay: var(--delay-0, 0ms); }
-.transition-delay-40 { transition-delay: var(--delay-40, 40ms); }
-.transition-delay-80 { transition-delay: var(--delay-80, 80ms); }
-
-/* Combined transition classes */
-.transition-state { transition: all var(--duration-sm, 120ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
-.transition-panel { transition: all var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
-.transition-fast { transition: all var(--duration-sm, 120ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
-.transition-normal { transition: all var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
-
-.transition-colors-normal { transition: color var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)), background-color var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
-.transition-opacity-normal { transition: opacity var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
-.transition-transform-normal { transition: transform var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
-.transition-border-normal { transition: border-color var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
+.transition-state { transition: all 120ms cubic-bezier(0.2, 0, 0, 1); }
+.transition-panel { transition: all 180ms cubic-bezier(0.2, 0, 0, 1); }
+.transition-colors-normal {
+  transition:
+    color 180ms cubic-bezier(0.2, 0, 0, 1),
+    background-color 180ms cubic-bezier(0.2, 0, 0, 1),
+    border-color 180ms cubic-bezier(0.2, 0, 0, 1);
+}
+.transition-opacity-normal { transition: opacity 180ms cubic-bezier(0.2, 0, 0, 1); }
+.transition-transform-normal { transition: transform 180ms cubic-bezier(0.2, 0, 0, 1); }
 
 /* ============================================================================
-   HOVER ANIMATION CLASSES
+   FOCUS
    ============================================================================ */
 
-/* Hover scale */
-.hover-scale-101:hover { transform: scale(1.01); }
-.hover-scale-102:hover { transform: scale(1.02); }
-
-/* Hover translate */
-.hover-translate-y-neg-2:hover { transform: translateY(-2px); }
-
-/* Hover with transition */
-.hover-scale-102-transition:hover { 
-  transform: scale(1.02);
-  transition: transform var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1));
-}
-
-.hover-translate-y-neg-2-transition:hover { 
-  transform: translateY(-2px);
-  transition: transform var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1));
-}
-
-/* ============================================================================
-   AMBIENT BACKGROUND ANIMATION
-   
-   FIXED: Removed invalid main::after::before
-   FIXED: Removed overflow: hidden that breaks sticky
-   
-   This creates a subtle animated background that:
-   - Is barely visible (2-5% opacity)
-   - Moves extremely slowly (60-120s cycles)
-   - Does NOT break sticky positioning
-   - Respects reduced motion
-   ============================================================================ */
-
-/* Ambient wash with slow drift - does NOT use overflow: hidden */
-main {
-  position: relative;
-  /* No overflow: hidden - this would break sticky positioning */
-}
-
-/* First ambient gradient layer */
-main::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  background:
-    radial-gradient(
-      1100px 520px at 10% -12%,
-      color-mix(in srgb, var(--color-brand) 8%, transparent),
-      transparent 65%
-    ),
-    radial-gradient(
-      900px 460px at 90% -18%,
-      color-mix(in srgb, var(--color-brand) 5%, transparent),
-      transparent 60%
-    );
-  background-size: 400% 400%;
-  animation: drift 120s ease-in-out infinite;
-  pointer-events: none;
-  z-index: -1;
-}
-
-/* Second ambient layer - floating particles
-   FIXED: Using valid pseudo-elements (main::after, not main::after::before) */
-main::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: -1;
-  overflow: hidden;
-}
-
-/* First particle */
-main::after::before {
-  content: "";
-  position: absolute;
-  top: -100px;
-  left: 10%;
-  width: 200px;
-  height: 200px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--color-brand) 3%, transparent);
-  filter: blur(100px);
-  animation: float 60s ease-in-out infinite;
-}
-
-/* Second particle */
-main::after::after {
-  content: "";
-  position: absolute;
-  bottom: -100px;
-  right: 10%;
-  width: 200px;
-  height: 200px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--color-brand) 2%, transparent);
-  filter: blur(100px);
-  animation: float 60s ease-in-out infinite reverse;
-}
-
-@keyframes float {
-  0%, 100% { 
-    transform: translateY(0) rotate(0deg); 
-  }
-  50% { 
-    transform: translateY(-10px) rotate(0.5deg); 
-  }
-}
-
-/* Pulsing brand thread at top of page
-   FIXED: Uses valid CSS, no overflow issues */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0 0 auto 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    var(--color-brand),
-    var(--color-brand),
-    transparent
-  );
-  background-size: 400% 100%;
-  animation: brandFlow 40s linear infinite;
-  pointer-events: none;
-  z-index: 60;
-}
-
-/* ============================================================================
-   FOCUS ANIMATION CLASSES
-   ============================================================================ */
-
-/* Focus ring with brand color */
 .focus-ring-brand:focus-visible {
-  outline: 1px solid var(--color-brand);
+  outline: 1px solid var(--color-brand, #0aa7c2);
   outline-offset: 1px;
 }
 
 /* ============================================================================
-   REDUCED MOTION SUPPORT
+   REDUCED MOTION
    ============================================================================ */
 
 @media (prefers-reduced-motion: reduce) {
@@ -450,21 +230,5 @@ body::before {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
-  }
-  
-  /* Disable hover animations */
-  .hover-scale-101:hover,
-  .hover-scale-102:hover,
-  .hover-translate-y-neg-2:hover {
-    transform: none !important;
-  }
-  
-  /* Disable ambient animations */
-  main::before,
-  main::after::before,
-  main::after::after,
-  body::before {
-    animation: none !important;
-    opacity: 0.5;
   }
 }

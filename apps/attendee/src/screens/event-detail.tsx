@@ -1,9 +1,44 @@
-import { useParams, Link, NavLink } from "react-router-dom";
-import { useEffect } from "react";
-import { type EventDetail, eventDetails } from "../data/events";
-import SiteHeader from "../components/site-header";
+import { useParams, Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { type EventDetail as EventRecord, eventDetails } from "../data/events";
+import { PageShell, Eyebrow, Panel } from "../components/page";
+import {
+  AnimatedBar,
+  AnimatedCounter,
+  AnimatedUnderline,
+  Badge,
+  buttonClass,
+} from "@connexia/ui/components";
 
-function formatDate(event: EventDetail) {
+type Tab = "overview" | "schedule" | "venue" | "faq";
+
+const tabs: { id: Tab; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "schedule", label: "Schedule" },
+  { id: "venue", label: "Venue" },
+  { id: "faq", label: "FAQ" },
+];
+
+const faq = [
+  {
+    q: "Do I need to print my pass?",
+    a: "No. Your pass lives on this device and is scanned at the gate. Keep the screen awake when you reach the door.",
+  },
+  {
+    q: "What if my credential is not yet bound?",
+    a: "Visit any registration desk with your pass open. Staff bind the credential to a wristband and the state updates here.",
+  },
+  {
+    q: "Can I use my pass offline?",
+    a: "Yes. Once loaded, the pass stays valid without a connection. Gates reconcile scans when the network returns.",
+  },
+  {
+    q: "Where do I get help at the venue?",
+    a: "Approach any staff member in a Connexia-marked vest, or use the nearest registration desk.",
+  },
+];
+
+function formatDate(event: EventRecord) {
   const date = new Date(event.startsAt);
   return new Intl.DateTimeFormat("en-GB", {
     weekday: "short",
@@ -14,50 +49,90 @@ function formatDate(event: EventDetail) {
   }).format(date);
 }
 
+function formatTime(event: EventRecord) {
+  const date = new Date(event.startsAt);
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: event.timezone,
+  }).format(date);
+}
+
 function timeRange(startsAt: string, endsAt: string) {
   return `${startsAt}–${endsAt}`;
 }
 
-function OccupancyChip({ occupancy, capacity }: { occupancy: number; capacity: number }) {
-  const pct = Math.round((occupancy / capacity) * 100);
-  const tone =
-    pct >= 100
-      ? "text-destructive"
-      : pct >= 85
-        ? "text-warning"
-        : "text-muted-foreground";
-
-  return (
-    <span className={`font-mono text-[0.6875rem] tabular-nums ${tone}`}>
-      {pct}%
-    </span>
-  );
+function occupancyTone(pct: number): "success" | "warning" | "destructive" {
+  if (pct >= 100) return "destructive";
+  if (pct >= 85) return "warning";
+  return "success";
 }
 
-function SessionRow({ session, event }: { session: EventDetail["sessions"][number]; event: EventDetail }) {
+function barTone(pct: number): "neutral" | "warning" | "destructive" {
+  if (pct >= 100) return "destructive";
+  if (pct >= 85) return "warning";
+  return "neutral";
+}
+
+function SessionRow({ session, live }: { session: EventRecord["sessions"][number]; live: boolean }) {
+  const pct = session.capacity > 0 ? Math.round((session.occupancy / session.capacity) * 100) : 0;
+
   return (
-    <li className="py-4">
-      <div className="flex flex-col gap-1 sm:grid sm:grid-cols-[8rem_8rem_minmax(0,1fr)_4rem] sm:gap-x-5">
-        <span className="text-muted-foreground font-mono text-[0.6875rem] tabular-nums">
-          {timeRange(session.startsAt, session.endsAt)}
-        </span>
-        <span className="text-muted-foreground font-mono text-[0.6875rem] tabular-nums sm:justify-self-end">
-          {session.room}
-        </span>
-        <span className="min-w-0 font-serif text-lg leading-snug font-normal sm:col-start-3">
-          {session.title}
-        </span>
-        {event.state === "live" && session.occupancy > 0 ? (
-          <span className="sm:justify-self-end">
-            <OccupancyChip occupancy={session.occupancy} capacity={session.capacity} />
-          </span>
+    <li className="grid gap-2 py-4 sm:grid-cols-[5.5rem_8rem_minmax(0,1fr)] sm:gap-x-5">
+      <span className="font-mono text-[0.6875rem] tabular-nums text-muted-foreground">
+        {timeRange(session.startsAt, session.endsAt)}
+      </span>
+      <span className="font-mono text-[0.6875rem] text-muted-foreground sm:justify-self-start">
+        {session.room}
+      </span>
+      <div className="min-w-0">
+        <p className="font-serif text-lg leading-snug font-normal">{session.title}</p>
+        {live && session.occupancy > 0 ? (
+          <div className="mt-2.5 flex items-center gap-3">
+            <AnimatedBar
+              value={pct}
+              tone={barTone(pct)}
+              label={`${session.title} occupancy`}
+              className="max-w-[12rem]"
+            />
+            <span
+              className={`font-mono text-[0.625rem] tabular-nums ${
+                pct >= 100 ? "text-destructive" : pct >= 85 ? "text-warning" : "text-muted-foreground"
+              }`}
+            >
+              {pct}%
+            </span>
+          </div>
         ) : null}
       </div>
     </li>
   );
 }
 
-function StatusSection({ event }: { event: EventDetail }) {
+function DayGroup({ day, sessions, live }: { day: string; sessions: EventRecord["sessions"]; live: boolean }) {
+  return (
+    <div className="mt-6 first:mt-0">
+      <h3 className="mb-2 font-mono text-[0.625rem] uppercase tracking-[0.12em] text-muted-foreground">
+        {day}
+      </h3>
+      <ul className="divide-y divide-border">
+        {sessions.map((session) => (
+          <SessionRow key={session.id} session={session} live={live} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function groupByDay(sessions: EventRecord["sessions"]) {
+  const groups: Record<string, EventRecord["sessions"]> = {};
+  for (const session of sessions) {
+    (groups[session.day] ??= []).push(session);
+  }
+  return Object.entries(groups).map(([day, list]) => ({ day, sessions: list }));
+}
+
+function StatusPanel({ event }: { event: EventRecord }) {
   const statusText =
     event.membership === "checked-in"
       ? "Checked in"
@@ -65,75 +140,163 @@ function StatusSection({ event }: { event: EventDetail }) {
         ? "Registered"
         : "Not registered";
 
-  let ctaText = "";
-  let ctaPath = "";
-
-  if (event.closed) {
-    ctaText = "View your pass";
-    ctaPath = "/pass";
-  } else if (event.membership === "none") {
-    ctaText = "Register";
-    ctaPath = `/events/${event.slug}/register`;
-  } else {
-    ctaText = "View your pass";
-    ctaPath = "/pass";
-  }
+  const cta =
+    event.closed || event.membership !== "none"
+      ? { label: "View your pass", path: "/pass" }
+      : { label: "Register", path: `/events/${event.slug}/register` };
 
   return (
-    <section className="flex flex-col gap-2" aria-labelledby="your-status-heading">
-      <p className="text-muted-foreground font-mono text-[0.625rem] tracking-[0.12em] uppercase" id="your-status-heading">
-        Your status
-      </p>
-      <p className="font-serif text-xl leading-tight font-normal">{statusText}</p>
-      <Link
-        to={ctaPath}
-        className="border-border hover:border-brand hover:text-brand focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand w-fit border px-4 py-3 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none"
-      >
-        {ctaText}
+    <Panel className="flex h-full flex-col justify-between gap-6">
+      <div>
+        <Eyebrow>Your status</Eyebrow>
+        <p className="mt-2 font-serif text-2xl leading-tight font-normal">{statusText}</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {event.membership === "none"
+            ? "Register to receive your pass and wristband."
+            : "Your pass is the only credential you need at the door."}
+        </p>
+      </div>
+      <Link to={cta.path} className={buttonClass("primary", "md", "w-full")}>
+        {cta.label}
       </Link>
-    </section>
+    </Panel>
   );
 }
 
-function DayGroup({ day, sessions, event }: { day: string; sessions: EventDetail["sessions"]; event: EventDetail }) {
+function StatsPanel({ event }: { event: EventRecord }) {
+  const live = event.state === "live";
+  const pct = live && event.capacity > 0 ? Math.round((event.admitted / event.capacity) * 100) : 0;
+  const peak = event.sessions.reduce((max, session) => {
+    const value = session.capacity > 0 ? Math.round((session.occupancy / session.capacity) * 100) : 0;
+    return Math.max(max, value);
+  }, 0);
+
+  const stats = [
+    { label: "Admitted", value: live ? event.admitted : null, suffix: "" },
+    { label: "Peak session", value: live ? peak : null, suffix: "%" },
+    { label: "Sessions", value: event.sessions.length, suffix: "" },
+  ];
+
   return (
-    <div className="mt-4">
-      <h3 className="text-muted-foreground mb-2 font-mono text-[0.625rem] tracking-[0.12em] uppercase">
-        {day}
-      </h3>
-      <ul className="divide-border divide-y">
-        {sessions.map((session) => (
-          <SessionRow key={session.id} session={session} event={event} />
+    <aside aria-label="Event statistics" className="border border-border">
+      <div className="grid grid-cols-3 divide-x divide-border">
+        {stats.map((stat) => (
+          <div key={stat.label} className="px-4 py-4">
+            <p className="font-mono text-[0.5625rem] uppercase tracking-[0.14em] text-muted-foreground">
+              {stat.label}
+            </p>
+            <p className="mt-2 font-mono text-xl tabular-nums text-foreground">
+              {stat.value === null ? (
+                <span className="text-muted-foreground">—</span>
+              ) : (
+                <>
+                  <AnimatedCounter value={stat.value} />
+                  {stat.suffix}
+                </>
+              )}
+            </p>
+          </div>
         ))}
-      </ul>
-    </div>
+      </div>
+      <div className="border-t border-border px-4 py-4">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <Eyebrow>Occupancy</Eyebrow>
+          <Badge tone={live ? occupancyTone(pct) : "neutral"} dot={live}>
+            {live ? (pct >= 85 ? "Near capacity" : "Within capacity") : "Not open"}
+          </Badge>
+        </div>
+        <AnimatedBar value={pct} tone={barTone(pct)} label="Event occupancy" />
+        <p className="mt-2 font-mono text-[0.625rem] tabular-nums text-muted-foreground">
+          {live ? `${pct}% of ${event.capacity.toLocaleString("en-GB")} seats` : `Capacity ${event.capacity.toLocaleString("en-GB")}`}
+        </p>
+      </div>
+    </aside>
   );
 }
 
-function GroupSessionsByDay(sessions: EventDetail["sessions"]) {
-  const groups: Record<string, typeof sessions> = {};
-  for (const session of sessions) {
-    const day = session.day;
-    if (!groups[day]) groups[day] = [];
-    groups[day].push(session);
+function TabPanel({ event, tab }: { event: EventRecord; tab: Tab }) {
+  if (tab === "schedule") {
+    const days = groupByDay(event.sessions);
+    return (
+      <div>
+        {days.map((group) => (
+          <DayGroup key={group.day} day={group.day} sessions={group.sessions} live={event.state === "live"} />
+        ))}
+      </div>
+    );
   }
-  return Object.entries(groups).map(([day, s]) => ({ day, sessions: s }));
-}
 
-function SkipLink() {
+  if (tab === "venue") {
+    return (
+      <div>
+        <dl className="divide-y divide-border border-y border-border">
+          {[
+            { term: "Venue", value: event.venue },
+            { term: "City", value: event.city },
+            { term: "Time zone", value: event.timezone },
+            { term: "Doors", value: `${formatTime(event)} · ${formatDate(event)}` },
+          ].map((row) => (
+            <div key={row.term} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-4 py-3.5">
+              <dt className="font-mono text-[0.625rem] uppercase tracking-[0.12em] text-muted-foreground">
+                {row.term}
+              </dt>
+              <dd className="text-sm">{row.value}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+          Follow venue signage from the main entrance. Your pass is scanned once at the gate; staff direct
+          you from there.
+        </p>
+      </div>
+    );
+  }
+
+  if (tab === "faq") {
+    return (
+      <div className="divide-y divide-border border-y border-border">
+        {faq.map((item) => (
+          <details key={item.q} className="group py-4">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-serif text-lg leading-snug">
+              {item.q}
+              <span
+                aria-hidden="true"
+                className="font-mono text-xs text-muted-foreground transition-transform duration-[180ms] ease-[cubic-bezier(.2,0,0,1)] group-open:rotate-45 motion-reduce:transition-none"
+              >
+                +
+              </span>
+            </summary>
+            <p className="mt-2 max-w-[62ch] text-sm leading-relaxed text-muted-foreground">{item.a}</p>
+          </details>
+        ))}
+      </div>
+    );
+  }
+
   return (
-    <a
-      href="#content"
-      className="absolute top-0 -left-[9999px] focus:left-4 focus:top-4 focus:z-50 focus:block focus:border focus:border-brand focus:bg-background focus:px-3 focus:py-2 focus:font-mono focus:text-[0.6875rem] focus:tracking-[0.12em] focus:text-brand focus:uppercase focus:underline focus:underline-offset-2"
-    >
-      Skip to content
-    </a>
+    <div>
+      <p className="max-w-[68ch] text-[0.9375rem] leading-relaxed">{event.description}</p>
+      <div className="mt-8 grid gap-px border border-border bg-border sm:grid-cols-2">
+        {[
+          { term: "Date", value: formatDate(event) },
+          { term: "Start", value: `${formatTime(event)} ${event.timezone}` },
+          { term: "Venue", value: event.venue },
+          { term: "City", value: event.city },
+        ].map((fact) => (
+          <div key={fact.term} className="bg-background px-5 py-4">
+            <Eyebrow>{fact.term}</Eyebrow>
+            <p className="mt-1.5 text-sm">{fact.value}</p>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
 export default function EventDetail() {
   const { slug } = useParams<{ slug?: string }>();
-  const event = eventDetails.find((e) => e.slug === slug);
+  const event = eventDetails.find((entry) => entry.slug === slug);
+  const [tab, setTab] = useState<Tab>("overview");
 
   useEffect(() => {
     if (event) {
@@ -143,53 +306,88 @@ export default function EventDetail() {
 
   if (!event) {
     return (
-      <main className="bg-background text-foreground flex min-h-dvh flex-col">
-        <SkipLink />
-        <SiteHeader />
-        <div className="flex flex-1 flex-col items-start justify-center gap-4 px-6 md:px-10 xl:px-16">
+      <PageShell>
+        <div className="flex flex-col items-start gap-4 py-24">
           <p className="font-serif text-3xl font-normal">Event not found.</p>
           <Link to="/" className="text-sm underline underline-offset-4">
             Back to events
           </Link>
         </div>
-      </main>
+      </PageShell>
     );
   }
 
-  const dayGroups = GroupSessionsByDay(event.sessions);
-
   return (
-    <main className="bg-background text-foreground min-h-dvh">
-      <SkipLink />
-      <SiteHeader />
+    <PageShell>
+      <section className="border-b border-border pb-8 md:pb-10">
+        <Link
+          to="/"
+          className="font-mono text-[0.625rem] uppercase tracking-[0.12em] text-muted-foreground transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] hover:text-foreground motion-reduce:transition-none"
+        >
+          ← All events
+        </Link>
 
-      <div id="content" className="mx-auto w-full max-w-[1600px] px-6 pt-10 md:px-10 xl:px-16">
-        <span className="text-muted-foreground font-mono text-[0.6875rem] tabular-nums tracking-[0.08em] uppercase">
-          {formatDate(event)}
-          <span className="ml-2">· {event.timezone}</span>
-        </span>
-        <h1 className="font-serif mt-2 text-4xl leading-tight font-normal md:text-5xl">
-          {event.title}
-        </h1>
-        <p className="text-muted-foreground mt-2 text-sm">
-          {event.venue} · {event.city}
-        </p>
-        <p className="mt-4 max-w-[68ch] text-sm leading-relaxed">{event.description}</p>
-
-        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-12 mt-8">
-          <div className="min-w-0">
-            <div className="lg:hidden">
-              <StatusSection event={event} />
+        <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-16">
+          <div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Eyebrow>
+                {formatDate(event)} · {formatTime(event)}
+              </Eyebrow>
+              {event.state === "live" ? (
+                <Badge tone="success" dot pulse>
+                  Live
+                </Badge>
+              ) : (
+                <Badge tone="neutral">Upcoming</Badge>
+              )}
             </div>
-            {dayGroups.map((group) => (
-              <DayGroup key={group.day} day={group.day} sessions={group.sessions} event={event} />
+            <h1 className="mt-3 max-w-[20ch] font-serif text-4xl leading-[1.05] font-normal md:text-6xl">
+              {event.title}
+            </h1>
+            <p className="mt-4 text-sm text-muted-foreground">
+              {event.venue} · {event.city} · {event.timezone}
+            </p>
+          </div>
+
+          <StatusPanel event={event} />        </div>
+      </section>
+
+      <div className="grid gap-10 py-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-16">
+        <div className="min-w-0">
+          <div aria-label="Event sections" role="tablist" className="flex flex-wrap gap-7 border-b border-border">
+            {tabs.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                id={`tab-${item.id}`}
+                aria-selected={tab === item.id}
+                aria-controls="event-tabpanel"
+                onClick={() => setTab(item.id)}
+                className={`relative pt-1 pb-3 font-mono text-[0.6875rem] uppercase tracking-[0.12em] transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand motion-reduce:transition-none ${
+                  tab === item.id ? "text-brand" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {item.label}
+                <AnimatedUnderline active={tab === item.id} />
+              </button>
             ))}
           </div>
-          <aside className="sticky top-20 hidden self-start lg:block">
-            <StatusSection event={event} />
-          </aside>
+
+          <div
+            role="tabpanel"
+            id="event-tabpanel"
+            aria-labelledby={`tab-${tab}`}
+            className="pt-6"
+          >
+            <TabPanel event={event} tab={tab} />
+          </div>
+        </div>
+
+        <div className="lg:sticky lg:top-24 lg:self-start">
+          <StatsPanel event={event} />
         </div>
       </div>
-    </main>
+    </PageShell>
   );
 }
