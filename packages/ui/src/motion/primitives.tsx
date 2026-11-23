@@ -15,6 +15,7 @@
  *   import { fadeIn, scaleIn, transitions, easing } from '@connexia/ui/motion';
  */
 
+import type { HTMLAttributes, ReactNode } from 'react';
 import { motion, type Variants, type Transition, type HTMLMotionProps } from 'motion/react';
 
 // ============================================================================
@@ -447,7 +448,7 @@ export function animateNumber(
   start: number,
   end: number,
   duration: number = 1000,
-  easing: string = easing.easeOut
+  ease: string = easing.easeOut
 ) {
   return {
     initial: { value: start },
@@ -455,7 +456,7 @@ export function animateNumber(
       value: end,
       transition: { 
         duration: duration / 1000,
-        ease: easing,
+        ease,
       }
     },
   };
@@ -476,7 +477,7 @@ export function animatePercentage(
   start: number,
   end: number,
   duration: number = 800,
-  easing: string = easing.easeOut
+  ease: string = easing.easeOut
 ) {
   return {
     initial: { percentage: start },
@@ -484,7 +485,7 @@ export function animatePercentage(
       percentage: end,
       transition: { 
         duration: duration / 1000,
-        ease: easing,
+        ease,
       }
     },
   };
@@ -514,13 +515,13 @@ export function ReducedMotionWrapper({
   
   // If reduced motion is preferred, return a plain div with no animations
   if (reducedMotion) {
-    return <div {...props}>{children}</div>;
+    return <div {...(props as HTMLAttributes<HTMLDivElement>)}>{children as ReactNode}</div>;
   }
   
   // Otherwise, use motion.div with animations
   return (
     <motion.div {...props}>
-      {children}
+      {children as ReactNode}
     </motion.div>
   );
 }
