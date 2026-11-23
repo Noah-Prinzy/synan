@@ -6,10 +6,16 @@
  * repository, including sign-in state semantics; use the SQL repository (`pglite` / `postgres`)
  * for anything where data at rest matters.
  */
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { entryHash, GENESIS_HASH, verifyChain } from "../domain/audit.js";
+import { inProcessDeskCodes, inProcessUserInvites } from "./pending.js";
+import { memoryReports } from "./memory-reports.js";
+import { memoryReportSchedules, type MemSchedule } from "./memory-delivery.js";
+import { evaluateAccess } from "../domain/decision.js";
+import type { AttendeeTier } from "@synan/contracts/enums";
 import type {
   FixtureWriter,
+  AllowlistData,
   AccessRuleRow,
   AttendeeRow,
   AuditRow,
@@ -23,6 +29,14 @@ import type {
   GateRateRollupRow,
   InvitationRow,
   OccupancyAdjustmentRow,
+  WebhookEndpointRow,
+  DeviceRow,
+  DevicesRepo,
+  ClaimedDeliveryRow,
+  DataRequestRowT,
+  DataRequestsRepo,
+  WebhookDeliveriesRepo,
+  WebhookDeliveryRow,
   RegistrationRow,
   Repos,
   RoomRow,
@@ -35,6 +49,7 @@ import type {
   VenueRow,
   ZoneRow,
 } from "./types.js";
+import { WEBHOOK_MAX_ATTEMPTS, webhookBackoffMs } from "./types.js";
 
 export class MemoryTables {
   organizations = new Map<string, { id: string; name: string; timezone: string; support_email: string }>();
@@ -52,6 +67,13 @@ export class MemoryTables {
   /** registration id → the invitation it redeemed. */
   registrationInvitation = new Map<string, string>();
   invitations = new Map<string, InvitationRow>();
+  webhooks = new Map<string, WebhookEndpointRow>();
+  devices = new Map<string, MemDevice>();
+  mfaPending = new Map<string, { secret: string; expiresAt: Date }>();
+  purgedEvents = new Map<string, Date>();
+  dataRequests = new Map<string, DataRequestRowT>();
+  reportSchedules = new Map<string, MemSchedule>();
+  deliveries = new Map<string, MemDelivery>();
   accessRules = new Map<string, AccessRuleRow>();
   staffAssignments = new Map<string, StaffAssignmentRow>();
   credentials = new Map<string, CredentialRow>();
@@ -150,8 +172,47 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       for (const e of t.events.values()) if (e.state === "published" || e.state === "live") e.revocation_epoch += 1;
     }
   };
+  /** The non-retired NFC carrier with this identifier hash (carriers_identifier_uq). */
+  const liveNfc = (h: string) => [...t.carriers.values()].find((c) => c.kind === "nfc" && c.identifier === h && c.state !== "retired");
+  // Synchronous between read of the head and push, so the chain cannot fork in-process.
+  const auditAppend = (entry: Pick<AuditRow, "actor_id" | "action" | "target" | "meta_jsonb" | "at">): AuditRow => {
+    const prev = t.audit[t.audit.length - 1]?.hash ?? GENESIS_HASH;
+    const row: AuditRow = { id: String(t.audit.length + 1), ...clone(entry), prev_hash: prev, hash: "" };
+    row.hash = entryHash(prev, row);
+    t.audit.push(row);
+    return clone(row);
+  };
   return {
     kind: "memory",
+    deskCodes: inProcessDeskCodes((h) => [...t.carriers.values()].find((c) => c.kind === "nfc" && c.identifier === h && c.state !== "retired")),
+    userInvites: inProcessUserInvites(),
+    webhookDeliveries: memoryWebhookDeliveries(t),
+    devices: memoryDevices(t),
+    reports: memoryReports(t, auditAppend),
+    reportSchedules: memoryReportSchedules(t),
+    dataRequests: memoryDataRequests(t, auditAppend),
+    maintenance: {
+      async eventsDueForPurge(now) {
+        return [...t.events.values()]
+          .filter((e) => e.closed_at && !t.purgedEvents.has(e.id) && e.closed_at.getTime() + e.grace_buffer * 3600_000 <= now.getTime())
+          .map((e) => e.id);
+      },
+      async applySessionResets(eventId, now) {
+        let n = 0;
+        for (const s of t.sessions.values()) {
+          if (s.event_id !== eventId || s.ends_at > now || t.rooms.get(s.room_id)?.continuous_bool) continue;
+          if (t.adjustments.some((a) => a.event_id === eventId && a.room_id === s.room_id && a.reason === "session_end" && a.at.getTime() === s.ends_at.getTime())) continue;
+          t.adjustments.push({ id: randomUUID(), event_id: eventId, room_id: s.room_id, delta: 0, set_to: 0, reason: "session_end", actor_id: null, note: null, at: s.ends_at });
+          n++;
+        }
+        return n;
+      },
+      async expireInvitations(now) {
+        let n = 0;
+        for (const i of t.invitations.values()) if (i.state === "sent" && i.expires_at <= now) (i.state = "expired"), n++;
+        return n;
+      },
+    },
     tables: t,
     fixtures: memoryFixtures(t),
     users: {
@@ -170,6 +231,28 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       async setMfa(id, secret, at) {
         const u = t.users.get(id);
         if (u) Object.assign(u, { mfa_secret: secret, mfa_enrolled_at: at });
+      },
+      async list({ after, limit }) {
+        return [...t.users.values()].sort((a, b) => a.id.localeCompare(b.id)).filter((u) => !after || u.id > after).slice(0, limit).map(clone);
+      },
+      async setPassword(id, hash) {
+        const u = t.users.get(id);
+        if (u) u.password_hash = hash;
+      },
+      async startMfaEnrolment(id, secret, now) {
+        t.mfaPending.set(id, { secret, expiresAt: new Date(now.getTime() + 10 * 60_000) });
+      },
+      async readPendingMfaSecret(id, now) {
+        const p = t.mfaPending.get(id);
+        return p && p.expiresAt > now ? p.secret : null;
+      },
+      async confirmMfaEnrolment(id, now) {
+        const p = t.mfaPending.get(id);
+        const u = t.users.get(id);
+        if (!p || !u || p.expiresAt <= now) return false;
+        t.mfaPending.delete(id);
+        Object.assign(u, { mfa_secret: p.secret, mfa_enrolled_at: now });
+        return true;
       },
     },
     attendees: {
@@ -196,6 +279,37 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       },
       async list({ after, limit }) {
         return [...t.attendees.values()].sort((a, b) => a.id.localeCompare(b.id)).filter((a) => !after || a.id > after).slice(0, limit).map(clone);
+      },
+      async search(q, { attendeeIds, limit }) {
+        const needle = q.normalize("NFKC").trim().toLowerCase();
+        const scope = attendeeIds ? new Set(attendeeIds) : null;
+        return [...t.attendees.values()]
+          .filter((a) => (!scope || scope.has(a.id)) && ((a.full_name ?? "").toLowerCase().includes(needle) || (a.email ?? "").toLowerCase().includes(needle)))
+          .sort((a, b) => a.id.localeCompare(b.id))
+          .slice(0, limit)
+          .map(clone);
+      },
+    },
+    webhooks: {
+      async list() {
+        return [...t.webhooks.values()].sort((a, b) => a.created_at.getTime() - b.created_at.getTime()).map(clone);
+      },
+      async byId(id) {
+        const w = t.webhooks.get(id);
+        return w ? clone(w) : null;
+      },
+      async insert(row) {
+        t.webhooks.set(row.id, clone(row));
+      },
+      async update(id, patch) {
+        const w = t.webhooks.get(id);
+        if (!w) throw new Error(`webhook ${id} not found`);
+        Object.assign(w, clone(patch));
+        return clone(w);
+      },
+      async delete(id) {
+        t.webhooks.delete(id);
+        for (const [k, d] of t.deliveries) if (d.endpoint_id === id) t.deliveries.delete(k);
       },
     },
     invitations: {
@@ -353,6 +467,11 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
         e.revocation_epoch += 1; // a republish can shrink access (access_rules_bump_epoch)
         return e.access_rules_version;
       },
+      async allowlist(eventId, { from, to, checkpointId }) {
+        const e = t.events.get(eventId);
+        if (!e) throw new Error(`event ${eventId} does not exist`);
+        return memoryAllowlist(t, e, from.getTime(), to.getTime(), checkpointId);
+      },
     },
     registrations: {
       async forEvent(eventId) {
@@ -398,6 +517,29 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       async assignmentsFor(userId) {
         return [...t.staffAssignments.values()].filter((a) => a.user_id === userId).map(clone);
       },
+      async byId(id) {
+        const a = t.staffAssignments.get(id);
+        return a ? clone(a) : null;
+      },
+      async list({ checkpointId, userId, offset, limit }) {
+        return [...t.staffAssignments.values()]
+          .filter((a) => (!checkpointId || a.checkpoint_id === checkpointId) && (!userId || a.user_id === userId))
+          .sort((a, b) => a.shift_start.getTime() - b.shift_start.getTime() || (a.id < b.id ? -1 : 1))
+          .slice(offset, offset + limit)
+          .map(clone);
+      },
+      async insert(row) {
+        const { created_by: _c, ...r } = row;
+        for (const a of t.staffAssignments.values()) {
+          if (a.user_id === r.user_id && a.shift_start < r.shift_end && r.shift_start < a.shift_end) return "overlap";
+        }
+        t.staffAssignments.set(r.id, clone({ event_id: null, handed_over_at: null, ...r }));
+        return "ok";
+      },
+      async markHandedOver(id, at) {
+        const a = t.staffAssignments.get(id);
+        if (a && !a.handed_over_at) a.handed_over_at = at;
+      },
     },
     credentials: {
       async byId(id) {
@@ -417,6 +559,18 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       async insert(row) {
         t.credentials.set(row.id, clone(row));
       },
+      async page({ registrationIds, state, after, limit }) {
+        const scope = registrationIds ? new Set(registrationIds) : null;
+        return [...t.credentials.values()]
+          .filter((c) => (!scope || (c.registration_id !== null && scope.has(c.registration_id))) && (!state || c.state === state) && (!after || c.id > after))
+          .sort((a, b) => a.id.localeCompare(b.id))
+          .slice(0, limit)
+          .map(clone);
+      },
+      async forRegistrations(ids) {
+        const scope = new Set(ids);
+        return [...t.credentials.values()].filter((c) => c.registration_id !== null && scope.has(c.registration_id)).map(clone);
+      },
       async update(id, patch) {
         const c = t.credentials.get(id);
         if (!c) throw new Error(`credential ${id} not found`);
@@ -433,6 +587,10 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       },
     },
     carriers: {
+      async byId(id) {
+        const c = t.carriers.get(id);
+        return c ? clone(c) : null;
+      },
       async byIdentifier(kind, identifier) {
         // Newest first, retired last: a retired emailed code must still resolve (it reads as spent).
         const all = [...t.carriers.values()].filter((c) => c.kind === kind && c.identifier === identifier);
@@ -464,6 +622,95 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
         if (!c || c.redeemed_at) return false;
         c.redeemed_at = at;
         return true;
+      },
+      async importStock(hashes, chipProfile) {
+        let inserted = 0;
+        const duplicates: string[] = [];
+        const seen = new Set<string>();
+        for (const h of hashes) {
+          if (seen.has(h) || liveNfc(h)) {
+            duplicates.push(h);
+            continue;
+          }
+          seen.add(h);
+          t.carriers.set(randomUUID(), { id: "", credential_id: null, kind: "nfc", identifier: h, chip_profile: chipProfile, state: "stock", bound_at: null, redeemed_at: null });
+          inserted++;
+        }
+        for (const [id, c] of t.carriers) if (c.id === "") c.id = id;
+        return { inserted, duplicates: [...new Set(duplicates)].sort() };
+      },
+      async bind({ identifier, credentialId, actorId, now }) {
+        const k = liveNfc(identifier);
+        if (!k) return { status: "unknown_carrier", carrier_id: null };
+        if (k.state !== "stock") return { status: "not_in_stock", carrier_id: k.id };
+        const c = t.credentials.get(credentialId);
+        if (!c || (c.state !== "issued" && c.state !== "active")) return { status: "credential_not_usable", carrier_id: k.id };
+        if ([...t.carriers.values()].some((x) => x.credential_id === credentialId && x.kind === "nfc" && LIVE_CARRIER.has(x.state))) {
+          return { status: "credential_has_carrier", carrier_id: k.id };
+        }
+        Object.assign(k, { state: "bound", credential_id: credentialId, bound_at: now });
+        auditAppend({ actor_id: actorId, action: "carrier.bind", target: `carrier:${k.id}`, meta_jsonb: { credential_id: credentialId, kind: "nfc" }, at: now });
+        return { status: "bound", carrier_id: k.id };
+      },
+      async rebind({ credentialId, newIdentifier, disposition, actorId, now }) {
+        const none = { old_carrier_id: null, new_carrier_id: null };
+        const c = t.credentials.get(credentialId);
+        if (!c || (c.state !== "issued" && c.state !== "active")) return { status: "credential_not_usable", ...none };
+        const old = [...t.carriers.values()].find((x) => x.credential_id === credentialId && x.kind === "nfc" && LIVE_CARRIER.has(x.state));
+        if (!old) return { status: "no_current_carrier", ...none };
+        const k = liveNfc(newIdentifier);
+        if (!k) return { status: "unknown_carrier", old_carrier_id: old.id, new_carrier_id: null };
+        if (k.state !== "stock") return { status: "not_in_stock", old_carrier_id: old.id, new_carrier_id: k.id };
+        old.state = disposition;
+        bumpForCredential(c);
+        Object.assign(k, { state: "bound", credential_id: credentialId, bound_at: now });
+        auditAppend({ actor_id: actorId, action: `carrier.mark_${disposition}`, target: `carrier:${old.id}`, meta_jsonb: { credential_id: credentialId }, at: now });
+        auditAppend({ actor_id: actorId, action: "carrier.rebind", target: `carrier:${k.id}`, meta_jsonb: { credential_id: credentialId, replaces: old.id }, at: now });
+        return { status: "rebound", old_carrier_id: old.id, new_carrier_id: k.id };
+      },
+      async replaceLost({ lostIdentifier, newIdentifier, newCredentialRef, actorId, now }) {
+        const out = { old_carrier_id: null as string | null, new_carrier_id: null as string | null, old_credential_id: null as string | null, new_credential_id: null as string | null };
+        const lost = liveNfc(lostIdentifier);
+        if (!lost) return { status: "unknown_carrier", ...out };
+        out.old_carrier_id = lost.id;
+        if (!LIVE_CARRIER.has(lost.state)) return { status: "carrier_not_live", ...out };
+        const c = t.credentials.get(lost.credential_id ?? "");
+        out.old_credential_id = c?.id ?? null;
+        if (!c || !["issued", "active", "suspended_review"].includes(c.state)) return { status: "credential_not_usable", ...out };
+        const band = liveNfc(newIdentifier);
+        if (!band) return { status: "unknown_carrier", ...out };
+        out.new_carrier_id = band.id;
+        if (band.state !== "stock") return { status: "not_in_stock", ...out };
+        lost.state = "lost";
+        auditAppend({ actor_id: actorId, action: "carrier.mark_lost", target: `carrier:${lost.id}`, meta_jsonb: { credential_id: c.id }, at: now });
+        c.state = "replaced";
+        bumpForCredential(c);
+        for (const x of t.carriers.values()) if (x.credential_id === c.id && x.id !== lost.id && LIVE_CARRIER.has(x.state)) x.state = "retired";
+        const fresh: CredentialRow = {
+          id: randomUUID(), registration_id: c.registration_id, staff_user_id: c.staff_user_id, token_hash: newCredentialRef,
+          state: "active", zone_state: c.zone_state, issued_at: now, revoked_at: null,
+        };
+        t.credentials.set(fresh.id, fresh);
+        out.new_credential_id = fresh.id;
+        auditAppend({ actor_id: actorId, action: "credential.replace", target: `credential:${c.id}`, meta_jsonb: { replaced_by: fresh.id }, at: now });
+        auditAppend({ actor_id: actorId, action: "credential.reissue", target: `credential:${fresh.id}`, meta_jsonb: { replaces: c.id }, at: now });
+        const portalId = randomUUID();
+        t.carriers.set(portalId, { id: portalId, credential_id: fresh.id, kind: "qr_portal", identifier: null, chip_profile: null, state: "active", bound_at: now, redeemed_at: null });
+        Object.assign(band, { state: "bound", credential_id: fresh.id, bound_at: now });
+        auditAppend({ actor_id: actorId, action: "carrier.bind", target: `carrier:${band.id}`, meta_jsonb: { credential_id: fresh.id }, at: now });
+        return { status: "replaced", ...out };
+      },
+      async inventory(credentialIds) {
+        const scope = credentialIds ? new Set(credentialIds) : null;
+        const by_state: Record<string, number> = { stock: 0, assigned: 0, bound: 0, active: 0, retired: 0, lost: 0 };
+        const by_chip_profile: Record<string, number> = {};
+        for (const c of t.carriers.values()) {
+          if (c.kind !== "nfc" || (scope && !(c.credential_id && scope.has(c.credential_id)))) continue;
+          by_state[c.state] = (by_state[c.state] ?? 0) + 1;
+          const k = c.chip_profile ?? "unknown";
+          by_chip_profile[k] = (by_chip_profile[k] ?? 0) + 1;
+        }
+        return { by_state, by_chip_profile };
       },
     },
     signingKeys: {
@@ -498,6 +745,7 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
         return id ? clone(t.scans.get(id)!) : null;
       },
       async insert(row) {
+        if (t.purgedEvents.has(row.event_id)) throw new Error("event has been purged; late scans are refused");
         const k = `${row.event_id}:${row.idem_key}`;
         if (t.scansByIdem.has(k)) throw new Error("unique violation: scans(event_id, idem_key)");
         t.scans.set(row.id, clone(row));
@@ -505,6 +753,17 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       },
       async forEvent(eventId) {
         return [...t.scans.values()].filter((s) => s.event_id === eventId).sort((a, b) => correctedMs(a) - correctedMs(b)).map(clone);
+      },
+      async shiftCounts({ checkpointId, staffUserId, from, to }) {
+        const byResult: Record<string, number> = {};
+        let offline = 0;
+        for (const s of t.scans.values()) {
+          const at = correctedMs(s);
+          if (s.checkpoint_id !== checkpointId || s.staff_user_id !== staffUserId || at < from.getTime() || at >= to.getTime()) continue;
+          byResult[s.result] = (byResult[s.result] ?? 0) + 1;
+          if (s.offline_bool) offline++;
+        }
+        return { byResult, offline };
       },
       async page(eventId, { checkpointId, result, ephemeralId, limit, before }) {
         const all = [...t.scans.values()]
@@ -547,13 +806,8 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       },
     },
     audit: {
-      // Synchronous between read of the head and push, so the chain cannot fork in-process.
       async append(entry) {
-        const prev = t.audit[t.audit.length - 1]?.hash ?? GENESIS_HASH;
-        const row: AuditRow = { id: String(t.audit.length + 1), ...clone(entry), prev_hash: prev, hash: "" };
-        row.hash = entryHash(prev, row);
-        t.audit.push(row);
-        return clone(row);
+        return auditAppend(entry);
       },
       async all() {
         return t.audit.map(clone);
@@ -567,9 +821,10 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
         const k = `${key.event_id}:${key.checkpoint_id}:${key.minute_start.toISOString()}`;
         let row = t.gateRates.get(k);
         if (!row) {
-          row = { ...key, scans: 0, admitted: 0, denied: 0, by_tier_jsonb: {} };
+          row = { ...key, scans: 0, admitted: 0, denied: 0, by_tier_jsonb: {}, by_result_jsonb: {} };
           t.gateRates.set(k, row);
         }
+        row.by_result_jsonb[inc.result] = (row.by_result_jsonb[inc.result] ?? 0) + 1;
         row.scans += 1;
         row.admitted += inc.admitted;
         row.denied += inc.denied;
@@ -675,6 +930,215 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
         }
         return n;
       },
+    },
+  };
+}
+
+/** Mirrors @synan/db allowlist_rooms + allowlist_credentials (migration 0012). */
+function memoryAllowlist(t: MemoryTables, e: EventRow, from: number, to: number, checkpointId: string | null): AllowlistData {
+  let roomIds = t.eventRooms.filter((r) => r.event_id === e.id).map((r) => r.room_id);
+  if (checkpointId) {
+    const cp = t.checkpoints.get(checkpointId);
+    roomIds = roomIds.filter((r) => cp?.room_id === r);
+  }
+  const rules = [...t.accessRules.values()]
+    .filter((r) => r.event_id === e.id)
+    .map((r) => ({ ...r, window_start: r.window_start?.getTime() ?? null, window_end: r.window_end?.getTime() ?? null }));
+  // Access is piecewise constant between rule boundaries: test the window start and every boundary inside it.
+  const points = [from, ...rules.flatMap((r) => [r.window_start, r.window_end]).filter((x): x is number => x !== null && x > from && x < to)];
+  const permitted = new Map<string, string[]>();
+  const roomsFor = (kind: "tier" | "role", value: string) => {
+    const key = `${kind}:${value}`;
+    let v = permitted.get(key);
+    if (!v) {
+      v = roomIds.filter((room) => points.some((p) => evaluateAccess(rules, { kind, value }, room, p))).sort();
+      permitted.set(key, v);
+    }
+    return v;
+  };
+  const entries: AllowlistData["entries"] = [];
+  const add = (c: CredentialRow, kind: "tier" | "role", subject: string, effective: CredentialRow["state"]) => {
+    const carriers = [...t.carriers.values()].filter((k) => k.credential_id === c.id);
+    const nfc = carriers.filter((k) => k.kind === "nfc");
+    entries.push({
+      credential_hash: c.token_hash,
+      nfc_hashes: nfc.filter((k) => LIVE_CARRIER.has(k.state)).map((k) => k.identifier!).sort(),
+      tier: kind === "tier" ? (subject as AttendeeTier) : null,
+      permitted_room_ids: roomsFor(kind, subject),
+      revoked: effective === "revoked" || effective === "replaced",
+      state: effective,
+      dead_nfc_hashes: nfc.filter((k) => k.state === "lost" || k.state === "retired").map((k) => k.identifier!).sort(),
+      qr_email_spent: carriers.some((k) => k.kind === "qr_email" && k.redeemed_at !== null),
+    });
+  };
+  for (const c of t.credentials.values()) {
+    if (c.registration_id) {
+      const r = t.registrations.get(c.registration_id);
+      if (r && r.event_id === e.id) add(c, "tier", r.tier, r.state !== "confirmed" ? "revoked" : c.state);
+    } else if (c.staff_user_id) {
+      const u = t.users.get(c.staff_user_id);
+      if (u && rules.some((r) => r.subject_kind === "role" && r.subject === u.role && r.effect === "permit")) add(c, "role", u.role, c.state);
+    }
+  }
+  entries.sort((a, b) => (a.credential_hash < b.credential_hash ? -1 : a.credential_hash > b.credential_hash ? 1 : 0));
+  return { revocation_epoch: e.revocation_epoch, access_rules_version: e.access_rules_version, entries };
+}
+
+/** Mirrors @synan/db registerDevice / rotateDeviceToken / authenticateDevice / device_heartbeat. */
+function memoryDevices(t: MemoryTables): DevicesRepo {
+  const hash = (token: string) => createHash("sha256").update(token).digest("base64url");
+  const pub = (d: MemDevice): DeviceRow => {
+    const { token_hash: _h, ...row } = d;
+    return clone(row);
+  };
+  return {
+    async register(i) {
+      if ([...t.devices.values()].some((d) => d.hardware_id === i.hardwareId)) return "duplicate";
+      const token = i.kind !== "scanner" ? randomBytes(32).toString("base64url") : null;
+      const id = randomUUID();
+      t.devices.set(id, {
+        id, venue_id: i.venueId, kind: i.kind, label: i.label, hardware_id: i.hardwareId, checkpoint_id: i.checkpointId, state: "active",
+        last_heartbeat_at: null, last_clock_offset_ms: null, last_queue_depth: null, created_at: new Date(), token_hash: token ? hash(token) : null, token_version: 0,
+      });
+      return { id, token };
+    },
+    async byId(id) {
+      const d = t.devices.get(id);
+      return d ? pub(d) : null;
+    },
+    async list(venueId) {
+      return [...t.devices.values()].filter((d) => !venueId || d.venue_id === venueId).sort((a, b) => a.created_at.getTime() - b.created_at.getTime()).map(pub);
+    },
+    async rotateToken(id) {
+      const token = randomBytes(32).toString("base64url");
+      const d = t.devices.get(id);
+      if (d) Object.assign(d, { token_hash: hash(token), token_version: d.token_version + 1 });
+      return token;
+    },
+    async retire(id) {
+      const d = t.devices.get(id);
+      if (d) d.state = "retired";
+    },
+    async authenticate(token) {
+      const h = hash(token);
+      const d = [...t.devices.values()].find((x) => x.token_hash === h && x.state === "active");
+      return d ? pub(d) : null;
+    },
+    async heartbeat({ deviceId, clockOffsetMs, queueDepth, now }) {
+      const d = t.devices.get(deviceId);
+      if (!d) return "unknown_device";
+      if (d.state !== "active") return "not_active";
+      Object.assign(d, { last_heartbeat_at: now, last_clock_offset_ms: clockOffsetMs, last_queue_depth: queueDepth });
+      return "ok";
+    },
+  };
+}
+type MemDevice = DeviceRow & { token_hash: string | null };
+
+/** Mirrors @synan/db webhook_enqueue / webhook_claim / webhook_record_attempt (migration 0014). */
+function memoryWebhookDeliveries(t: MemoryTables): WebhookDeliveriesRepo {
+  const pub = (d: MemDelivery): WebhookDeliveryRow => {
+    const { payload: _p, lease_until: _l, seq: _s, ...row } = d;
+    return clone(row);
+  };
+  return {
+    async enqueue({ orgId, event, payload, now }) {
+      let n = 0;
+      for (const w of t.webhooks.values()) {
+        if (w.org_id !== orgId || !w.active || !(w.events.includes(event) || w.events.includes("*"))) continue;
+        const id = randomUUID();
+        t.deliveries.set(id, {
+          id, endpoint_id: w.id, event, payload: clone(payload), state: "pending", attempt: 0, response_code: null, last_error: null,
+          next_attempt_at: now, lease_until: null, created_at: now, delivered_at: null, seq: t.deliveries.size,
+        });
+        n++;
+      }
+      return n;
+    },
+    async claim(now, limit) {
+      const due = [...t.deliveries.values()]
+        .filter((d) => (d.state === "pending" && d.next_attempt_at <= now) || (d.state === "in_flight" && d.lease_until !== null && d.lease_until <= now))
+        .sort((a, b) => a.next_attempt_at.getTime() - b.next_attempt_at.getTime() || a.seq - b.seq)
+        .slice(0, limit);
+      const out: ClaimedDeliveryRow[] = [];
+      for (const d of due) {
+        const w = t.webhooks.get(d.endpoint_id);
+        if (!w || !w.active) continue;
+        Object.assign(d, { state: "in_flight", lease_until: new Date(now.getTime() + 120_000) });
+        out.push({ delivery_id: d.id, endpoint_id: w.id, url: w.url, secret: w.secret, event: d.event, payload: clone(d.payload), attempt: d.attempt });
+      }
+      return out;
+    },
+    async record({ deliveryId, ok, responseCode, error, now }) {
+      const d = t.deliveries.get(deliveryId)!;
+      const n = d.attempt + 1;
+      const state = ok ? "succeeded" : n >= WEBHOOK_MAX_ATTEMPTS ? "dead" : "pending";
+      Object.assign(d, {
+        attempt: n, state, response_code: responseCode, last_error: ok ? null : error, lease_until: null,
+        delivered_at: ok ? now : d.delivered_at, next_attempt_at: state === "pending" ? new Date(now.getTime() + webhookBackoffMs(n)) : d.next_attempt_at,
+      });
+      return { state };
+    },
+    async forEndpoint(endpointId, { offset, limit }) {
+      return [...t.deliveries.values()].filter((d) => d.endpoint_id === endpointId).sort((a, b) => b.created_at.getTime() - a.created_at.getTime() || b.seq - a.seq).slice(offset, offset + limit).map(pub);
+    },
+  };
+}
+type MemDelivery = WebhookDeliveryRow & { payload: Record<string, unknown>; lease_until: Date | null; seq: number };
+
+/** Mirrors @synan/db data_request_open / claim / finish, collectAttendeeExport and erase_attendee. */
+function memoryDataRequests(t: MemoryTables, audit: (e: Pick<AuditRow, "actor_id" | "action" | "target" | "meta_jsonb" | "at">) => AuditRow): DataRequestsRepo {
+  const open = (r: DataRequestRowT) => r.state === "requested" || r.state === "in_progress";
+  return {
+    async open(attendeeId, kind, now) {
+      const cur = [...t.dataRequests.values()].find((r) => r.attendee_id === attendeeId && r.kind === kind && open(r));
+      if (cur) return { status: "already_open", request_id: cur.id };
+      const id = randomUUID();
+      t.dataRequests.set(id, { id, attendee_id: attendeeId, kind, state: "requested", requested_at: now, completed_at: null, handled_by: null, object_key: null, note: null });
+      return { status: "opened", request_id: id };
+    },
+    async claimExport() {
+      const r = [...t.dataRequests.values()].filter((x) => x.kind === "export" && x.state === "requested").sort((a, b) => a.requested_at.getTime() - b.requested_at.getTime())[0];
+      if (!r) return null;
+      r.state = "in_progress";
+      return clone(r);
+    },
+    async byId(id) {
+      const r = t.dataRequests.get(id);
+      return r ? clone(r) : null;
+    },
+    async finish(id, i) {
+      const r = t.dataRequests.get(id);
+      if (!r || !open(r)) return "not_open";
+      Object.assign(r, { state: i.state, object_key: i.objectKey ?? null, note: i.note ?? null, handled_by: i.actorId, completed_at: i.now });
+      if (r.kind === "erasure" && i.state === "completed") {
+        for (const s of t.authSessions.values()) if (s.attendee_id === r.attendee_id && !s.revoked_at) s.revoked_at = i.now;
+      }
+      return i.state;
+    },
+    async list({ state, kind, offset, limit }) {
+      return [...t.dataRequests.values()]
+        .filter((r) => (!state || r.state === state) && (!kind || r.kind === kind))
+        .sort((a, b) => b.requested_at.getTime() - a.requested_at.getTime())
+        .slice(offset, offset + limit)
+        .map(clone);
+    },
+    async forAttendee(attendeeId) {
+      return [...t.dataRequests.values()].filter((r) => r.attendee_id === attendeeId).sort((a, b) => b.requested_at.getTime() - a.requested_at.getTime()).map(clone);
+    },
+    async collectExport(attendeeId) {
+      const a = t.attendees.get(attendeeId);
+      const regs = [...t.registrations.values()].filter((r) => r.attendee_id === attendeeId);
+      const ids = new Set(regs.map((r) => r.id));
+      const creds = [...t.credentials.values()].filter((c) => c.registration_id && ids.has(c.registration_id))
+        .map((c) => ({ id: c.id, registration_id: c.registration_id, state: c.state, issued_at: c.issued_at, revoked_at: c.revoked_at }));
+      return clone({ identity: a ? { id: a.id, user_id: a.user_id, email: a.email, full_name: a.full_name, profile: a.profile_jsonb } : null, registrations: regs, credentials: creds });
+    },
+    async erase(request, actorId, now) {
+      const a = t.attendees.get(request.attendee_id);
+      if (a) Object.assign(a, { email: null, full_name: null, profile_jsonb: {} });
+      audit({ actor_id: actorId, action: "attendee.erase", target: `attendee:${request.attendee_id}`, meta_jsonb: {}, at: now });
+      await this.finish(request.id, { state: "completed", actorId, now });
     },
   };
 }

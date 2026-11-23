@@ -11,7 +11,7 @@
  *   hashes are stored.
  * - The audit chain is computed by the database trigger; this layer only inserts.
  */
-import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, ne, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, ilike, inArray, isNull, lt, ne, notInArray, or, sql } from "drizzle-orm";
 import {
   access_rules,
   attendees,
@@ -43,6 +43,57 @@ import {
   consumeWsTicket,
   createAttendee,
   decryptUserRow,
+  decryptAttendeeRow,
+  emailBlindIndex,
+  importCarriers,
+  runReport,
+  postEventSummary,
+  withWorkbookData,
+  eventsDueForPurge,
+  applySessionResets,
+  expireInvitations,
+  data_requests,
+  openDataRequest,
+  claimDataRequest,
+  finishDataRequest,
+  listDataRequests,
+  collectAttendeeExport,
+  processErasureRequest,
+  occupancy_rollups,
+  rebuildEventRollups,
+  purgeEventMovementData,
+  requestReport,
+  claimReport,
+  completeReport,
+  failReport,
+  listReports,
+  type EventReport,
+  createDeskCode,
+  consumeDeskCode,
+  createUserInvite,
+  consumeUserInvite,
+  startMfaEnrolment,
+  readPendingMfaSecret,
+  confirmMfaEnrolment,
+  searchAttendeesDecrypted,
+  enqueueWebhookEvent,
+  claimWebhookDeliveries,
+  recordWebhookAttempt,
+  listWebhookDeliveries,
+  devices,
+  registerDevice,
+  rotateDeviceTokenVersioned,
+  authenticateDevice,
+  recordHeartbeat,
+  allowlistEntries,
+  bindCarrier,
+  rebindCarrier,
+  replaceLostBand,
+  carrierInventory,
+  invitations,
+  webhook_endpoints,
+  readAttendees,
+  updateAttendeeIdentity,
   findUserByEmail,
   insertUser,
   createLink,
@@ -60,6 +111,10 @@ import {
   type AttendeeIdentity,
   type Cipher,
 } from "@synan/db";
+import { WEBHOOK_MAX_ATTEMPTS } from "./types.js";
+import { drizzleReportSchedules } from "./drizzle-delivery.js";
+import { toCells } from "./memory-reports.js";
+import type { AttendeeTier, CredentialState } from "@synan/contracts/enums";
 import type {
   AttendeeRow,
   AuditRow,
@@ -73,10 +128,38 @@ import type {
   RoomRow,
   ScanRow,
   UserRow,
+  DeviceRow,
+  WebhookEndpointRow,
 } from "./types.js";
 
 type Json = Record<string, unknown>;
 const one = <T>(rows: T[]): T | null => rows[0] ?? null;
+
+/** The SQLSTATE of a driver error (node-postgres and PGlite; drizzle may wrap it in `cause`). */
+export function pgCode(e: unknown): string | undefined {
+  for (let x: unknown = e, i = 0; x && i < 4; x = (x as { cause?: unknown }).cause, i++) {
+    const c = (x as { code?: unknown }).code;
+    if (typeof c === "string" && /^[0-9A-Z]{5}$/.test(c)) return c;
+  }
+  return undefined;
+}
+const toDevice = (d: typeof devices.$inferSelect): DeviceRow => ({
+  id: d.id, venue_id: d.venue_id, kind: d.kind, label: d.label, hardware_id: d.hardware_id, checkpoint_id: d.checkpoint_id, state: d.state,
+  last_heartbeat_at: d.last_heartbeat_at, last_clock_offset_ms: d.last_clock_offset_ms, last_queue_depth: d.last_queue_depth, created_at: d.created_at,
+  token_version: d.token_version,
+});
+const toReport = (r: EventReport) => ({
+  id: r.id, event_id: r.event_id, kind: r.kind, format: r.format, include_identity: r.include_identity, state: r.state, object_key: r.object_key, requested_by: r.requested_by,
+  params: (r.params_jsonb ?? {}) as Record<string, unknown>, error: r.error, created_at: r.created_at, completed_at: r.completed_at,
+});
+const toDataRequest = (r: typeof data_requests.$inferSelect) => ({
+  id: r.id, attendee_id: r.attendee_id, kind: r.kind, state: r.state, requested_at: r.requested_at, completed_at: r.completed_at,
+  handled_by: r.handled_by, object_key: r.object_key, note: r.note,
+});
+const toAssignment = (a: typeof staff_assignments.$inferSelect) => ({
+  id: a.id, user_id: a.user_id, checkpoint_id: a.checkpoint_id, shift_start: a.shift_start, shift_end: a.shift_end,
+  event_id: a.event_id, handed_over_at: a.handed_over_at,
+});
 
 /** `72 hours`, `3 days 00:00:00`, `72:00:00` → hours. */
 export function intervalHours(v: unknown): number {
@@ -245,9 +328,177 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
   });
   /** A raw users row: decrypts the address once (legacy plaintext tolerated until enforcement). */
   const toUser = (raw: typeof users.$inferSelect): UserRow => fromDecrypted(decryptUserRow(cipher, raw));
+  /** Webhook HMAC secrets are encrypted at the application layer, bound to their row (schema comment on webhook_endpoints.secret). */
+  const webhookCtx = (id: string) => ({ table: "webhook_endpoints", column: "secret", rowId: id });
+  const encWebhookSecret = (id: string, secret: string) => cipher.encrypt(secret, webhookCtx(id));
+  const toWebhook = (w: typeof webhook_endpoints.$inferSelect): WebhookEndpointRow => ({
+    id: w.id, org_id: w.org_id, url: w.url, secret: cipher.decrypt(w.secret, webhookCtx(w.id)), events: w.events, active: w.active, created_at: w.created_at,
+  });
 
   return {
     kind: "drizzle",
+    deskCodes: {
+      async create(i) {
+        return createDeskCode(db, cipher, { carrierIdentifier: i.bandIdentifier, createdBy: i.createdBy, ttlMinutes: 10, now: i.now });
+      },
+      async consume(i) {
+        return consumeDeskCode(db, cipher, { code: i.code, attendeeId: i.attendeeId, now: i.now });
+      },
+    },
+    userInvites: {
+      async create(i) {
+        const r = await createUserInvite(db, { userId: i.userId, createdBy: i.createdBy, ttlHours: 72, now: i.now });
+        if (r.status !== "created" || !r.token) throw new Error(`user invite: ${r.status}`);
+        return r.token;
+      },
+      async consume(token, now) {
+        const r = await consumeUserInvite(db, token, now);
+        return r.status === "consumed" ? r.user_id : null;
+      },
+    },
+    webhookDeliveries: {
+      async enqueue(i) {
+        return enqueueWebhookEvent(db, { orgId: i.orgId, event: i.event, payload: i.payload, alertId: i.alertId, now: i.now });
+      },
+      async claim(now, limit) {
+        return claimWebhookDeliveries(db, cipher, { limit, now });
+      },
+      async record(i) {
+        const r = await recordWebhookAttempt(db, { deliveryId: i.deliveryId, ok: i.ok, responseCode: i.responseCode, error: i.error, maxAttempts: WEBHOOK_MAX_ATTEMPTS, now: i.now });
+        return { state: r.state };
+      },
+      async forEndpoint(endpointId, { offset, limit }) {
+        const p = await listWebhookDeliveries(db, { endpointId, offset, limit });
+        return p.items.map((d) => ({
+          id: d.id, endpoint_id: d.endpoint_id, event: d.event, state: d.state, attempt: d.attempt, response_code: d.response_code,
+          last_error: d.last_error, next_attempt_at: d.next_attempt_at, created_at: d.created_at, delivered_at: d.delivered_at,
+        }));
+      },
+    },
+    maintenance: {
+      async eventsDueForPurge(now) {
+        return (await eventsDueForPurge(db, { now })).map((e) => e.event_id);
+      },
+      async applySessionResets(eventId, now) {
+        return (await applySessionResets(db, eventId, now)).length;
+      },
+      async expireInvitations(now) {
+        return expireInvitations(db, now);
+      },
+    },
+    reportSchedules: drizzleReportSchedules(db, cipher),
+    dataRequests: {
+      async open(attendeeId, kind, now) {
+        return openDataRequest(db, attendeeId, kind, now);
+      },
+      async claimExport(now) {
+        const r = await claimDataRequest(db, { kind: "export", now });
+        return r ? toDataRequest(r) : null;
+      },
+      async byId(id) {
+        return one((await db.select().from(data_requests).where(eq(data_requests.id, id)).limit(1)).map(toDataRequest));
+      },
+      async finish(id, i) {
+        return finishDataRequest(db, id, { state: i.state, objectKey: i.objectKey ?? null, note: i.note ?? null, actorId: i.actorId, now: i.now });
+      },
+      async list({ state, kind, offset, limit }) {
+        return (await listDataRequests(db, { state, kind, offset, limit })).items.map(toDataRequest);
+      },
+      async forAttendee(attendeeId) {
+        return (await db.select().from(data_requests).where(eq(data_requests.attendee_id, attendeeId)).orderBy(desc(data_requests.requested_at))).map(toDataRequest);
+      },
+      async collectExport(attendeeId) {
+        const x = await collectAttendeeExport({ db, vault, cipher }, attendeeId);
+        return JSON.parse(JSON.stringify(x)) as Record<string, unknown>;
+      },
+      async erase(request, actorId, now) {
+        await processErasureRequest({ db, vault }, { ...request, started_at: null } as never, actorId);
+        void now;
+      },
+    },
+    reports: {
+      async run(kind, eventId, { section, cursor, limit }) {
+        let p;
+        try {
+          p = await runReport(db, kind, eventId, { section: section as never, cursor, limit });
+        } catch (e) {
+          const m = e instanceof Error ? e.message : "";
+          if (m.includes("cursor")) throw new Error("invalid report cursor");
+          if (m.includes("section")) throw new Error("invalid report section");
+          throw e;
+        }
+        return { section: p.section, columns: p.columns.map((c) => c.key), rows: toCells(p.columns, p.rows), next_cursor: p.next_cursor, total: p.total };
+      },
+      async rebuildRollups(eventId) {
+        await rebuildEventRollups(db as never, eventId);
+      },
+      async purge(eventId, actorId) {
+        await purgeEventMovementData(db as never, eventId, { force: true, actorId });
+      },
+      async request(i) {
+        return requestReport(db, { eventId: i.eventId, kind: i.kind, format: i.format, includeIdentity: i.includeIdentity, requestedBy: i.requestedBy, params: i.params });
+      },
+      async claim(now) {
+        const r = await claimReport(db, now);
+        return r ? toReport(r) : null;
+      },
+      async complete(id, objectKey, now) {
+        return completeReport(db, id, { objectKey, now });
+      },
+      async fail(id, error, now) {
+        return failReport(db, id, error, now);
+      },
+      async list({ eventId, offset, limit }) {
+        return (await listReports(db, { eventId, offset, limit })).items.map(toReport);
+      },
+      async occupancyCurve(eventId) {
+        const rs = await db
+          .select({ at: occupancy_rollups.bucket_start, n: sql<number>`sum(${occupancy_rollups.peak})::int` })
+          .from(occupancy_rollups).where(eq(occupancy_rollups.event_id, eventId))
+          .groupBy(occupancy_rollups.bucket_start).orderBy(asc(occupancy_rollups.bucket_start));
+        return rs.map((r) => ({ at: r.at, on_site: Number(r.n) }));
+      },
+      async postEventSummary(eventId, now) {
+        return postEventSummary(db, eventId, now);
+      },
+      async workbook(eventId, opts, consume) {
+        return withWorkbookData({ db, vault, cipher }, eventId, { includeIdentity: opts.includeIdentity, now: opts.now }, consume);
+      },
+      async purgedAt(eventId) {
+        return (await db.select({ p: events.purged_at }).from(events).where(eq(events.id, eventId)).limit(1))[0]?.p ?? null;
+      },
+    },
+    devices: {
+      async register(i) {
+        try {
+          return await registerDevice(db, { venueId: i.venueId, kind: i.kind, label: i.label, hardwareId: i.hardwareId, checkpointId: i.checkpointId });
+        } catch (e) {
+          if (pgCode(e) === "23505") return "duplicate";
+          throw e;
+        }
+      },
+      async byId(id) {
+        return one((await db.select().from(devices).where(eq(devices.id, id)).limit(1)).map(toDevice));
+      },
+      async list(venueId) {
+        return (await db.select().from(devices).where(venueId ? eq(devices.venue_id, venueId) : undefined).orderBy(asc(devices.created_at))).map(toDevice);
+      },
+      async rotateToken(id) {
+        const r = await rotateDeviceTokenVersioned(db, id);
+        if (!r) throw new Error(`device ${id} not found`);
+        return r.token;
+      },
+      async retire(id, at) {
+        await db.update(devices).set({ state: "retired", retired_at: at }).where(eq(devices.id, id));
+      },
+      async authenticate(token) {
+        const d = await authenticateDevice(db, token);
+        return d ? toDevice(d) : null;
+      },
+      async heartbeat(i) {
+        return recordHeartbeat(db, { deviceId: i.deviceId, clockOffsetMs: i.clockOffsetMs, queueDepth: i.queueDepth, appVersion: i.appVersion, now: i.now });
+      },
+    },
     close: opts.close,
     conn,
     cipher,
@@ -270,6 +521,21 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       async setMfa(id, secret, at) {
         await setMfaSecret(db, cipher, id, secret, at);
       },
+      async list({ after, limit }) {
+        return (await db.select().from(users).where(after ? gt(users.id, after) : undefined).orderBy(asc(users.id)).limit(limit)).map(toUser);
+      },
+      async setPassword(id, hash) {
+        await db.update(users).set({ password_hash: hash, updated_at: sql`now()` }).where(eq(users.id, id));
+      },
+      async startMfaEnrolment(id, secret, now) {
+        await startMfaEnrolment(db, cipher, id, secret, { ttlMinutes: 10, now });
+      },
+      async readPendingMfaSecret(id, now) {
+        return readPendingMfaSecret(db, cipher, id, now);
+      },
+      async confirmMfaEnrolment(id, now) {
+        return confirmMfaEnrolment(db, cipher, id, now);
+      },
     },
 
     attendees: {
@@ -284,6 +550,69 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       async insert(r) {
         // Write-only on the general connection: encrypted identity plus the email blind index.
         await createAttendee(db, cipher, { id: r.id, user_id: r.user_id, email: r.email, full_name: r.full_name, profile: r.profile_jsonb });
+      },
+      async update(id, p) {
+        return updateAttendeeIdentity(vault, cipher, id, {
+          ...(p.full_name !== undefined ? { full_name: p.full_name } : {}),
+          ...(p.email !== undefined ? { email: p.email } : {}),
+          ...(p.profile_jsonb !== undefined ? { profile: p.profile_jsonb } : {}),
+        }, "operator");
+      },
+      async byIds(ids) {
+        return (await readAttendees(vault, cipher, ids)).map(toAttendee);
+      },
+      async list({ after, limit }) {
+        const raw = await withVaultScope(vault, "operator", (tx) =>
+          tx.select().from(attendees).where(after ? gt(attendees.id, after) : undefined).orderBy(asc(attendees.id)).limit(limit),
+        );
+        return raw.map((r) => toAttendee(decryptAttendeeRow(cipher, r)));
+      },
+      async search(q, { attendeeIds, limit }) {
+        return (await searchAttendeesDecrypted(vault, cipher, { q, attendeeIds, limit })).map(toAttendee);
+      },
+    },
+
+    webhooks: {
+      async list() {
+        return (await db.select().from(webhook_endpoints).orderBy(asc(webhook_endpoints.created_at))).map(toWebhook);
+      },
+      async byId(id) {
+        return one((await db.select().from(webhook_endpoints).where(eq(webhook_endpoints.id, id)).limit(1)).map(toWebhook));
+      },
+      async insert(r) {
+        await db.insert(webhook_endpoints).values({ ...r, secret: encWebhookSecret(r.id, r.secret) });
+      },
+      async update(id, p) {
+        const { secret, ...rest } = p;
+        const [w] = await db.update(webhook_endpoints).set({ ...rest, ...(secret !== undefined ? { secret: encWebhookSecret(id, secret) } : {}) }).where(eq(webhook_endpoints.id, id)).returning();
+        if (!w) throw new Error(`webhook ${id} not found`);
+        return toWebhook(w);
+      },
+      async delete(id) {
+        await db.delete(webhook_endpoints).where(eq(webhook_endpoints.id, id));
+      },
+    },
+
+    invitations: {
+      hashEmail: (email) => emailBlindIndex(cipher, email),
+      hashCandidates: (email) => cipher.blindIndexCandidates(email),
+      async insert(r) {
+        const rows = await db.insert(invitations).values(r).onConflictDoNothing().returning({ id: invitations.id });
+        return rows.length === 1 ? "ok" : "duplicate";
+      },
+      async byTokenHash(h) {
+        return one(await db.select().from(invitations).where(eq(invitations.token_hash, h)).limit(1));
+      },
+      async consume(id, outcome, now) {
+        const rows = await db
+          .update(invitations)
+          .set(outcome === "redeemed" ? { state: "redeemed", redeemed_at: now } : { state: "revoked" })
+          .where(and(eq(invitations.id, id), eq(invitations.state, "sent"), gt(invitations.expires_at, now)))
+          .returning({ id: invitations.id });
+        return rows.length === 1;
+      },
+      async forEvent(eventId) {
+        return db.select().from(invitations).where(eq(invitations.event_id, eventId)).orderBy(asc(invitations.created_at));
       },
     },
 
@@ -420,6 +749,14 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
           return e.v;
         });
       },
+      async allowlist(eventId, { from, to, checkpointId }) {
+        const a = await allowlistEntries(db, eventId, checkpointId, { from, to });
+        return {
+          revocation_epoch: a.revocation_epoch,
+          access_rules_version: a.access_rules_version,
+          entries: a.entries.map((x) => ({ ...x, tier: x.tier as AttendeeTier | null, state: x.state as CredentialState })),
+        };
+      },
     },
 
     registrations: {
@@ -440,13 +777,54 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       async forEvent(eventId) {
         return (await db.select().from(registrations).where(eq(registrations.event_id, eventId))).map(toRegistration);
       },
+      async insert(r) {
+        const rows = await db.insert(registrations).values({ ...r, invitation_id: r.invitation_id ?? null }).onConflictDoNothing().returning({ id: registrations.id });
+        return rows.length === 1 ? "ok" : "duplicate";
+      },
+      async update(id, patch) {
+        const [r] = await db.update(registrations).set({ ...patch, updated_at: sql`now()` }).where(eq(registrations.id, id)).returning();
+        if (!r) throw new Error(`registration ${id} not found`);
+        return toRegistration(r);
+      },
+      async countByAttendee(ids) {
+        if (ids.length === 0) return new Map();
+        const rows = await db
+          .select({ a: registrations.attendee_id, n: sql<number>`count(*)::int` })
+          .from(registrations)
+          .where(and(inArray(registrations.attendee_id, [...ids]), ne(registrations.state, "cancelled")))
+          .groupBy(registrations.attendee_id);
+        return new Map(rows.map((r) => [r.a, Number(r.n)]));
+      },
     },
 
     staff: {
       async assignmentsFor(userId) {
-        return (await db.select().from(staff_assignments).where(eq(staff_assignments.user_id, userId))).map((a) => ({
-          id: a.id, user_id: a.user_id, checkpoint_id: a.checkpoint_id, shift_start: a.shift_start, shift_end: a.shift_end,
-        }));
+        return (await db.select().from(staff_assignments).where(eq(staff_assignments.user_id, userId))).map(toAssignment);
+      },
+      async byId(id) {
+        return one((await db.select().from(staff_assignments).where(eq(staff_assignments.id, id)).limit(1)).map(toAssignment));
+      },
+      async list({ checkpointId, userId, offset, limit }) {
+        const conds = [];
+        if (checkpointId) conds.push(eq(staff_assignments.checkpoint_id, checkpointId));
+        if (userId) conds.push(eq(staff_assignments.user_id, userId));
+        return (
+          await db.select().from(staff_assignments).where(conds.length ? and(...conds) : undefined)
+            .orderBy(asc(staff_assignments.shift_start), asc(staff_assignments.id)).offset(offset).limit(limit)
+        ).map(toAssignment);
+      },
+      async insert(r) {
+        try {
+          await db.insert(staff_assignments).values({ ...r, event_id: r.event_id ?? null, handed_over_at: r.handed_over_at ?? null });
+          return "ok";
+        } catch (e) {
+          // 23P01 exclusion_violation: staff_assignments_no_overlap.
+          if (pgCode(e) === "23P01") return "overlap";
+          throw e;
+        }
+      },
+      async markHandedOver(id, at) {
+        await db.update(staff_assignments).set({ handed_over_at: at }).where(and(eq(staff_assignments.id, id), isNull(staff_assignments.handed_over_at)));
       },
     },
 
@@ -469,6 +847,18 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       async insert(r) {
         await db.insert(credentials).values(r);
       },
+      async page({ registrationIds, state, after, limit }) {
+        if (registrationIds && registrationIds.length === 0) return [];
+        const conds = [];
+        if (registrationIds) conds.push(inArray(credentials.registration_id, [...registrationIds]));
+        if (state) conds.push(eq(credentials.state, state));
+        if (after) conds.push(gt(credentials.id, after));
+        return (await db.select().from(credentials).where(conds.length ? and(...conds) : undefined).orderBy(asc(credentials.id)).limit(limit)).map(toCredential);
+      },
+      async forRegistrations(ids) {
+        if (ids.length === 0) return [];
+        return (await db.select().from(credentials).where(inArray(credentials.registration_id, [...ids]))).map(toCredential);
+      },
       async update(id, patch) {
         const rows = await db.update(credentials).set(patch).where(eq(credentials.id, id)).returning();
         if (!rows[0]) throw new Error(`credential ${id} not found`);
@@ -477,6 +867,9 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
     },
 
     carriers: {
+      async byId(id) {
+        return one((await db.select().from(carriers).where(eq(carriers.id, id)).limit(1)).map(toCarrier));
+      },
       async byIdentifier(kind, identifier) {
         // Newest first, retired included: a retired emailed code must still resolve (it reads as spent).
         return one(
@@ -501,6 +894,37 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       async redeemOnce(id, at) {
         const rows = await db.update(carriers).set({ redeemed_at: at }).where(and(eq(carriers.id, id), isNull(carriers.redeemed_at))).returning({ id: carriers.id });
         return rows.length === 1;
+      },
+      async importStock(hashes, chipProfile) {
+        const r = await importCarriers(db, hashes.map((h) => ({ identifier_hash: h, chip_profile: chipProfile })));
+        return { inserted: r.imported, duplicates: [...new Set(r.duplicates)].sort() };
+      },
+      async bind(i) {
+        const r = await bindCarrier(db, { identifier: i.identifier, credentialId: i.credentialId, actorId: i.actorId, confirm: true, kind: "nfc", now: i.now });
+        return { status: r.status, carrier_id: r.carrier_id };
+      },
+      async rebind(i) {
+        const r = await rebindCarrier(db, { credentialId: i.credentialId, newIdentifier: i.newIdentifier, disposition: i.disposition, actorId: i.actorId, now: i.now });
+        return { status: r.status, old_carrier_id: r.old_carrier_id, new_carrier_id: r.new_carrier_id };
+      },
+      async replaceLost(i) {
+        const r = await replaceLostBand(db, i);
+        return { status: r.status, old_carrier_id: r.old_carrier_id, new_carrier_id: r.new_carrier_id, old_credential_id: r.old_credential_id, new_credential_id: r.new_credential_id };
+      },
+      async inventory(credentialIds) {
+        if (credentialIds && credentialIds.length === 0) {
+          return { by_state: { stock: 0, assigned: 0, bound: 0, active: 0, retired: 0, lost: 0 }, by_chip_profile: {} };
+        }
+        let by_state: Record<string, number>;
+        const scope = credentialIds ? [eq(carriers.kind, "nfc"), inArray(carriers.credential_id, [...credentialIds])] : [eq(carriers.kind, "nfc")];
+        if (!credentialIds) by_state = await carrierInventory(db, "nfc");
+        else {
+          by_state = { stock: 0, assigned: 0, bound: 0, active: 0, retired: 0, lost: 0 };
+          const rs = await db.select({ s: carriers.state, n: sql<number>`count(*)::int` }).from(carriers).where(and(...scope)).groupBy(carriers.state);
+          for (const r of rs) by_state[r.s] = Number(r.n);
+        }
+        const ps = await db.select({ p: carriers.chip_profile, n: sql<number>`count(*)::int` }).from(carriers).where(and(...scope)).groupBy(carriers.chip_profile);
+        return { by_state, by_chip_profile: Object.fromEntries(ps.map((r) => [r.p ?? "unknown", Number(r.n)])) };
       },
     },
 
@@ -561,6 +985,20 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       },
       async forEvent(eventId) {
         return (await db.select().from(scans).where(eq(scans.event_id, eventId)).orderBy(asc(scans.corrected_at), asc(scans.received_at))).map(toScan);
+      },
+      async shiftCounts({ checkpointId, staffUserId, from, to }) {
+        const rs = await db
+          .select({ result: scans.result, offline: scans.offline_bool, n: sql<number>`count(*)::int` })
+          .from(scans)
+          .where(and(eq(scans.checkpoint_id, checkpointId), eq(scans.staff_user_id, staffUserId), gte(scans.corrected_at, from), lt(scans.corrected_at, to)))
+          .groupBy(scans.result, scans.offline_bool);
+        const byResult: Record<string, number> = {};
+        let offline = 0;
+        for (const r of rs) {
+          byResult[r.result] = (byResult[r.result] ?? 0) + Number(r.n);
+          if (r.offline) offline += Number(r.n);
+        }
+        return { byResult, offline };
       },
       async page(eventId, { checkpointId, result, ephemeralId, limit, before }) {
         const conds = [eq(scans.event_id, eventId)];
@@ -634,7 +1072,7 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       async incrementGateRate(key, inc) {
         await db
           .insert(gate_rate_rollups)
-          .values({ ...key, scans: 1, admitted: inc.admitted, denied: inc.denied, by_tier_jsonb: { [inc.tier]: 1 } })
+          .values({ ...key, scans: 1, admitted: inc.admitted, denied: inc.denied, by_tier_jsonb: { [inc.tier]: 1 }, by_result_jsonb: { [inc.result]: 1 } })
           .onConflictDoUpdate({
             target: [gate_rate_rollups.event_id, gate_rate_rollups.checkpoint_id, gate_rate_rollups.minute_start],
             set: {
@@ -643,12 +1081,18 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
               denied: sql`${gate_rate_rollups.denied} + ${inc.denied}`,
               by_tier_jsonb: sql`jsonb_set(${gate_rate_rollups.by_tier_jsonb}, ARRAY[${inc.tier}]::text[],
                 to_jsonb(coalesce((${gate_rate_rollups.by_tier_jsonb} ->> ${inc.tier})::int, 0) + 1))`,
+              by_result_jsonb: sql`jsonb_set(${gate_rate_rollups.by_result_jsonb}, ARRAY[${inc.result}]::text[],
+                to_jsonb(coalesce((${gate_rate_rollups.by_result_jsonb} ->> ${inc.result})::int, 0) + 1))`,
             },
           });
       },
       async gateRates(eventId) {
         return (await db.select().from(gate_rate_rollups).where(eq(gate_rate_rollups.event_id, eventId))).map(
-          (r): GateRateRollupRow => ({ ...r, by_tier_jsonb: (r.by_tier_jsonb ?? {}) as GateRateRollupRow["by_tier_jsonb"] }),
+          (r): GateRateRollupRow => ({
+            event_id: r.event_id, checkpoint_id: r.checkpoint_id, minute_start: r.minute_start, scans: r.scans, admitted: r.admitted, denied: r.denied,
+            by_tier_jsonb: (r.by_tier_jsonb ?? {}) as GateRateRollupRow["by_tier_jsonb"],
+            by_result_jsonb: (r.by_result_jsonb ?? {}) as Record<string, number>,
+          }),
         );
       },
     },
@@ -722,7 +1166,10 @@ export async function createPgliteRepos(opts: { cipher: Cipher; dataDir?: string
     import("drizzle-orm/pglite/migrator"),
     import("@synan/db"),
   ]);
-  const client = new PGlite({ ...(opts.dataDir ? { dataDir: opts.dataDir } : {}), extensions: { btree_gist } });
+  // A fresh in-memory database starts from @synan/db's cached migrated snapshot (~0.4 s instead of ~3.5 s).
+  const client = opts.dataDir
+    ? new PGlite({ dataDir: opts.dataDir, extensions: { btree_gist } })
+    : await (await import("@synan/db/testing")).createMigratedPglite();
   const db = drizzle(client, { schema: dbPkg.schema });
   await migrate(db, { migrationsFolder: dbPkg.MIGRATIONS_FOLDER });
   const one = db as unknown as AnyDb; // PGlite: a single connection plays all three roles

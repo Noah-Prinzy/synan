@@ -193,6 +193,7 @@ correctly on a shift handover.
 | `/admin/gates` | D12 Gate health | both | `stream/scans`, `GET /checkpoints` | `GateCard`, `GateHealthRow`, `Sparkline`, `QueueBadge` |
 | `/admin/gates/:id` | D12b Gate detail | both | `GET /checkpoints/:id/scans` | `GateHeader`, `ScanFeed`, `Sparkline`, `Table` |
 | `/admin/reports` | D13 Reports | both | `GET /reports` | `ReportRow`, `ExportJob`, `Table` |
+| `/admin/events/:id/summary` | D13c Event summary | both | `GET /events/:id/post-event-summary`, `POST /reports/:id/export` | `KpiStrip`, `ChartFrame`, `Table`, `ExportJob` |
 | `/admin/reports/:eventId` | D13b Event report | both | `GET /reports/:eventId`, `GET /reports/:eventId/:kind` | `ReportChart`, `ChartFrame`, `ExportJob`, `Tabs` |
 | `/admin/settings` (+`/:tab` = org · email · integrations · retention · audit · keys) | D14 Settings | admin | various | `SettingsSection`, `WebhookDeliveryRow`, `AuditRow` |
 | `*` | 404 | — | — | `NotFound` |
@@ -322,6 +323,23 @@ maintenance`, `Test read` (a synthetic scan that is not logged as attendance).
 List of generated reports with kind, event, state (`queued / running / ready / failed`), and download.
 Event report view has tabs per report type; charts are drawn with the same tokens (hairline grid, mono
 axes, no fills except one accent). `Export` starts the async job and shows progress (P-14).
+
+**D13c · Event summary `/admin/events/:id/summary`** (D-21)
+The landing page of a closed event, and reachable from the event list and the reports list. One
+page, no tabs:
+- A headline strip in mono numerals: registered · checked in · no-shows · peak on site, with the
+  time it happened · rooms that reached capacity · alerts raised.
+- Attendance by tier as a small table with a bar per row.
+- The occupancy curve across the event, one line, with the peak marked.
+- Busiest rooms and busiest gates, five rows each.
+- Alerts: count by severity, median time to acknowledge and to resolve.
+- Downloads: `Excel workbook` as the primary action, then `CSV` per report and `PDF summary`. A
+  download that is being prepared shows its progress in place.
+- A plain line stating what is no longer available and when it was removed: "Individual scan
+  records for this event were deleted on 26 Nov 2026."
+
+For a live or published event the same route shows the figures so far, labelled as provisional.
+States: loading, error, and "no data yet" for an event that has not opened.
 
 **D14 · Settings `/admin/settings`**
 Sections: Organization, Email (sending domain, delivery health, pass template preview with a live sample),

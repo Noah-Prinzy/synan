@@ -101,10 +101,10 @@ describe("WebSocket ticket (P-16)", () => {
     await expect(connect(t.body.protocols, { origin: "https://evil.example" })).rejects.toMatchObject({ status: 403 });
   });
 
-  it("requires authentication to mint, and channels not yet built answer 501", async () => {
+  it("requires authentication to mint; every channel is now served", async () => {
     expect((await h.call("POST", "/auth/ws-ticket", { body: { channel: "/stream/telemetry", event_id: h.seed.eventId } })).status).toBe(401);
     const r = await ticket(organiser.access_token, { channel: "/stream/alerts", event_id: h.seed.eventId });
-    expect(r.status).toBe(501);
+    expect(r.status).toBe(200);
   });
 
   it("per-channel authorisation: an attendee cannot subscribe to an unlisted event they are not invited to", async () => {

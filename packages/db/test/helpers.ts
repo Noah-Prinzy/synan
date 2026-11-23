@@ -6,6 +6,7 @@ import { sql } from "drizzle-orm";
 import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { MIGRATIONS_FOLDER } from "../src/migrate";
+import { createMigratedPglite } from "../src/testing";
 import * as schema from "../src/schema/index";
 
 export type TestDb = PgliteDatabase<typeof schema> & { $client: PGlite };
@@ -17,9 +18,9 @@ export const JOURNAL_ENTRIES: number = (
 
 /** A fresh in-process PostgreSQL (PGlite) with every migration applied. */
 export async function createTestDb(): Promise<TestDb> {
-  const client = new PGlite({ extensions: { btree_gist } });
+  const client = await createMigratedPglite();
   const db = drizzle(client, { schema }) as TestDb;
-  await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
+  await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER }); // a no-op on the snapshot; keeps the journal honest
   return db;
 }
 

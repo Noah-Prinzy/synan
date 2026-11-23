@@ -202,6 +202,13 @@ export interface Cipher {
   blindIndex(value: string, domain?: BlindIndexDomain): string;
   /** Blind index under every configured blind-index key, active first — for lookups during rotation. */
   blindIndexCandidates(value: string, domain?: BlindIndexDomain): string[];
+  /**
+   * Keyed digest (HMAC-SHA-256 under the active blind-index key, base64url, 43 chars) of a
+   * low-entropy secret such as a six-character desk code, which an unkeyed hash would not protect.
+   */
+  keyedDigest(domain: string, value: string): string;
+  /** keyedDigest under every configured blind-index key, active first. */
+  keyedDigestCandidates(domain: string, value: string): string[];
 }
 
 export interface CreateCipherOptions {
@@ -275,6 +282,12 @@ export async function createCipher(provider: KeyProvider, options: CreateCipherO
     },
     blindIndex(value, domain) {
       return hmac(activeBi, value, domain);
+    },
+    keyedDigest(domain, value) {
+      return createHmac("sha256", biKeys.get(activeBi)!).update(`${domain} ${value}`, "utf8").digest("base64url");
+    },
+    keyedDigestCandidates(domain, value) {
+      return [...new Set([activeBi, ...biKeys.keys()].map((kid) => createHmac("sha256", biKeys.get(kid)!).update(`${domain} ${value}`, "utf8").digest("base64url")))];
     },
     blindIndexCandidates(value, domain) {
       return [...new Set([activeBi, ...biKeys.keys()].map((kid) => hmac(kid, value, domain)))];

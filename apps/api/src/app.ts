@@ -18,13 +18,22 @@ import { CredentialService } from "./domain/credential-service.js";
 import { KeyService } from "./domain/keys.js";
 import { QrService } from "./domain/qr.js";
 import { ScanService } from "./domain/scan-service.js";
+import { WebhookService, type HostResolver, type WebhookTransport } from "./domain/webhooks.js";
+import { webhookRoutes } from "./routes/webhooks.js";
+import { ReportExporter } from "./domain/report-export.js";
+import { EncryptedStorage, LocalDiskStorage, type ObjectStorage } from "./lib/storage.js";
+import { InProcessJobs, type Jobs } from "./lib/jobs.js";
+import { PgBossJobs } from "./lib/pgboss-jobs.js";
+import { registerJobs } from "./jobs.js";
+import { reportRoutes } from "./routes/reports.js";
+import { meRoutes } from "./routes/me.js";
 import { RateLimiter } from "./http/rate-limit.js";
 import { mountNotImplemented } from "./http/route.js";
 import { systemClock, type Clock } from "./lib/clock.js";
 import { ConsoleMailer, MemoryMailer, type Mailer } from "./lib/mailer.js";
 import { attachWebSockets } from "./realtime/ws-server.js";
 import { TelemetryHub } from "./realtime/telemetry-hub.js";
-import { createCipher, devKeyProvider, EnvKeyProvider, type Cipher } from "@synan/db";
+import { createCipher, createJobs, devKeyProvider, EnvKeyProvider, type Cipher } from "@synan/db";
 import { createPgliteRepos, createPostgresRepos } from "./repo/drizzle.js";
 import { createMemoryRepos } from "./repo/memory.js";
 import type { Repos } from "./repo/types.js";
@@ -34,6 +43,11 @@ import { eventRoutes } from "./routes/events.js";
 import { scanRoutes } from "./routes/scans.js";
 import { layoutRoutes } from "./routes/layout.js";
 import { eventAdminRoutes } from "./routes/event-admin.js";
+import { registrationRoutes } from "./routes/registration.js";
+import { carrierRoutes } from "./routes/carriers.js";
+import { allowlistRoutes } from "./routes/allowlist.js";
+import { staffRoutes } from "./routes/staff.js";
+import { deviceRoutes } from "./routes/devices.js";
 import { seedDev, type SeedResult } from "./seed.js";
 
 export interface AppContext {
@@ -50,6 +64,10 @@ export interface AppContext {
   scans: ScanService;
   telemetry: TelemetryHub;
   rateLimiter: RateLimiter;
+  webhooks: WebhookService;
+  reportExports: ReportExporter;
+  reportStorage: ObjectStorage;
+  jobs: Jobs;
   /** Contract endpoints that have a real handler (filled by `mount`). */
   mounted: Set<EndpointDef>;
 }
@@ -59,6 +77,14 @@ export interface CreateAppOptions {
   clock?: Clock;
   repos?: Repos;
   mailer?: Mailer;
+  /** Outbound webhook transport (tests inject a fake; default: fetch). */
+  webhookTransport?: WebhookTransport;
+  /** Host resolver for webhook URLs (tests inject one; default: DNS). */
+  webhookResolver?: HostResolver;
+  /** Report export storage (default: local disk under config.reportStorageDir). */
+  storage?: ObjectStorage;
+  /** Background job runner (default: in process). */
+  jobs?: Jobs;
   /** Seed the dev fixtures (default: config.seed === "dev"). */
   seed?: boolean;
 }
@@ -95,7 +121,6 @@ function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunc
   res.status(status).json(body);
 }
 
-const AUTH_CLEANUP_INTERVAL_MS = 10 * 60_000;
 
 /**
  * The @synan/db field cipher, created once at startup. Real keys from DB_DATA_KEYS /
@@ -138,11 +163,20 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<RunningApp
   const credentials = new CredentialService(repos, qr, audit, mailer, config, clock);
   const scans = new ScanService(repos, qr, alerts, audit, telemetry, clock, { offlineSyncGraceMs: config.offlineSyncGraceS * 1000 });
   const rateLimiter = new RateLimiter(() => clock.now());
+  const webhooks = new WebhookService(repos, clock, opts.webhookTransport, opts.webhookResolver);
+  webhooks.attach(alerts);
+  // Exports are encrypted at rest under the database package's data keys (dev keys in development).
+  const cipher = await createAppCipher();
+  const reportStorage = new EncryptedStorage(opts.storage ?? new LocalDiskStorage(config.reportStorageDir), cipher);
+  const reportExports = new ReportExporter(repos, reportStorage, config, clock, cipher);
+  // pg-boss on PostgreSQL (D-17); in process for the memory and PGlite backends.
+  const jobs = opts.jobs ?? (config.repo === "postgres" ? new PgBossJobs(createJobs({ connectionString: config.databaseUrl!, mode: "worker" })) : new InProcessJobs());
 
   const ctx: AppContext = {
-    config, clock, repos, mailer, keys, qr, auth, audit, alerts, credentials, scans, telemetry, rateLimiter,
+    config, clock, repos, mailer, keys, qr, auth, audit, alerts, credentials, scans, telemetry, rateLimiter, webhooks, reportExports, reportStorage, jobs,
     mounted: new Set(),
   };
+  reportExports.app = ctx;
 
   const seed = (opts.seed ?? config.seed === "dev") ? await seedDev(ctx) : null;
 
@@ -166,6 +200,7 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<RunningApp
     next();
   });
   x.use(`${API_BASE_PATH}/scans`, express.json({ limit: "2mb" }));
+  x.use(`${API_BASE_PATH}/carriers/import`, express.json({ limit: "1mb" })); // up to 10,000 identifiers
   x.use(express.json({ limit: "64kb" }));
 
   authRoutes(x, ctx);
@@ -174,6 +209,14 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<RunningApp
   scanRoutes(x, ctx);
   layoutRoutes(x, ctx);
   eventAdminRoutes(x, ctx);
+  registrationRoutes(x, ctx);
+  carrierRoutes(x, ctx);
+  allowlistRoutes(x, ctx);
+  staffRoutes(x, ctx);
+  deviceRoutes(x, ctx);
+  reportRoutes(x, ctx);
+  meRoutes(x, ctx);
+  webhookRoutes(x, ctx);
 
   // Every contract endpoint without a real handler is mounted with full auth/RBAC, answering 501.
   const notImplemented: string[] = [];
@@ -190,11 +233,8 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<RunningApp
   const server = createServer(x);
   const ws = attachWebSockets(server, ctx);
 
-  // Expired sign-in state is deleted on a schedule (@synan/db cleanupAuthState, every 10 minutes).
-  const cleanupTimer = setInterval(() => {
-    auth.cleanup().catch((e: unknown) => console.error("[auth] cleanup failed:", e instanceof Error ? e.message : String(e)));
-  }, AUTH_CLEANUP_INTERVAL_MS);
-  cleanupTimer.unref();
+  registerJobs(ctx);
+  jobs.start();
 
   return {
     ctx,
@@ -212,7 +252,7 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<RunningApp
       });
     },
     async close() {
-      clearInterval(cleanupTimer);
+      await jobs.stop();
       telemetry.close();
       await ws.close();
       await new Promise<void>((resolve) => {

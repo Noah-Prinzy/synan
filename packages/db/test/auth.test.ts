@@ -209,10 +209,10 @@ describe("cleanup", () => {
       `select (select count(*) from auth_sessions)::int s, (select count(*) from auth_links)::int l, (select count(*) from ws_tickets)::int t`,
     );
     // Nothing is old enough relative to T0 + 1 day.
-    expect(await cleanupAuthState(db, { now: at(60 * 24) })).toEqual({ sessions: 0, links: 0, tickets: before[0]!.t });
+    expect(await cleanupAuthState(db, { now: at(60 * 24) })).toMatchObject({ sessions: 0, links: 0, tickets: before[0]!.t });
     // 70 days later every session (including the 30-day attendee ones), link and ticket expired > 30 days ago.
     const res = await cleanupAuthState(db, { now: at(60 * 24 * 70), batch: 2 });
-    expect(res).toEqual({ sessions: before[0]!.s, links: before[0]!.l, tickets: 0 });
+    expect(res).toMatchObject({ sessions: before[0]!.s, links: before[0]!.l, tickets: 0 });
     const after = await q<{ n: number }>(db, `select ((select count(*) from auth_sessions) + (select count(*) from auth_links) + (select count(*) from ws_tickets))::int n`);
     expect(after[0]!.n).toBe(0);
   });

@@ -241,8 +241,8 @@ export async function consumeWsTicket(db: Db, ticketHash: string, now?: Date): P
 export async function cleanupAuthState(
   db: Db,
   opts: { now?: Date; keep?: string; batch?: number } = {},
-): Promise<{ sessions: number; links: number; tickets: number }> {
-  const total = { sessions: 0, links: 0, tickets: 0 };
+): Promise<{ sessions: number; links: number; tickets: number; desk_codes: number; desk_code_failures: number; user_invites: number }> {
+  const total = { sessions: 0, links: 0, tickets: 0, desk_codes: 0, desk_code_failures: 0, user_invites: 0 };
   const batch = opts.batch ?? 10_000;
   for (;;) {
     const r = await rows<{ sessions: number; links: number; tickets: number }>(
@@ -256,6 +256,15 @@ export async function cleanupAuthState(
     total.sessions += s;
     total.links += l;
     total.tickets += t;
-    if (s < batch && l < batch && t < batch) return total;
+    const y = (
+      await rows<{ desk_codes: number; desk_code_failures: number; user_invites: number }>(
+        db,
+        sql`select * from public.short_code_cleanup(${ts(opts.now)}, ${opts.keep ?? "30 days"}::interval, ${batch})`,
+      )
+    )[0]!;
+    total.desk_codes += Number(y.desk_codes);
+    total.desk_code_failures += Number(y.desk_code_failures);
+    total.user_invites += Number(y.user_invites);
+    if (s < batch && l < batch && t < batch && Number(y.desk_codes) < batch && Number(y.desk_code_failures) < batch && Number(y.user_invites) < batch) return total;
   }
 }

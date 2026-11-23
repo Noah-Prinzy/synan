@@ -8,7 +8,22 @@
 
 /* The palette lives in packages/ui/src/styles/theme.css. The scanner is an instrument:
    one decision at a time, no decoration (docs/05 §2). */
+
+/* A gate device in a hand, in the dark: the page never scrolls or bounces (no
+   pull-to-refresh mid-queue), a long press never selects text or opens a callout,
+   and every tap lands at once (no double-tap zoom). Fields stay selectable. */
 html,
 body {
   overscroll-behavior: none;
+  background: var(--background);
+}
+.scanner-root {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.scanner-root input {
+  -webkit-user-select: text;
+  user-select: text;
 }

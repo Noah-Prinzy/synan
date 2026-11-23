@@ -8,8 +8,12 @@ export interface AuthContext {
   role: Role | null;
   /** Epoch ms of the last second-factor verification in this session, if any. */
   mfaAt: number | null;
-  /** auth session (refresh family) id. */
+  /** auth session (refresh family) id; for a device, the device id. */
   sid: string;
+  /** Devices only: the one checkpoint a fixed reader is installed at. */
+  checkpointId?: string | null;
+  /** Devices only: the device token version the access token was minted from. */
+  tokenVersion?: number | null;
 }
 
 export function kindForRole(role: Role): PrincipalKind {

@@ -8,7 +8,8 @@
     ".": "./src/index.ts",
     "./schema": "./src/schema/index.ts",
     "./migrate": "./src/migrate.ts",
-    "./seed": "./src/seed/index.ts"
+    "./seed": "./src/seed/index.ts",
+    "./testing": "./src/testing.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -21,7 +22,8 @@
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",
-    "pg": "^8.16.0"
+    "pg": "^8.16.0",
+    "pg-boss": "^12.39.0"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.17",

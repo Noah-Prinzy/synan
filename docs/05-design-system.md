@@ -163,7 +163,22 @@ columns, with gutters of 24 (attendee) and 16 (admin).
 - Live data interpolates on `requestAnimationFrame` and never animates through a CSS transition on
   the same property ([02 §9](02-architecture.md)).
 - Bars grow with `transform: scaleX`, never `width`.
-- No infinite decorative animation. No animation while the tab is hidden.
+- No infinite decorative animation, with one exception: the Attendee Portal carries a single, barely perceptible ambient background animation (D-22). It runs on one composited layer, pauses when the tab is hidden, is off under reduced motion, never reduces text contrast, and can be tuned or turned off from one theme token. Admin Command and Gate Scanner have none.
+- No animation while the tab is hidden.
+- **Motion is spent on feedback, not atmosphere (D-22).** The interface is still by default. Every
+  press is acknowledged within one frame. A button that starts work shows progress in place, then
+  what happened. A short list of key moments earns a crafted confirmation of 200–400 ms, once,
+  never looping, with a light haptic tick on phones. Reduced motion gets the state change without
+  the movement.
+- **Blue is the colour of interaction and reward (D-22).** Pressed and active states, progress
+  inside a working button, the success check, the rule that settles under a completed result,
+  active tabs and steps, focus, selection, and link hover all use the accent, the same way
+  everywhere, so blue comes to mean "I can act here" or "I just acted". It is still never a
+  surface fill and never a state colour.
+- **The background carries a touch of blue (D-22).** The ground stays near-black, with a soft,
+  low-opacity blue luminance behind the content, tied to the frame and grid. It is atmosphere, not a
+  coloured surface: never strong enough to affect text contrast, and tuned from the same theme
+  token as the ambient animation.
 
 ---
 

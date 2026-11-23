@@ -275,7 +275,12 @@ const TARGETS: Target[] = [
   { name: "attendees.profile_jsonb", table: "pii_vault.attendees", column: "profile_jsonb", jsonb: true, vault: true },
   { name: "users.email", table: "users", column: "email", jsonb: false, vault: false, userEmail: true },
   { name: "users.mfa_secret_enc", table: "users", column: "mfa_secret_enc", jsonb: false, vault: false },
+  { name: "users.mfa_pending_secret_enc", table: "users", column: "mfa_pending_secret_enc", jsonb: false, vault: false },
   { name: "signing_keys.private_key_enc", table: "signing_keys", column: "private_key_enc", jsonb: false, vault: false },
+  { name: "webhook_endpoints.secret", table: "webhook_endpoints", column: "secret", jsonb: false, vault: false },
+  { name: "report_schedules.recipients_enc", table: "report_schedules", column: "recipients_enc", jsonb: false, vault: false },
+  { name: "email_outbox.to_enc", table: "email_outbox", column: "to_enc", jsonb: false, vault: false },
+  { name: "email_outbox.content_enc", table: "email_outbox", column: "content_enc", jsonb: false, vault: false },
 ];
 
 export interface ReencryptProgress {

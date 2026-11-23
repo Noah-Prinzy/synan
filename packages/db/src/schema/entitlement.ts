@@ -41,6 +41,9 @@ export const invitations = pgTable(
   },
   (t) => [
     uniqueIndex("invitations_token_hash_uq").on(t.token_hash),
+    // Listing per event and the expiry job.
+    index("invitations_event_state_idx").on(t.event_id, t.state),
+    index("invitations_expiry_idx").on(t.expires_at).where(sql`${t.state} = 'sent'`),
     // At most one outstanding invitation per recipient per event.
     uniqueIndex("invitations_open_per_recipient_uq")
       .on(t.event_id, t.email_hash)
@@ -79,6 +82,8 @@ export const registrations = pgTable(
     unique("registrations_event_attendee_uq").on(t.event_id, t.attendee_id),
     index("registrations_event_tier_idx").on(t.event_id, t.tier),
     index("registrations_attendee_idx").on(t.attendee_id),
+    // report_arrivals and check-in counts.
+    index("registrations_checked_in_idx").on(t.event_id, t.checked_in_at).where(sql`${t.checked_in_at} IS NOT NULL`),
     uniqueIndex("registrations_invitation_uq")
       .on(t.invitation_id)
       .where(sql`${t.invitation_id} IS NOT NULL`),

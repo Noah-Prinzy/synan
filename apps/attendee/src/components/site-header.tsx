@@ -11,7 +11,9 @@ const navItems = [
 ];
 
 /** The logotype reveal plays once: when the app first loads on the home page, nowhere else. */
-const revealOnLoad = typeof window !== "undefined" && window.location.pathname === "/";
+// Off (owner, 2026-11-23: less animation; the reveal explained nothing). To restore:
+// typeof window !== "undefined" && window.location.pathname === "/"
+const revealOnLoad = false;
 let revealConsumed = false;
 
 const cell =

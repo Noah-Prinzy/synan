@@ -52,17 +52,33 @@ export const CarrierImport = z.object({
   /** Manufacturing serials / UIDs, hex. */
   identifiers: z.array(z.string().regex(/^[0-9A-Fa-f]{8,32}$/)).min(1).max(10_000),
 });
-export const CarrierImportResult = z.object({ imported: z.number().int(), duplicates: z.number().int() });
+export const CarrierImportResult = z.object({
+  imported: z.number().int(),
+  duplicates: z.number().int(),
+  /** The identifiers (as sent) that were repeated in the list or are already present. Never fatal. */
+  duplicate_identifiers: z.array(z.string()),
+});
 
 export const BindRequest = z.object({
   identifier: z.string().regex(/^[0-9A-Fa-f]{8,32}$/),
   registration_id: Id,
 });
 export const RebindRequest = z.object({
-  /** New band identifier. The old carrier is marked lost. */
+  /** New band identifier (a stock band). */
   identifier: z.string().regex(/^[0-9A-Fa-f]{8,32}$/),
   reason: z.string().min(3).max(500),
+  /**
+   * `lost` (default, 01 §5.3): the old band is marked lost, the credential is replaced by a new one and
+   * the new band is bound to it — old emailed and portal codes stop working. `damaged`: the old band is
+   * retired and the credential is kept.
+   */
+  disposition: z.enum(["lost", "damaged"]).default("lost"),
 });
+
+/** A one-time six-character code a desk clerk reads out so an attendee can bind a stock band themselves (01 §5.3, A5). */
+export const DeskCodeRequest = z.object({ identifier: z.string().regex(/^[0-9A-Fa-f]{8,32}$/) });
+export const DeskCode = z.object({ code: z.string().regex(/^[A-HJ-NP-Z2-9]{6}$/), expires_at: IsoDateTime });
+export type DeskCode = z.infer<typeof DeskCode>;
 
 export const credentialEndpoints = {
   listCredentials: endpoint({ method: "GET", path: "/credentials", access: OPERATORS, query: CredentialQuery, response: pageOf(Credential) }),
@@ -73,4 +89,6 @@ export const credentialEndpoints = {
   importCarriers: endpoint({ method: "POST", path: "/carriers/import", access: OPERATORS, audited: true, body: CarrierImport, response: CarrierImportResult }),
   bindCarrier: endpoint({ method: "POST", path: "/carriers/bind", access: ["admin", "organiser", "security_staff"], audited: true, body: BindRequest, response: Carrier }),
   rebindCarrier: endpoint({ method: "POST", path: "/carriers/:id/rebind", access: OPERATORS, mfa: true, audited: true, params: IdParam, body: RebindRequest, response: Carrier }),
+  /** Not in 02 §5: issues the desk code used by POST /me/credential/bind `via: desk_code`. Proposed addition. */
+  deskCode: endpoint({ method: "POST", path: "/carriers/desk-code", access: ["admin", "organiser", "security_staff"], audited: true, body: DeskCodeRequest, response: DeskCode, status: 201 }),
 } as const;

@@ -42,3 +42,24 @@ corepack pnpm --filter @synan/api secrets:maintain   # re-encrypt and re-index; 
 `src/brand.ts` is the only place the product name is used at runtime (it derives from
 `@synan/contracts/brand`). `src/domain/decision.ts` is the pure scan decision; `src/repo/types.ts` is
 the persistence boundary with `memory.ts` and `drizzle.ts` implementations.
+
+## Background jobs
+
+One small interface (`src/lib/jobs.ts`) with two runners: in process (memory and PGlite backends,
+tests) and pg-boss (`src/lib/pgboss-jobs.ts`, `REPO=postgres`; this process only works queues, the
+maintenance process runs the schedules). Queue names are `@synan/db`'s `JOB_QUEUES`; handlers are
+registered in `src/jobs.ts`. The pg-boss path has not run against a real PostgreSQL server.
+
+## Report exports
+
+Workbook (`.xlsx`, default), CSV per report, written by the export job to the storage interface
+(`src/lib/storage.ts`; local disk under `REPORT_STORAGE_DIR` in development) and served by a signed
+link (`/api/v1/report-files/:id`, `REPORT_LINK_TTL_S`, absolute on `API_PUBLIC_ORIGIN`). The
+workbook writer (`src/lib/xlsx.ts`) streams rows into the archive with `fflate` and never writes a
+formula. The PDF summary is not built yet.
+
+## Endpoints added beyond docs/02 §5
+
+Their schemas are in `packages/contracts/src/rest`: kiosk registration, desk codes, staff invite and
+activation, shift handover, gate heartbeat, MFA enrolment, webhooks, devices and the device token,
+data-request queue and own export, and the post-event summary.

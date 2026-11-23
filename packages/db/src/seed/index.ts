@@ -685,7 +685,22 @@ export async function seed(db: AnyDb, options: SeedOptions = {}): Promise<SeedSu
     }
     await insertMany(tx, s.staff_assignments, assignments);
 
-    await tx.insert(s.webhook_endpoints).values({ id: uuid(), org_id: orgId, url: "https://hooks.example.test/alerts", secret: "dev-unencrypted:" + hex(24), events: ["alert.raised", "alert.acked", "alert.resolved"] });
+    const hookId = uuid();
+    await tx.insert(s.webhook_endpoints).values({
+      id: hookId, org_id: orgId, url: "https://hooks.example.test/alerts", events: ["alert.raised", "alert.acked", "alert.resolved"],
+      secret: cipher.encrypt(hex(32), { table: "webhook_endpoints", column: "secret", rowId: hookId }),
+    });
+    // Gate devices: a fixed reader on each large room's in-door of venue 1, a phone per perimeter gate.
+    const deviceRows: (typeof s.devices.$inferInsert)[] = [];
+    for (const r of v1Rooms.filter((x) => !x.both)) {
+      deviceRows.push({ venue_id: venueIds[0]!, kind: "fixed_reader", label: `Reader ${r.name}`, hardware_id: `FR-${r.inCp.slice(0, 8)}`,
+        checkpoint_id: r.inCp, token_hash: sha(hex(32)), last_heartbeat_at: d(now - int(2, 50) * 1000), last_clock_offset_ms: int(-300, 300), last_queue_depth: 0 });
+    }
+    for (const p of perimeter.filter((x) => x.venue === 0)) {
+      deviceRows.push({ venue_id: venueIds[0]!, kind: "scanner", label: `Scanner ${p.label}`, hardware_id: `PH-${p.id.slice(0, 8)}`,
+        checkpoint_id: p.id, last_heartbeat_at: d(now - int(2, 50) * 1000), last_clock_offset_ms: int(-300, 300), last_queue_depth: 0 });
+    }
+    await insertMany(tx, s.devices, deviceRows);
     await tx.insert(s.event_reports).values([
       { id: uuid(), event_id: ev.closed, kind: "attendance", state: "ready", object_key: `reports/${ev.closed}/attendance.csv`, requested_by: organisers[1]!, created_at: d(ev3End + 2 * HOUR), completed_at: d(ev3End + 2 * HOUR + MIN) },
       { id: uuid(), event_id: ev.closed, kind: "gate_throughput", state: "ready", object_key: `reports/${ev.closed}/gate_throughput.csv`, requested_by: organisers[1]!, created_at: d(ev3End + 2 * HOUR), completed_at: d(ev3End + 2 * HOUR + 2 * MIN) },

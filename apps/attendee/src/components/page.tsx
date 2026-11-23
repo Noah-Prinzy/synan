@@ -38,7 +38,7 @@ export function PageShell({ children, bleed = false }: { children: ReactNode; bl
   const { pathname } = useLocation();
   const passBar = usePassBarVisible();
   return (
-    <div className="min-h-dvh bg-background text-17 text-foreground">
+    <div className="min-h-dvh text-17 text-foreground">
       <SkipLink />
       <div className="mx-auto flex min-h-dvh w-full max-w-360 flex-col md:border-x md:border-border">
         <SiteHeader />

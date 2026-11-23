@@ -25,6 +25,19 @@ function hint(c: CarrierRow): string {
   return "app pass";
 }
 
+export function carrierDto(c: CarrierRow): Credential["carriers"][number] {
+  return {
+    id: c.id,
+    credential_id: c.credential_id,
+    kind: c.kind,
+    identifier_hint: hint(c),
+    chip_profile: c.chip_profile,
+    state: c.state,
+    bound_at: c.bound_at?.toISOString() ?? null,
+    redeemed_at: c.redeemed_at?.toISOString() ?? null,
+  };
+}
+
 export class CredentialService {
   /** Emits `state` { event_id, registration_id, attendee_id, state } for `/stream/me`. */
   readonly events = new EventEmitter();
@@ -168,17 +181,31 @@ export class CredentialService {
       zone_state: cred.zone_state,
       issued_at: cred.issued_at.toISOString(),
       revoked_at: cred.revoked_at?.toISOString() ?? null,
-      carriers: carriers.map((c) => ({
-        id: c.id,
-        credential_id: c.credential_id,
-        kind: c.kind,
-        identifier_hint: hint(c),
-        chip_profile: c.chip_profile,
-        state: c.state,
-        bound_at: c.bound_at?.toISOString() ?? null,
-        redeemed_at: c.redeemed_at?.toISOString() ?? null,
-      })),
+      carriers: carriers.map(carrierDto),
     };
+  }
+
+  /**
+   * Registration issues the credential and sends the pass (01 §1.1 stage 4). A mail failure does not
+   * undo the registration: it is logged and the pass can be resent.
+   */
+  async issueAndSend(registrationId: string): Promise<{ credential: CredentialRow; code: string | null }> {
+    const credential = await this.issueForRegistration(registrationId);
+    try {
+      const { code } = await this.sendEmailedQr(credential.id);
+      return { credential, code };
+    } catch (e) {
+      console.error("[mail] pass delivery failed:", e instanceof Error ? e.message : String(e));
+      return { credential, code: null };
+    }
+  }
+
+  /** Tell `/stream/me` subscribers that a credential changed state. */
+  notifyState(cred: CredentialRow, state: CredentialState) {
+    void (async () => {
+      const reg = cred.registration_id ? await this.repos.registrations.byId(cred.registration_id) : null;
+      if (reg) this.events.emit("state", { event_id: reg.event_id, registration_id: reg.id, attendee_id: reg.attendee_id, state });
+    })().catch(() => undefined);
   }
 
   private async setState(actor: AuthContext, cred: CredentialRow, state: CredentialState, action: string, meta: Record<string, unknown>) {

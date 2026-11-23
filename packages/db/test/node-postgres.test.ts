@@ -35,10 +35,10 @@ afterAll(async () => {
 
 describe("node-postgres path (createDb / runMigrations)", () => {
   it("runMigrations applies every migration, and is idempotent", async () => {
-    await runMigrations(url);
+    await runMigrations(url, { jobs: false }); // pg-boss needs a second connection; jobs.test.ts covers it on PGlite
     // pglite-socket serves one connection at a time; give it a moment to release the closed one.
     await new Promise((r) => setTimeout(r, 500));
-    await runMigrations(url);
+    await runMigrations(url, { jobs: false }); // pg-boss needs a second connection; jobs.test.ts covers it on PGlite
     const r = await pglite.query<{ n: number }>(`select count(*)::int n from drizzle.__drizzle_migrations`);
     expect(r.rows[0]!.n).toBe(JOURNAL_ENTRIES);
   });

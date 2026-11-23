@@ -9,8 +9,9 @@ export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
  * - `public`   — no token required (a token, if sent, is still verified).
  * - `attendee` — an attendee principal (email-link sign-in).
  * - a `Role`   — an operator or staff principal holding that role.
+ * - `device`   — a fixed reader authenticated by its device token (O-17).
  */
-export type Access = "public" | "attendee" | Role;
+export type Access = "public" | "attendee" | "device" | Role;
 
 export interface EndpointDef<
   P extends z.ZodTypeAny = z.ZodTypeAny,

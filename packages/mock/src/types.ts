@@ -38,7 +38,35 @@ export type {
   WsChannel,
 } from "@synan/contracts/enums";
 
-export type { MyRegistration, Notification, ProfileField } from "@synan/contracts/rest";
+export type { MyRegistration, Notification, ProfileField, PostEventSummary } from "@synan/contracts/rest";
+export type { ReportKind, ReportState } from "@synan/contracts/enums";
+export type {
+  AlertKind,
+  AlertState,
+  GateLinkState,
+  Role,
+  Severity,
+} from "@synan/contracts/enums";
+export type { OccupancyLevel, ZoneOccupancy } from "@synan/contracts/ws";
+
+/*
+ * Contracts declares these schemas without an exported inferred type; derived here,
+ * type-only. Requested from the backend as `export type` next to each schema.
+ */
+import type { z } from "zod";
+import type {
+  Dashboard as DashboardSchema,
+  EventLiveSummary as EventLiveSummarySchema,
+  RecountRequest as RecountRequestSchema,
+  RecountResult as RecountResultSchema,
+} from "@synan/contracts/rest";
+/** GET /dashboard */
+export type DashboardData = z.infer<typeof DashboardSchema>;
+/** GET /events/:id/summary */
+export type EventLiveSummary = z.infer<typeof EventLiveSummarySchema>;
+/** POST /rooms/:id/recount */
+export type RecountRequest = z.infer<typeof RecountRequestSchema>;
+export type RecountResult = z.infer<typeof RecountResultSchema>;
 
 /**
  * NOT IN CONTRACTS — presentation data the Attendee Portal shows that no endpoint

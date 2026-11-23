@@ -29,6 +29,14 @@ export * from "./access-rules";
 export * from "./allowlist";
 export * from "./carriers";
 export type { Page, PageQuery, RangeQuery } from "./sqlrows";
+export * from "./registration";
+export * from "./webhooks";
+export * from "./jobs";
+export * from "./operations";
+export * from "./short-codes";
+export * from "./summary";
+export * from "./delivery";
+export * from "./crypto/files";
 export { MIGRATIONS_FOLDER, runMigrations } from "./migrate";
 
 /* ------------------------------------------------------------ inferred row types */
@@ -108,3 +116,6 @@ export type ScanResult = (typeof schema.scanResult.enumValues)[number];
 export type AlertState = (typeof schema.alertState.enumValues)[number];
 export type AlertSeverity = (typeof schema.alertSeverity.enumValues)[number];
 export type AlertKind = (typeof schema.alertKind.enumValues)[number];
+export type ExportFormat = (typeof schema.exportFormat.enumValues)[number];
+export type ReportCadence = (typeof schema.reportCadence.enumValues)[number];
+export type NotificationKind = (typeof schema.notificationKind.enumValues)[number];

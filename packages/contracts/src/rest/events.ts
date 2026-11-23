@@ -1,7 +1,7 @@
 /** Event endpoints (02 §5 "Events", 01 §9). */
 import { z } from "zod";
 import { IanaTimezone, Id, IsoDateTime, pageOf, PageQuery, Slug } from "../common.js";
-import { AccessEffect, AccessSubjectKind, AttendeeTier, EventState } from "../enums/index.js";
+import { AccessEffect, AccessSubjectKind, AttendeeTier, CredentialState, EventState } from "../enums/index.js";
 import { endpoint, IdParam, OPERATORS, PUBLIC, SlugParam, type Access } from "./endpoint.js";
 
 /** Public card for discovery. */
@@ -115,6 +115,7 @@ export const EventLiveSummary = z.object({
   open_alerts: z.number().int(),
   as_of: IsoDateTime,
 });
+export type EventLiveSummary = z.infer<typeof EventLiveSummary>;
 
 export const ProfileField = z.object({
   key: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
@@ -164,20 +165,38 @@ export const AllowlistEntry = z.object({
   /** base64url SHA-256 of each NFC UID bound to the credential. */
   nfc_hashes: z.array(z.string()),
   tier: AttendeeTier.nullable(),
+  /** Rooms behind the requested checkpoint (or the whole event) this pass may enter at some time in the window. A perimeter gate with no room admits any valid pass. */
   permitted_room_ids: z.array(Id),
+  /** True for revoked or replaced credentials and cancelled registrations. */
   revoked: z.boolean(),
+  /** The finer state, so an offline gate can answer `suspended` rather than `revoked`. */
+  state: CredentialState,
+  /** Lost or retired bands of this credential: an offline gate answers `revoked`, not `unknown_token`. */
+  dead_nfc_hashes: z.array(z.string()),
+  /** The single-use emailed QR has been used (an offline gate answers `pass_spent`). */
+  qr_email_spent: z.boolean(),
 });
+export type AllowlistEntry = z.infer<typeof AllowlistEntry>;
 export const AllowlistPayload = z.object({
   event_id: Id,
   checkpoint_id: Id.nullable(),
   shift_end: IsoDateTime.nullable(),
   revocation_epoch: z.number().int(),
+  /** The access-rule version the entries were resolved against. */
+  access_rules_version: z.number().int(),
+  /** The window the entries are valid for: now → shift end for staff; the event for operators. */
+  window_start: IsoDateTime,
+  window_end: IsoDateTime,
   issued_at: IsoDateTime,
   entries: z.array(AllowlistEntry),
 });
+export type AllowlistPayload = z.infer<typeof AllowlistPayload>;
+/** JWS protected-header `typ` of a signed allowlist. */
+export const ALLOWLIST_JWS_TYP = "synan-allowlist+jws";
 export const SignedAllowlist = z.object({ kid: z.string(), jws: z.string(), issued_at: IsoDateTime });
+export type SignedAllowlist = z.infer<typeof SignedAllowlist>;
 
-const OPS_AND_SCANNERS: readonly Access[] = ["admin", "organiser", "security_staff"];
+const OPS_AND_SCANNERS: readonly Access[] = ["admin", "organiser", "security_staff", "device"];
 
 export const eventEndpoints = {
   listEvents: endpoint({ method: "GET", path: "/events", access: PUBLIC, query: EventListQuery, response: pageOf(EventSummary) }),

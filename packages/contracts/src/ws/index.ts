@@ -59,6 +59,8 @@ export const ServerReady = z.object({
 });
 export const ServerPong = z.object({ type: z.literal("pong"), t: z.number().optional(), server_time: IsoDateTime });
 export const ServerError = z.object({ type: z.literal("error"), code: ErrorCode, message: z.string() });
+/** Sent every 15 s on every channel, so a client can tell a quiet stream from a dead one and track server time. */
+export const ServerHeartbeat = z.object({ type: z.literal("heartbeat"), server_time: IsoDateTime });
 
 /* ---- telemetry */
 
@@ -132,7 +134,7 @@ export type MeEvent = z.infer<typeof MeEvent>;
 
 /* ---- per-channel full server message unions */
 
-const control = [ServerReady, ServerPong, ServerError] as const;
+const control = [ServerReady, ServerPong, ServerError, ServerHeartbeat] as const;
 
 export const TelemetryServerMessage = z.discriminatedUnion("type", [...control, OccupancySnapshot, OccupancyDelta]);
 export type TelemetryServerMessage = z.infer<typeof TelemetryServerMessage>;

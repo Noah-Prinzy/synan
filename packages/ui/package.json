@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./components": "./src/components/index.ts",
     "./data": "./src/components/data/index.ts",
+    "./shell": "./src/components/shell/index.tsx",
     "./brand": "./src/brand/index.ts",
     "./motion": "./src/motion/index.ts",
     "./tokens": "./src/tokens/index.ts",

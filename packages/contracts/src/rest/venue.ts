@@ -64,12 +64,14 @@ export const RecountRequest = z.object({
   count: z.number().int().min(0),
   note: z.string().max(500).optional(),
 });
+export type RecountRequest = z.infer<typeof RecountRequest>;
 export const RecountResult = z.object({
   room_id: Id,
   previous: z.number().int(),
   occupancy: z.number().int(),
   adjustment_id: Id,
 });
+export type RecountResult = z.infer<typeof RecountResult>;
 
 export const Checkpoint = z.object({
   id: Id,

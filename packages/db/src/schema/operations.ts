@@ -181,6 +181,8 @@ export const breach_alerts = pgTable(
     index("breach_alerts_event_state_idx").on(t.event_id, t.state, t.occurred_at),
     index("breach_alerts_credential_idx").on(t.credential_id),
     index("breach_alerts_occurred_idx").on(t.occurred_at),
+    // report_breach and alert lists filter one event by time range without a state.
+    index("breach_alerts_event_time_idx").on(t.event_id, t.occurred_at),
     check(
       "breach_alerts_ack_consistent",
       sql`${t.state} = 'open' OR (${t.acked_at} IS NOT NULL AND ${t.acked_by} IS NOT NULL)`,

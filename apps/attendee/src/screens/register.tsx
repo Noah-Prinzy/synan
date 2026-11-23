@@ -1,7 +1,7 @@
 import { pageTitle } from "@synan/ui/brand";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { buttonClass } from "@synan/ui/components";
+import { buttonClass, RewardMoment } from "@synan/ui/components";
 import { PageHeader, PageShell } from "../components/page";
 import { ErrorState, OfflineState, SkeletonCells, StateBlock } from "../components/states";
 import { useResource } from "../data/mock";
@@ -319,7 +319,7 @@ export default function Register({ step }: { step: Step }) {
         {sent ? (
           <section className="pt-10">
             <p className="text-13 font-medium text-success">
-              Registered
+              <RewardMoment>Registered</RewardMoment>
             </p>
             <h2 className="mt-3 font-serif text-40">You&rsquo;re in.</h2>
             <p className="mt-3 max-w-md text-15 leading-relaxed text-muted-foreground">
@@ -591,6 +591,11 @@ export default function Register({ step }: { step: Step }) {
               </Link>
               <button type="submit" disabled={sending} className={primaryButton}>
                 {sending ? "Sending…" : "Send my pass"}
+                {sending ? (
+                  <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-px overflow-hidden">
+                    <span className="busy-rule absolute inset-y-0 left-0 w-1/3 bg-brand" />
+                  </span>
+                ) : null}
               </button>
             </div>
           </form>

@@ -1,6 +1,6 @@
 /** Attendee self-service (02 §5 "Attendee self-service"). */
 import { z } from "zod";
-import { Id, IsoDateTime } from "../common.js";
+import { Id, IsoDateTime, pageOf, PageQuery } from "../common.js";
 import { AttendeeTier, CarrierKind, CarrierState, CredentialState, NotificationKind, RegistrationState } from "../enums/index.js";
 import { QR_PREFIX_PORTAL, QR_TEXT_LENGTH } from "../qr/index.js";
 import { ATTENDEE, endpoint, type Access } from "./endpoint.js";
@@ -95,4 +95,37 @@ export const meEndpoints = {
   myAssignments: endpoint({ method: "GET", path: "/me/assignments", access: STAFF_SELF, response: z.object({ items: z.array(StaffAssignment) }) }),
   dataExport: endpoint({ method: "POST", path: "/me/data-export", access: ATTENDEE, rateLimit: "resend", response: DataRequestAccepted, status: 202 }),
   dataErasure: endpoint({ method: "POST", path: "/me/data-erasure", access: ATTENDEE, rateLimit: "resend", body: z.object({ confirm: z.literal(true) }), response: DataRequestAccepted, status: 202 }),
+} as const;
+
+/* ---- data-subject requests (03 §5): additions, not in 02 §5 (proposed) ---- */
+
+export const DataRequestKind = z.enum(["export", "erasure"]);
+export const DataRequestState = z.enum(["requested", "in_progress", "completed", "rejected"]);
+export const DataRequestRow = z.object({
+  id: Id,
+  /** Operators see the attendee id only; never the identity in the queue. */
+  attendee_id: Id,
+  kind: DataRequestKind,
+  state: DataRequestState,
+  requested_at: IsoDateTime,
+  completed_at: IsoDateTime.nullable(),
+  note: z.string().nullable(),
+});
+export type DataRequestRow = z.infer<typeof DataRequestRow>;
+/** The attendee's own export: identity, registrations, credential states. Movement data is never held under their identity. */
+export const DataExport = z.object({ request_id: Id, generated_at: IsoDateTime, data: z.record(z.string(), z.unknown()) });
+
+export const dataRequestEndpoints = {
+  myDataRequests: endpoint({ method: "GET", path: "/me/data-requests", access: ATTENDEE, response: z.object({ items: z.array(DataRequestRow) }) }),
+  myDataExport: endpoint({ method: "GET", path: "/me/data-export/:id", access: ATTENDEE, params: z.object({ id: Id }), response: DataExport }),
+  listDataRequests: endpoint({
+    method: "GET", path: "/data-requests", access: ["admin", "organiser"],
+    query: PageQuery.extend({ state: DataRequestState.optional(), kind: DataRequestKind.optional() }), response: pageOf(DataRequestRow),
+  }),
+  /** Erasure: scrubs the identity (registrations and aggregates stay) and ends the attendee's sessions. Export: builds it now. */
+  processDataRequest: endpoint({ method: "POST", path: "/data-requests/:id/process", access: ["admin"], mfa: true, audited: true, params: z.object({ id: Id }), response: DataRequestRow }),
+  rejectDataRequest: endpoint({
+    method: "POST", path: "/data-requests/:id/reject", access: ["admin"], mfa: true, audited: true,
+    params: z.object({ id: Id }), body: z.object({ note: z.string().min(3).max(500) }), response: DataRequestRow,
+  }),
 } as const;

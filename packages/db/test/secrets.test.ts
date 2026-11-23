@@ -212,7 +212,7 @@ describe("seeded database and prepared enforcement", () => {
     await dropEncryptionEnforcement(fresh);
     await withVaultScope(fresh, "system", (tx) => tx.insert(s.attendees).values({ email: "legacy@example.test" }));
     await rejects(q(fresh, `select enforce_encrypted_secrets()`), /attendees_email_encrypted/);
-    const cons = await q<{ n: number }>(fresh, `select count(*)::int n from pg_constraint where conname like '%_encrypted'`);
+    const cons = await q<{ n: number }>(fresh, `select count(*)::int n from pg_constraint where conname like 'attendees_%_encrypted'`);
     expect(cons[0]!.n).toBe(0);
     await reencryptSecrets({ db: fresh, cipher: c1 });
     await q(fresh, `select enforce_encrypted_secrets()`);
@@ -227,10 +227,11 @@ describe("enforcement is on (migration 0008)", () => {
     );
     expect(r.map((x) => x.conname)).toEqual([
       "attendees_email_encrypted", "attendees_email_hash_format", "attendees_full_name_encrypted", "attendees_profile_encrypted",
-      "auth_links_email_hash_format", "auth_links_token_hash_format", "auth_sessions_token_hash_format",
-      "carriers_identifier_format", "credentials_token_hash_format", "credentials_zone_state_format", "invitations_email_hash_format",
-      "invitations_token_hash_format", "signing_keys_private_key_encrypted", "signing_keys_qr_kid_format",
-      "users_email_encrypted", "users_mfa_secret_encrypted", "ws_tickets_ticket_hash_format",
+      "auth_links_email_hash_format", "auth_links_token_hash_format", "auth_sessions_token_hash_format", "carrier_desk_codes_hash_format",
+      "carriers_identifier_format", "credentials_token_hash_format", "credentials_zone_state_format", "devices_token_hash_format",
+      "email_outbox_content_encrypted", "email_outbox_to_encrypted", "invitations_email_hash_format",
+      "invitations_token_hash_format", "report_schedules_recipients_encrypted", "signing_keys_private_key_encrypted", "signing_keys_qr_kid_format",
+      "user_invites_token_hash_format", "users_email_encrypted", "users_mfa_pending_encrypted", "users_mfa_secret_encrypted", "webhook_endpoints_secret_encrypted", "ws_tickets_ticket_hash_format",
     ]);
     expect(r.every((x) => x.convalidated)).toBe(true);
   });

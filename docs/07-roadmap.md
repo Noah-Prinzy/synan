@@ -8,7 +8,7 @@ something is built, update §1 here; do not write a separate report.
 ## 1. Where we are
 
 Last updated: 2026-11-23. Checked on this date by running them: all 8 workspace packages typecheck;
-all three apps build; 355 automated tests pass (database 120, contracts 16, API 219 on each of its two
+all three apps build; 485 automated tests pass (database 181, contracts 16, API 288 on each of its two
 storage backends).
 
 | Phase | Status | Detail |
@@ -16,10 +16,10 @@ storage backends).
 | Checkpoint 0 — look | **Done** | Identity chosen and applied (D-20). Mock-up files deleted |
 | 0 — Foundations | **Done, with gaps** | See §1.1 |
 | 1 — Attendee Portal | **In progress** | A1–A9 run on the mock layer; Direction A redesign under way. A10, A11 not started. See §1.2 |
-| 1B — Backend skeleton | **Mostly done** | See §1.3 |
+| 1B — Backend skeleton | **Done** | See §1.3 |
 | 2 — Admin Command | **Started** | D1 only, and not yet to the specified structure |
 | 3 — Gate Scanner | **Scaffolded** | Five routes; one working verdict screen on mock data, four placeholders |
-| 4 — Backend completion | Not started | 46 of the 72 endpoints have contracts only |
+| 4 — Backend completion | **Mostly done** | All 103 endpoints and all four live channels are implemented; none answers "not implemented". Open: PDF summary, scheduled reports, email through the job queue; the job runner on real PostgreSQL has never run |
 | 5 — Hardening | Not started | |
 | 6 — Edge AI | Not started | |
 
@@ -228,3 +228,24 @@ A phase is done only when its gate passes.
 | Attendee redesign exceeds the bundle budget | Route splitting, lazy loading, and CSS animation in place of the motion library where it is enough |
 | Scope creep into ticketing and payments | Declared out of scope in [01 §1](01-product.md) |
 | Edge hardware is unspecified | AI is last; version 1 does not depend on it |
+
+---
+
+## 5. Before launch
+
+Things outside the build phases that must exist before Synan runs a real event. None is started.
+
+| Item | Why | Open question |
+| --- | --- | --- |
+| Hosting and a real PostgreSQL server | Nothing has run on a real database. The concurrency, role-separation, and privilege checks in `packages/db/test/real-postgres.test.ts` need one | O-24 |
+| Database backups and a restore drill | No backup or recovery plan exists | |
+| Encryption keys and the three database logins provisioned in a secrets manager | The server refuses to start in production without them | |
+| A transactional email provider with a verified sending domain | Passes, sign-in links, and invitations are only logged today | O-13 |
+| Venue-owned Android gate devices, or fixed readers | A web app can read wristbands only in Chrome on Android (D-09) | O-14 |
+| Wristband stock and the chip profile for VIP and Private Invitation bands | Bands are a mandatory carrier | O-03 |
+| Trademark search for the name and the mark; purchase of the domains | Only web searches and domain lookups have been done (D-18, D-20) | |
+| Privacy policy, terms, and the consent wording, reviewed by a lawyer | The system processes personal and presence data | O-06, O-08, O-11 |
+| The retention grace period confirmed | The purge is irreversible | O-06 |
+| A decision on event photographs | Screens are built for both cases | O-20 |
+| Apple and Google Wallet passes | Specified in [06 A4](06-screens.md), not built; needs developer accounts and certificates | |
+| An accessibility review and a load test against [02 §9](02-architecture.md) | No performance target has been measured | |

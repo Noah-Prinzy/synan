@@ -132,12 +132,29 @@ describe("RBAC", () => {
     expect((await h.call("GET", "/me/credential", { token: organiser.access_token })).status).toBe(403);
   });
 
-  it("unimplemented endpoints enforce RBAC before answering 501", async () => {
-    // GET /reports is still unbuilt (slice 8).
-    expect((await h.call("GET", "/reports", { token: attendee.access_token })).status).toBe(403);
-    const r = await h.call("GET", "/reports", { token: organiser.access_token });
-    expect(r.status).toBe(501);
-    expect(errCode(r.body)).toBe("NOT_IMPLEMENTED");
+  it("every contract endpoint is implemented; an unbuilt one would still enforce RBAC before answering 501", async () => {
+    expect(h.app.notImplemented).toEqual([]);
+    // The 501 path itself, on a synthetic operator-only endpoint mounted the way the app mounts gaps.
+    const { default: express } = await import("express");
+    const { z } = await import("zod");
+    const { endpoint } = await import("@synan/contracts/rest");
+    const { mountNotImplemented } = await import("../src/http/route.js");
+    const { ContractError } = await import("@synan/contracts/errors");
+    const x = express();
+    mountNotImplemented(x, h.app.ctx, endpoint({ method: "GET", path: "/future-thing", access: ["admin", "organiser"], response: z.object({}) }));
+    x.use((e: unknown, _q: unknown, res: { status(n: number): { json(b: unknown): void } }, _n: unknown) =>
+      res.status(e instanceof ContractError ? e.status : 500).json({ error: { code: e instanceof ContractError ? e.code : "INTERNAL", message: "" } }));
+    const srv = x.listen(0);
+    try {
+      const port = (srv.address() as { port: number }).port;
+      const get = (token: string) => fetch(`http://127.0.0.1:${port}/api/v1/future-thing`, { headers: { authorization: `Bearer ${token}` } });
+      expect((await get(attendee.access_token)).status).toBe(403);
+      const r = await get(organiser.access_token);
+      expect(r.status).toBe(501);
+      expect(errCode(await r.json())).toBe("NOT_IMPLEMENTED");
+    } finally {
+      srv.close();
+    }
   });
 
   it("a client cannot state its own tier: registration create rejects a tier field", async () => {

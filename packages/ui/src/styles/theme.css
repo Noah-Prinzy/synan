@@ -50,10 +50,17 @@
   /* Scrim behind dialogs and sheets. */
   --scrim: oklch(0 0 0 / 60%);
 
+  /* Pitch of the hatching on a room's stop cap (docs/05 §3: "a hatched cap at 100%"). */
+  --hatch-step: 3px;
+
   /* The one filled action per screen (docs/05 §9.2). Neutral by rule: the brand
      colour is never a fill unless an identity's approved rule change says so. */
   --action: var(--foreground);
   --action-foreground: var(--background);
+
+  /* Ambient background on the Attendee Portal (owner, 2026-11-23): 0 turns it off.
+     It is the opacity of one soft monochrome luminance field; keep it barely there. */
+  --ambient: 0.06;
 
   /* Type families. An identity overrides these three; components never name a face.
      Option 1 (chosen): Bricolage Grotesque, Instrument Sans, Geist Mono. */
@@ -62,6 +69,11 @@
   --type-data: "Geist Mono Variable", ui-monospace, monospace;
 
   color-scheme: dark;
+}
+
+/* Ambient off, for comparison (?ambient=off in development) or by setting --ambient: 0. */
+:root[data-ambient="off"] {
+  --ambient: 0;
 }
 
 @theme inline {
@@ -146,6 +158,18 @@ body::before {
   z-index: 60;
 }
 
+/* The stop cap: hard-edged ground-coloured hatching laid over a stop-coloured bar end.
+   Hatching, not a gradient: every stop is a hard edge (docs/05 §1.5). */
+@layer utilities {
+  .hatch-cap {
+    background-image: repeating-linear-gradient(
+      135deg,
+      var(--background) 0 1px,
+      transparent 1px var(--hatch-step)
+    );
+  }
+}
+
 /* Keyboard focus: brand ring, 1px, offset so it never sits on a hairline. In the base
    layer, so a component's own focus utilities (or outline-none on a scroll target)
    can override it. */
@@ -155,3 +179,33 @@ body::before {
     outline-offset: 2px;
   }
 }
+
+/* ---- Mobile (mobile agent) ---- */
+/* Touch behaviour for all three apps. Nothing here changes how anything looks at rest. */
+:root {
+  /* The press flash on touch screens: the accent, faint and square, for the instant a finger
+     lands (D-22: blue means "I just acted"). Set to transparent to turn it off. */
+  --tap-highlight: color-mix(in srgb, var(--brand) 12%, transparent);
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: var(--tap-highlight);
+    /* iOS enlarges text on rotation unless told not to; user text-size settings still apply. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  /* Taps land at once: no double-tap-to-zoom wait on anything pressable. Pinch zoom stays. */
+  a,
+  button,
+  input,
+  select,
+  textarea,
+  label,
+  summary,
+  [role="button"],
+  [role="tab"] {
+    touch-action: manipulation;
+  }
+}
+/* ---- end Mobile ---- */

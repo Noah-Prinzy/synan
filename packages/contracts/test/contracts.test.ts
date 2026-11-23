@@ -22,8 +22,8 @@ import { ClientMessage, TelemetryServerMessage } from "../src/ws/index.js";
 const subtle = webcrypto.subtle;
 
 describe("REST registry", () => {
-  it("covers every endpoint in docs/02 §5 (68) plus 9 additive endpoints (email-link, logout, me/registration, credentials/:id/scans, venue update, checkpoint create/update, event state, event admin view)", () => {
-    expect(Object.keys(endpoints)).toHaveLength(77);
+  it("covers every endpoint in docs/02 §5 (68) plus 36 additive endpoints (email-link, logout, me/registration, credentials/:id/scans, venue update, checkpoint create/update, event state, event admin view, kiosk registration, desk code, staff invite and activation, shift handover, gate heartbeat, MFA enrolment and confirmation, six webhook endpoints, six device endpoints, five data-request endpoints, post-event summary, operator profile)", () => {
+    expect(Object.keys(endpoints)).toHaveLength(104);
   });
   it("canonicalises ids to lower case at the boundary", () => {
     const upper = "3F2504E0-4F89-41D3-9A0C-0305E82C3301";

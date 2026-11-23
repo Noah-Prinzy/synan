@@ -116,7 +116,7 @@ export const ResolveAlert = z.object({ note: z.string().min(3).max(1000) });
 const OPS_AND_SECURITY: readonly Access[] = ["admin", "organiser", "security_staff"];
 
 export const scanEndpoints = {
-  postScans: endpoint({ method: "POST", path: "/scans", access: ["security_staff"], rateLimit: "scan", body: ScanBatchRequest, response: ScanBatchResponse }),
+  postScans: endpoint({ method: "POST", path: "/scans", access: ["security_staff", "device"], rateLimit: "scan", body: ScanBatchRequest, response: ScanBatchResponse }),
   listScans: endpoint({ method: "GET", path: "/scans", access: OPERATORS, query: ScanQuery, response: pageOf(ScanRecord) }),
   listAlerts: endpoint({ method: "GET", path: "/breach-alerts", access: OPS_AND_SECURITY, query: AlertQuery, response: pageOf(BreachAlert) }),
   ackAlert: endpoint({ method: "POST", path: "/alerts/:id/ack", access: OPS_AND_SECURITY, audited: true, params: IdParam, response: BreachAlert }),

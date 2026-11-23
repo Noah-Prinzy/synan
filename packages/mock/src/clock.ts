@@ -23,6 +23,8 @@ export class MockClock implements Clock {
   private anchorVirtual: number;
   private rate = 1;
   private timers: Timer[] = [];
+  private running = false;
+  private cancelled = new Set<number>();
   private nextId = 1;
   private handle: ReturnType<typeof setTimeout> | null = null;
   private listeners = new Set<Listener>();
@@ -64,15 +66,30 @@ export class MockClock implements Clock {
 
   setTimeout(fn: () => void, ms: number): number {
     const timer: Timer = { id: this.nextId++, due: this.now() + Math.max(0, ms), fn };
-    this.timers.push(timer);
-    this.timers.sort((a, b) => a.due - b.due);
-    this.schedule();
+    // Binary insertion after any timer due at the same instant (FIFO for ties). A
+    // scenario schedules hundreds of timers at once; re-sorting per insert was quadratic.
+    let lo = 0;
+    let hi = this.timers.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if ((this.timers[mid] as Timer).due <= timer.due) lo = mid + 1;
+      else hi = mid;
+    }
+    this.timers.splice(lo, 0, timer);
+    // Only the head decides the next wake-up.
+    if (lo === 0) this.schedule();
     return timer.id;
   }
 
   clearTimeout(id: number): void {
-    this.timers = this.timers.filter((timer) => timer.id !== id);
-    this.schedule();
+    const index = this.timers.findIndex((timer) => timer.id === id);
+    if (index === -1) {
+      // Possibly in the batch flush() is running right now.
+      if (this.running) this.cancelled.add(id);
+      return;
+    }
+    this.timers.splice(index, 1);
+    if (index === 0) this.schedule();
   }
 
   /** Cancels every pending timer. */
@@ -89,9 +106,22 @@ export class MockClock implements Clock {
 
   private flush(): void {
     const now = this.now();
+    // Take every due timer in one splice; timers they schedule land in `this.timers`
+    // and are picked up by the loop if already due.
     while (this.timers.length > 0 && (this.timers[0] as Timer).due <= now) {
-      const timer = this.timers.shift() as Timer;
-      timer.fn();
+      let count = 0;
+      while (count < this.timers.length && (this.timers[count] as Timer).due <= now) count++;
+      const due = this.timers.splice(0, count);
+      this.running = true;
+      try {
+        for (const timer of due) {
+          if (this.cancelled.delete(timer.id)) continue;
+          timer.fn();
+        }
+      } finally {
+        this.running = false;
+        this.cancelled.clear();
+      }
     }
     this.schedule();
   }

@@ -139,9 +139,9 @@ export function scanRoutes(x: Express, app: AppContext) {
         return {
           checkpoint_id: cp.id,
           label: cp.label,
-          link_state: live ? ("online" as const) : ("offline" as const),
+          link_state: !live ? ("offline" as const) : g.queueDepth ? ("degraded" as const) : ("online" as const),
           last_heartbeat_at: g ? new Date(g.lastSeenAt).toISOString() : null,
-          queue_depth: 0,
+          queue_depth: g?.queueDepth ?? 0,
           clock_offset_ms: g?.clockOffsetMs ?? null,
           clock_fault: g ? Math.abs(g.clockOffsetMs) > CLOCK_FAULT_MS : false,
           scans_last_minute: rates.find((r) => r.checkpoint_id === cp.id && r.minute_start.getTime() === minute)?.scans ?? 0,

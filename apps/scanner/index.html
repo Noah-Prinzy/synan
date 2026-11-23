@@ -2,10 +2,23 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- viewport-fit=cover: drawn edge to edge, safe areas padded in the shell.
+         interactive-widget=resizes-content: the on-screen keyboard shrinks the layout on
+         Android, so the manual-entry sheet rides above it. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="theme-color" content="%BRAND_THEME_COLOR%" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="apple-mobile-web-app-title" content="Gate" />
+    <meta name="format-detection" content="telephone=no" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
     <title>%BRAND_SURFACE_NAME%</title>
+    <style>
+      html,body{margin:0;background:#0a0a0a;color-scheme:dark}
+    </style>
   </head>
   <body>
     <!-- Splash: the mark, shown until the app mounts. Generated from packages/ui/src/brand/fit.ts. -->

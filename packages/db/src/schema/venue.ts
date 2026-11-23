@@ -99,6 +99,8 @@ export const rooms = pgTable(
   },
   (t) => [
     unique("rooms_id_venue_uq").on(t.id, t.venue_id),
+    // Target of checkpoints_room_same_zone_fk: a room's door is in the room's own zone.
+    unique("rooms_id_zone_uq").on(t.id, t.zone_id),
     foreignKey({
       name: "rooms_zone_same_venue_fk",
       columns: [t.zone_id, t.venue_id],
@@ -146,6 +148,12 @@ export const checkpoints = pgTable(
       name: "checkpoints_room_same_venue_fk",
       columns: [t.room_id, t.venue_id],
       foreignColumns: [rooms.id, rooms.venue_id],
+    }),
+    // A room's door must be in the room's own zone (zone presence follows the door's zone).
+    foreignKey({
+      name: "checkpoints_room_same_zone_fk",
+      columns: [t.room_id, t.zone_id],
+      foreignColumns: [rooms.id, rooms.zone_id],
     }),
     uniqueIndex("checkpoints_hardware_id_uq")
       .on(t.hardware_id)
@@ -217,6 +225,8 @@ export const events = pgTable(
     closed_at: tstz("closed_at"),
     /** Set by purge_event_movement_data(). */
     purged_at: tstz("purged_at"),
+    /** Last rebuild_event_rollups() run: how current the reports and summary are. */
+    rollups_rebuilt_at: tstz("rollups_rebuilt_at"),
     created_at: createdAt(),
     updated_at: updatedAt(),
   },

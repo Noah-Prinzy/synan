@@ -11,3 +11,6 @@ export * from "./credentials";
 export * from "./operations";
 export * from "./analytics";
 export * from "./auth";
+export * from "./operations2";
+export * from "./auth2";
+export * from "./delivery";

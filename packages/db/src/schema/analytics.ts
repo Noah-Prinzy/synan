@@ -4,8 +4,8 @@
  * gate_rate_rollups from scans and is called by the purge before the partition is dropped.
  */
 import { sql } from "drizzle-orm";
-import { bigint, bigserial, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { reportKind, reportState } from "./enums";
+import { bigint, bigserial, boolean, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { exportFormat, reportKind, reportState } from "./enums";
 import { users } from "./people";
 import { checkpoints, events, rooms, zones } from "./venue";
 
@@ -114,6 +114,43 @@ export const zone_flow_rollups = pgTable(
   ],
 );
 
+/**
+ * People on site over the event (D-21 occupancy curve), per 5-minute bucket, rebuilt from scans
+ * before the purge. A person is on site from their first admission into a zone until an outbound
+ * scan at a perimeter gate. `level_end` is the count at the end of the bucket; `peak` the highest
+ * count within it, first reached at `peak_at`.
+ */
+export const onsite_rollups = pgTable(
+  "onsite_rollups",
+  {
+    event_id: uuid("event_id")
+      .notNull()
+      .references(() => events.id),
+    bucket_start: tstz("bucket_start").notNull(),
+    arrivals: integer("arrivals").notNull(),
+    departures: integer("departures").notNull(),
+    peak: integer("peak").notNull(),
+    peak_at: tstz("peak_at").notNull(),
+    level_end: integer("level_end").notNull(),
+  },
+  (t) => [
+    primaryKey({ name: "onsite_rollups_pk", columns: [t.event_id, t.bucket_start] }),
+    check("onsite_rollups_nonneg", sql`${t.arrivals} >= 0 AND ${t.departures} >= 0 AND ${t.peak} >= 0 AND ${t.level_end} >= 0`),
+  ],
+);
+
+/**
+ * The post-event summary (D-21), frozen by the purge so it stays the same indefinitely — after alert
+ * retention ends or a room's capacity is edited. Before the purge it is computed on request.
+ */
+export const event_summaries = pgTable("event_summaries", {
+  event_id: uuid("event_id")
+    .primaryKey()
+    .references(() => events.id),
+  frozen_at: tstz("frozen_at").notNull().defaultNow(),
+  summary_jsonb: jsonb("summary_jsonb").notNull(),
+});
+
 export const attendance_snapshots = pgTable(
   "attendance_snapshots",
   {
@@ -137,14 +174,28 @@ export const event_reports = pgTable(
     event_id: uuid("event_id")
       .notNull()
       .references(() => events.id),
-    kind: reportKind("kind").notNull(),
+    /** The report for a csv export; null for the whole-event workbook (xlsx) and the PDF summary. */
+    kind: reportKind("kind"),
+    /** What the export produces (D-21). Default csv: rows written before this column were per-report CSVs. */
+    format: exportFormat("format").notNull().default("csv"),
+    /** The workbook includes the attendee sheet with names and emails (operators; audited). */
+    include_identity: boolean("include_identity").notNull().default(false),
     state: reportState("state").notNull().default("queued"),
     /** Object-storage key of the export. Served only through signed short-lived links. */
     object_key: text("object_key"),
     requested_by: uuid("requested_by").references(() => users.id),
+    /** What was asked for: { from, to, bucket, section, … }. */
+    params_jsonb: jsonb("params_jsonb").notNull().default(sql`'{}'::jsonb`),
+    /** Object-storage key of the PDF summary (object_key is the CSV). */
+    summary_object_key: text("summary_object_key"),
     error: text("error"),
     created_at: tstz("created_at").notNull().defaultNow(),
+    started_at: tstz("started_at"),
     completed_at: tstz("completed_at"),
   },
-  (t) => [index("event_reports_event_idx").on(t.event_id, t.created_at)],
+  (t) => [
+    index("event_reports_event_idx").on(t.event_id, t.created_at),
+    index("event_reports_queue_idx").on(t.state, t.created_at).where(sql`${t.state} IN ('queued', 'running')`),
+    check("event_reports_csv_kind", sql`${t.format} <> 'csv' OR ${t.kind} IS NOT NULL`),
+  ],
 );

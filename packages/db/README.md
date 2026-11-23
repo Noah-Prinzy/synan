@@ -32,7 +32,8 @@ await dbs.end();
 ## Encrypted columns
 
 `pii_vault.attendees.email`, `.full_name`, `.profile_jsonb`, `users.mfa_secret_enc` and
-`signing_keys.private_key_enc` are written and read only through the helpers in `src/secrets.ts`:
+`signing_keys.private_key_enc` (and, through `src/delivery.ts`, `report_schedules.recipients_enc`,
+`email_outbox.to_enc` and `.content_enc`) are written and read only through the helpers in `src/secrets.ts`:
 `createAttendee`, `updateAttendeeIdentity`, `readAttendee(s)`, `findAttendeeByEmail`,
 `emailBlindIndex`, `setMfaSecret` / `readMfaSecret`, `insertSigningKey` / `readSigningPrivateKey`,
 and for operator addresses `insertUser`, `setUserEmail`, `findUserByEmail`, `readUserEmail`.
@@ -81,6 +82,78 @@ sign-in links (which store only the hash) have expired.
   `confirmCarrier`, `rebindCarrier`, `replaceLostBand`, `carrierInventory`, `nfcIdentifierHash`. Credential and
   carrier state machines are enforced by triggers on every update.
 
+## Registration, webhooks, jobs, staff and devices
+
+- **Registration** (`src/registration.ts`): `createInvitation`, `rsvpInvitation` (single use, bound to the invited
+  address), `registerAttendee`, `registerPublicAttendee` (kiosk, anonymous), `issueCredential`,
+  `changeRegistrationTier`, `setRegistrationState`, `expireInvitations`, and the data-request queue
+  (`openDataRequest`, `claimDataRequest`, `finishDataRequest`, `listDataRequests`, `collectAttendeeExport`,
+  `processErasureRequest`). All run on the general connection; identity is written write-only.
+- **Webhooks** (`src/webhooks.ts`): endpoints with an encrypted secret, `enqueueWebhookEvent`,
+  `claimWebhookDeliveries` (leased), `recordWebhookAttempt` (backoff, dead after the last attempt),
+  `listWebhookDeliveries`, `signWebhookBody`.
+- **Jobs** (`src/jobs.ts`): pg-boss in schema `pgboss`. `runMigrations` installs it as the migrating role and hands
+  it to `app_jobs`; `createJobs({ connectionString })` for API processes and workers (login in `app_api`), and one
+  `createJobs({ …, mode: "maintenance" })` + `scheduleDefaultJobs` (login in `app_jobs` and `app_api`).
+  Queue names are `JOB_QUEUES`; `enqueueInTransaction` enqueues inside a Drizzle transaction. Report exports:
+  `requestReport`, `claimReport`, `completeReport`, `failReport`, `listReports`.
+- **Operations** (`src/operations.ts`): `staffOnDuty`, `currentAssignments`, `shiftHandoverSummary`, `handOverShift`,
+  devices (`registerDevice`, `authenticateDevice`, `rotateDeviceToken`, `rotateDeviceTokenVersioned`,
+  `deviceTokenVersion`, `setDeviceState`, `recordHeartbeat`, `gateHealth`), events
+  (`duplicateEvent`, `eventReadiness`, `applySessionResets`, `eventsDueForPurge`).
+
+## Short codes, invites, MFA enrolment, search
+
+`src/short-codes.ts`: desk codes for attendee self-binding (`createDeskCode`, `consumeDeskCode`, `bindBandWithDeskCode`;
+six characters, keyed hash, 10 minutes, failed attempts limited per attendee), staff activation invites
+(`createUserInvite`, `consumeUserInvite`), pending MFA enrolment held encrypted on `users`
+(`startMfaEnrolment`, `readPendingMfaSecret`, `confirmMfaEnrolment`, `cancelMfaEnrolment`), and attendee search
+(`findAttendeeIdsByEmail` by blind index; `searchAttendeesDecrypted` over a bounded candidate set).
+`cleanupAuthState` also removes expired codes and invites.
+
+## Post-event summary and workbook (D-21)
+
+`postEventSummary(db, eventId)` returns the one-page summary (headline figures, attendance by tier, the
+on-site curve in 5-minute steps, five busiest rooms and gates, purge facts); `provisional` while the event is
+not closed. The purge freezes it into `event_summaries`. `withWorkbookData({ db, vault, cipher }, eventId,
+{ includeIdentity }, consume)` hands every workbook sheet (typed columns, rows in chunks) to `consume` inside
+one read-only snapshot; `collectWorkbookData` reads it all into memory. Without `includeIdentity` the
+attendee sheet has no name or email columns.
+
+## Exports, schedules, email, notifications
+
+- **Export formats**: `event_reports.format` is `xlsx` (whole-event workbook; `kind` null; `include_identity`
+  allowed), `pdf` (summary; `kind` null) or `csv` (one report; `kind` required). `requestReport` picks
+  `csv` when given a kind, else `xlsx`.
+- **Report schedules** (`src/delivery.ts`): `createReportSchedule` (recipients encrypted, bound to the row;
+  cadence `on_close`, `daily`, `weekly` or `monthly` with `firstRunAt`), `listReportSchedules`,
+  `setReportScheduleState` (pause, resume), `deleteReportSchedule`, `claimDueReportSchedules` (leased,
+  `SKIP LOCKED`), `finishReportSchedule` (advances past now; three failures → `failed`).
+- **Exported files**: `recordExportedFile` (owner is a report or a data request; retention default 7 days;
+  audited when the file holds identity), `exportedFilesDue`, then delete the objects, then
+  `markExportedFilesDeleted` (audited per file), `listExportedFiles`.
+- **File encryption** (`src/crypto/files.ts`): `encryptFileStream(cipher, { objectKey })` /
+  `decryptFileStream` (Node Transform streams), `encryptFileBuffer` / `decryptFileBuffer` for small files.
+  Each file gets its own key, wrapped by the active data key and bound to the object key; content is
+  AES-256-GCM in 64 KiB chunks. Store the stream's `keyId` in `exported_files.key_id`. Keep a retired data
+  key for at least the retention period (7 days) after rotation.
+- **Email outbox**: `enqueueEmail` (recipient and content encrypted) → enqueue `JOB_QUEUES.email` with
+  `{ outbox_id }` in the same transaction → worker `claimEmail` (null if already sent or in flight) →
+  `finishEmail`.
+- **Notifications**: `notifyAttendee`, `broadcastNotification` (an event's confirmed registrations, optionally
+  one tier), `listNotifications` (contract shape, with read state), `markNotificationsRead`.
+  Erasure deletes an attendee's notifications and read receipts.
+- **Cleanup**: `cleanupDelivery` (sent/failed email after 7 days, expired notifications, finished schedules
+  after 30 days) on `JOB_QUEUES.deliveryCleanup`.
+- **Devices**: `token_version` goes up on every token change and whenever a device leaves `active` (a trigger,
+  whoever writes). Check it per request with `deviceTokenVersion`; `rotateDeviceTokenVersioned` returns it.
+
+## Testing
+
+`import { createMigratedPglite } from "@synan/db/testing"` gives a PGlite with every migration applied,
+loaded from an on-disk snapshot (≈0.3–0.5 s instead of ≈3 s per instance). `test/real-postgres.test.ts`
+holds the checks that need a real server; it runs only when `REAL_PG_ADMIN_URL` is set.
+
 ## Roles
 
 Migration 0005 creates NOLOGIN group roles; create one LOGIN user per pool and grant it exactly one:
@@ -128,6 +201,14 @@ live in hand-written migrations that `push` does not know about.
 | `0010_users_email_hash_required.sql` | Generated: `users.email_hash` NOT NULL, unique on every row; drops `users_email_lower_uq` |
 | `0011_reporting_tables.sql` | Generated: `zone_dwell_rollups`, `zone_flow_rollups`, `access_rule_versions`, `gate_rate_rollups.by_result_jsonb` |
 | `0012_phase4_core.sql` | Hand-written: rollup rebuild, reports, summaries, allowlist, revocation-epoch triggers, access-rule functions, carrier functions, state machines |
+| `0013_phase4_tables.sql` | Generated: `data_requests`, `webhook_deliveries`, `devices`, report-job columns, room-door zone rule, indexes (one marked hand edit: constraint order) |
+| `0015_short_codes.sql` | Generated: `carrier_desk_codes`, `carrier_desk_code_failures`, `user_invites`, `users.mfa_pending_*` |
+| `0016_short_code_functions.sql` | Hand-written: desk-code, invite and cleanup functions; pending-MFA encryption check; exact-email id lookup |
+| `0017_event_summary_tables.sql` | Generated: `onsite_rollups`, `event_summaries`, `events.rollups_rebuilt_at` |
+| `0018_event_summary.sql` | Hand-written: rollup rebuild with the on-site series, the summary, the purge freezing it, workbook queries |
+| `0014_phase4_flows.sql` | Hand-written: registration, data requests, webhooks (secret enforced encrypted), report claim, session resets, purge due, staff, devices, gate health, event duplication and readiness, `app_jobs` role and job-schema grants |
+| `0019_delivery_tables.sql` | Generated: `report_schedules`, `exported_files`, `email_outbox`, `notifications`, `notification_reads`, `event_reports.format` / `include_identity`, `devices.token_version` |
+| `0020_delivery_functions.sql` | Hand-written: schedule claim and finish, exported-file record / due / mark deleted, email claim and finish, notifications for an attendee, delivery cleanup, device token-version trigger, erasure removing notifications |
 
 ## SQL functions
 

@@ -102,6 +102,7 @@ export const KioskRegistration = z.object({
   /** The band bound at the kiosk, when `band_uid` was given. */
   carrier: Carrier.nullable(),
 });
+export type KioskRegistration = z.infer<typeof KioskRegistration>;
 
 const SELF_OR_OPS: readonly Access[] = ["attendee", "admin", "organiser"];
 

@@ -41,6 +41,7 @@ import type { QrService } from "./qr.js";
 import { sha256b64url } from "../lib/crypto.js";
 import type { Clock } from "../lib/clock.js";
 import { KeyedMutex } from "../lib/mutex.js";
+import { EventEmitter } from "node:events";
 import type { CarrierRow, CheckpointRow, CredentialRow, EventRow, OccupancyAdjustmentRow, Repos, ScanRow } from "../repo/types.js";
 import type { TelemetryHub } from "../realtime/telemetry-hub.js";
 
@@ -70,6 +71,8 @@ export interface GateStat {
   /** Measured server − device offset (online) or the device's reported offset (offline). */
   clockOffsetMs: number;
   deviceId: string;
+  /** Scans the device still holds unsynced (heartbeat); 0 when unknown. */
+  queueDepth?: number;
 }
 
 interface Accepted {
@@ -89,6 +92,8 @@ export class ScanService {
   private skewAlerted = new Set<string>();
   private rogueAlerted = new Map<string, number>();
   readonly gates = new Map<string, GateStat>();
+  /** Emits `scan` with a ScanResultEvent payload for every newly recorded scan. */
+  readonly events = new EventEmitter();
 
   constructor(
     private readonly repos: Repos,
@@ -354,7 +359,16 @@ export class ScanService {
     if (!event) throw new ContractError("NOT_FOUND", "event not found");
     if (event.state !== "live") throw new ContractError("EVENT_NOT_LIVE");
 
-    const assignments = await this.repos.staff.assignmentsFor(principal.sub);
+    // A fixed reader (O-17) is permanently assigned to its one checkpoint; it has no shift.
+    const assignments =
+      principal.kind === "device"
+        ? principal.checkpointId
+          ? [{ id: principal.sub, user_id: principal.sub, checkpoint_id: principal.checkpointId, shift_start: new Date(-8.64e15), shift_end: new Date(8.64e15) }]
+          : []
+        : await this.repos.staff.assignmentsFor(principal.sub);
+    // A device is named by its authenticated id, never by what the request claims.
+    const deviceId = principal.kind === "device" ? `device:${principal.sub}` : req.device_id;
+    const staffUserId = principal.kind === "device" ? null : principal.sub;
     const checkpoints = new Map<string, CheckpointRow | null>();
     const results = new Map<string, ScanOutcome>();
     const rejected: ScanRejection[] = [];
@@ -433,14 +447,17 @@ export class ScanService {
       accepted.push({ s, i, cp, at, skewMs });
     }
 
-    for (const { checkpointId, why } of rogue.values()) await this.rogueAlert(event.id, checkpointId, req.device_id, why, receivedAt);
+    for (const { checkpointId, why } of rogue.values()) await this.rogueAlert(event.id, checkpointId, deviceId, why, receivedAt);
 
     const proj = await this.projection(event.id);
     const changed = new Set<string>();
     const zonesBefore = new Map(proj.allZones().map((z) => [z.zone_id, z.occupancy]));
     accepted.sort((a, b) => a.at - b.at || a.i - b.i);
     for (const item of accepted) {
-      results.set(item.s.idem_key, await this.applyOne(event, item, receivedAt, req.device_id, principal.sub, proj, changed));
+      const out = await this.applyOne(event, item, receivedAt, deviceId, staffUserId, proj, changed);
+      results.set(item.s.idem_key, out);
+      // `/stream/scans`: no credential, no person, only what the gate showed.
+      this.events.emit("scan", { scan_id: out.scan_id, event_id: event.id, checkpoint_id: item.cp.id, result: out.result, carrier_kind: out.carrier_kind, tier: out.tier, corrected_at: out.corrected_at, offline: item.s.offline });
     }
 
     // Telemetry: only what changed; the hub coalesces to ≤ 4 Hz.
@@ -494,7 +511,7 @@ export class ScanService {
     { s, cp, at, skewMs }: Accepted,
     receivedAt: number,
     deviceId: string,
-    staffUserId: string,
+    staffUserId: string | null,
     proj: OccupancyProjection,
     changed: Set<string>,
   ): Promise<ScanOutcome> {
@@ -734,6 +751,7 @@ export class ScanService {
         admitted: recorded === "admitted" || recorded === "already_inside" ? 1 : 0,
         denied: isDenial(recorded) ? 1 : 0,
         tier: r.tier ?? (r.credential?.staff_user_id ? "STAFF" : "UNKNOWN"),
+        result: recorded,
       },
     );
 

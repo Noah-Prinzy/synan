@@ -177,6 +177,8 @@ export function eventAdminRoutes(x: Express, app: AppContext) {
   mount(x, app, endpoints.putAccessRules, async ({ params, body, ctx }) => {
     const e = await eventOr404(params.id);
     if (e.state === "closed" || e.state === "archived") throw new ContractError("CONFLICT", "Access rules of a closed event are frozen.");
+    // Changing who may enter while doors are open is privileged: a fresh second factor is required.
+    if (e.state === "live" && !app.auth.isMfaFresh(ctx!)) throw new ContractError("MFA_REQUIRED");
     const eventRoomIds = new Set((await app.repos.events.rooms(e.id)).map((r) => r.room_id));
     const rules: AccessRuleRow[] = body.rules.map((r, i) => {
       const at = `body.rules.${i}`;

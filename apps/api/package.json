@@ -14,11 +14,12 @@
     "dev:pg": "tsx watch src/main.ts --repo=pglite --seed=dev"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.5.17",
     "@synan/contracts": "workspace:*",
     "@synan/db": "workspace:*",
-    "@electric-sql/pglite": "^0.5.17",
     "drizzle-orm": "^0.45.4",
     "express": "^5.1.0",
+    "fflate": "0.8.2",
     "jose": "^6.1.0",
     "ws": "^8.18.3",
     "zod": "^4.1.0"

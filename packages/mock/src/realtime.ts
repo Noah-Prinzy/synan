@@ -4,7 +4,13 @@
  * ability to replay the named scenarios in docs/02 §8 against a controllable clock.
  *
  * Telemetry follows the data-rate rule (P-07): occupancy changes are coalesced and
- * flushed at most once per 250 ms, only for rooms that changed.
+ * flushed at most once per 250 ms, only for rooms (and zones) that changed.
+ *
+ * Two kinds of listener:
+ *   subscribe()  a client. Sees what a socket would see: nothing while the link is
+ *                down (when `dropWhileDown`), then `ready` + a fresh snapshot on return.
+ *   tap()        the mock server's own bookkeeping (alert table, counters). Always sees
+ *                everything; never part of the client interface.
  */
 import type { MockClock } from "./clock";
 import type { PortalStore } from "./portal";
@@ -39,6 +45,8 @@ export interface RealtimeClient {
   subscribe<C extends WsChannel>(channel: C, handler: (message: MessageFor<C>) => void): () => void;
   status(): LinkStatus;
   onStatus(listener: (status: LinkStatus) => void): () => void;
+  /** Round trip of a ping/pong, in ms. Rejects while the link is down. */
+  ping(): Promise<number>;
 }
 
 export interface MockGate {
@@ -53,9 +61,22 @@ export interface Playback {
   stop(): void;
 }
 
+/** A room as the realtime mock needs it: where it is, how big, its thresholds. */
+export interface MockRoomSpec {
+  room_id: string;
+  zone_id: string;
+  capacity: number;
+  warn_at_pct: number;
+  block_at_pct: number;
+  occupancy: number;
+}
+
 type AnyHandler = (message: unknown) => void;
 
 export const TELEMETRY_FLUSH_MS = 250;
+
+/** Messages kept for replay while a client is disconnected (alerts only, like the server's cursor). */
+const REPLAY_LIMIT = 200;
 
 export class MockRealtime implements RealtimeClient {
   readonly clock: MockClock;
@@ -64,18 +85,50 @@ export class MockRealtime implements RealtimeClient {
   readonly gates: MockGate[];
   /** Live room occupancy, mutated by scenarios and flushed as deltas. */
   readonly rooms = new Map<string, RoomOccupancy>();
+  /** Running totals the mock server reports in GET /events/:id/summary. */
+  readonly counters = { checkedIn: 0, exited: 0 };
 
+  private thresholds = new Map<string, { warn: number; block: number }>();
   private handlers = new Map<WsChannel, Set<AnyHandler>>();
+  private taps = new Map<WsChannel, Set<AnyHandler>>();
   private statusListeners = new Set<(status: LinkStatus) => void>();
   private link: LinkStatus = "live";
   private seq = 0;
   private dirty = new Set<string>();
   private flushTimer: number | null = null;
   private playing: { name: ScenarioName; timers: number[] }[] = [];
+  private dropWhileDown: boolean;
+  private missed: { channel: WsChannel; message: unknown }[] = [];
+  private pings = 0;
 
-  constructor(options: { clock: MockClock; portal?: PortalStore; eventSlug?: string }) {
+  constructor(options: {
+    clock: MockClock;
+    portal?: PortalStore;
+    eventSlug?: string;
+    /** Build from a Command Center venue instead of the portal's public occupancy. */
+    venue?: { eventId: string; rooms: MockRoomSpec[]; gates: MockGate[] };
+    /** Behave like a socket: deliver nothing to clients while the link is down. */
+    dropWhileDown?: boolean;
+  }) {
     this.clock = options.clock;
     this.portal = options.portal;
+    this.dropWhileDown = options.dropWhileDown ?? false;
+
+    if (options.venue) {
+      this.eventId = options.venue.eventId;
+      for (const room of options.venue.rooms) {
+        this.thresholds.set(room.room_id, { warn: room.warn_at_pct, block: room.block_at_pct });
+        this.rooms.set(room.room_id, {
+          room_id: room.room_id,
+          zone_id: room.zone_id,
+          capacity: room.capacity,
+          occupancy: room.occupancy,
+          level: this.levelFor(room.room_id, room.occupancy, room.capacity),
+        });
+      }
+      this.gates = options.venue.gates;
+      return;
+    }
 
     const event =
       options.portal?.getEvent(options.eventSlug ?? "nexus-summit-2026") ?? options.portal?.passEvent();
@@ -101,23 +154,7 @@ export class MockRealtime implements RealtimeClient {
       this.handlers.set(channel, set);
     }
     set.add(handler as AnyHandler);
-
-    // Like the server: `ready`, then a snapshot where the channel has one.
-    const scope = channel === "/stream/me" ? "own" : "full";
-    this.deliver(channel, {
-      type: "ready",
-      channel,
-      scope,
-      resumed: false,
-      heartbeat_interval_ms: 15_000,
-    } as MessageFor<C>);
-    if (channel === "/stream/telemetry") {
-      this.deliver(channel, this.envelope("occupancy.snapshot", {
-        event_id: this.eventId,
-        rooms: [...this.rooms.values()],
-        zones: [],
-      }) as MessageFor<C>);
-    }
+    if (this.isUp()) this.greet(channel, handler as AnyHandler, false);
     return () => set?.delete(handler as AnyHandler);
   }
 
@@ -128,6 +165,24 @@ export class MockRealtime implements RealtimeClient {
   onStatus(listener: (status: LinkStatus) => void): () => void {
     this.statusListeners.add(listener);
     return () => this.statusListeners.delete(listener);
+  }
+
+  ping(): Promise<number> {
+    if (!this.isUp()) return Promise.reject(new Error("link down"));
+    // Deterministic, plausible venue-Wi-Fi round trips: 18–46 ms.
+    const rtt = 18 + ((this.pings++ * 7919) % 29);
+    return new Promise((resolve) => setTimeout(() => resolve(rtt), rtt));
+  }
+
+  /** Server-side observer: sees every message regardless of the link. Not client API. */
+  tap<C extends WsChannel>(channel: C, handler: (message: MessageFor<C>) => void): () => void {
+    let set = this.taps.get(channel);
+    if (!set) {
+      set = new Set();
+      this.taps.set(channel, set);
+    }
+    set.add(handler as AnyHandler);
+    return () => set?.delete(handler as AnyHandler);
   }
 
   /* ----------------------------------------------------- scenario playback */
@@ -159,8 +214,10 @@ export class MockRealtime implements RealtimeClient {
   /* ------------------------------------------------- emitters for scenarios */
 
   setLink(status: LinkStatus): void {
+    const wasUp = this.isUp();
     this.link = status;
     for (const listener of this.statusListeners) listener(status);
+    if (!wasUp && this.isUp()) this.resume();
   }
 
   scan(input: {
@@ -171,8 +228,14 @@ export class MockRealtime implements RealtimeClient {
     offline?: boolean;
     /** ms to add to "now" for corrected_at (clock-skew replays). */
     correctedOffsetMs?: number;
+    /** An exit through an `out` gate. Default `in`. */
+    direction?: "in" | "out";
   }): string {
     const scanId = idFor(`scan:${this.seq + 1}:${input.gate.id}`);
+    // Mock simplification: every perimeter admission counts as a first check-in.
+    if (input.gate.perimeter && input.result === "admitted" && input.direction !== "out") {
+      this.counters.checkedIn++;
+    }
     this.emit("/stream/scans", "scan.result", {
       scan_id: scanId,
       event_id: this.eventId,
@@ -186,6 +249,12 @@ export class MockRealtime implements RealtimeClient {
     return scanId;
   }
 
+  /** Someone leaves the venue through an exit gate. */
+  exit(gate: MockGate): void {
+    this.counters.exited++;
+    this.scan({ gate, result: "admitted", carrier: "nfc", direction: "out" });
+  }
+
   /** Change a room's count; telemetry flushes the delta within 250 ms. */
   adjustRoom(roomId: string, delta: number): void {
     const room = this.rooms.get(roomId);
@@ -197,12 +266,7 @@ export class MockRealtime implements RealtimeClient {
   setRoom(roomId: string, occupancy: number): void {
     const room = this.rooms.get(roomId);
     if (!room) return;
-    const pct = room.capacity > 0 ? (occupancy / room.capacity) * 100 : 0;
-    this.rooms.set(roomId, {
-      ...room,
-      occupancy,
-      level: pct >= 100 ? "block" : pct >= 85 ? "warn" : "ok",
-    });
+    this.rooms.set(roomId, { ...room, occupancy, level: this.levelFor(roomId, occupancy, room.capacity) });
     this.dirty.add(roomId);
     if (this.flushTimer === null) {
       this.flushTimer = this.clock.setTimeout(() => this.flush(), TELEMETRY_FLUSH_MS);
@@ -227,6 +291,11 @@ export class MockRealtime implements RealtimeClient {
     return alert;
   }
 
+  /** An alert changed state (acknowledged, resolved). */
+  alertUpdated(alert: BreachAlert): void {
+    this.emit("/stream/alerts", "alert.updated", alert);
+  }
+
   gateHealth(gate: MockGate, patch: Partial<GateHealth>): void {
     this.emit("/stream/alerts", "gate.health", {
       checkpoint_id: gate.id,
@@ -248,12 +317,64 @@ export class MockRealtime implements RealtimeClient {
 
   /* --------------------------------------------------------------- plumbing */
 
+  private levelFor(roomId: string, occupancy: number, capacity: number): RoomOccupancy["level"] {
+    const { warn, block } = this.thresholds.get(roomId) ?? { warn: 85, block: 100 };
+    const pct = capacity > 0 ? (occupancy / capacity) * 100 : 0;
+    return pct >= block ? "block" : pct >= warn ? "warn" : "ok";
+  }
+
+  private zoneTotals(zoneIds?: Set<string>) {
+    const totals = new Map<string, number>();
+    for (const room of this.rooms.values()) {
+      if (zoneIds && !zoneIds.has(room.zone_id)) continue;
+      totals.set(room.zone_id, (totals.get(room.zone_id) ?? 0) + (room.occupancy ?? 0));
+    }
+    return [...totals].map(([zone_id, occupancy]) => ({ zone_id, occupancy }));
+  }
+
   private flush(): void {
     this.flushTimer = null;
     if (this.dirty.size === 0) return;
     const rooms = [...this.dirty].map((id) => this.rooms.get(id) as RoomOccupancy);
     this.dirty.clear();
-    this.emit("/stream/telemetry", "occupancy.delta", { event_id: this.eventId, rooms, zones: [] });
+    const zones = this.zoneTotals(new Set(rooms.map((room) => room.zone_id)));
+    this.emit("/stream/telemetry", "occupancy.delta", { event_id: this.eventId, rooms, zones });
+  }
+
+  private isUp(): boolean {
+    return !this.dropWhileDown || this.link === "live";
+  }
+
+  /** `ready`, then a snapshot where the channel has one — as the server does on connect. */
+  private greet(channel: WsChannel, handler: AnyHandler, resumed: boolean): void {
+    handler({
+      type: "ready",
+      channel,
+      scope: channel === "/stream/me" ? "own" : "full",
+      resumed,
+      heartbeat_interval_ms: 15_000,
+    });
+    if (channel === "/stream/telemetry") {
+      handler(
+        this.envelope("occupancy.snapshot", {
+          event_id: this.eventId,
+          rooms: [...this.rooms.values()],
+          zones: this.zoneTotals(),
+        }),
+      );
+    }
+  }
+
+  /** Link back: re-greet every client, replay missed alerts, fresh telemetry snapshot. */
+  private resume(): void {
+    for (const [channel, set] of this.handlers) {
+      for (const handler of set) this.greet(channel, handler, channel === "/stream/alerts");
+    }
+    const missed = this.missed;
+    this.missed = [];
+    for (const { channel, message } of missed) {
+      for (const handler of this.handlers.get(channel) ?? []) handler(message);
+    }
   }
 
   private envelope(type: string, data: unknown) {
@@ -266,6 +387,15 @@ export class MockRealtime implements RealtimeClient {
   }
 
   private deliver(channel: WsChannel, message: unknown): void {
+    for (const handler of this.taps.get(channel) ?? []) handler(message);
+    if (!this.isUp()) {
+      // Alerts replay from the cursor on reconnect; scans and telemetry do not
+      // (telemetry is re-sent as a snapshot).
+      if (channel === "/stream/alerts" && this.missed.length < REPLAY_LIMIT) {
+        this.missed.push({ channel, message });
+      }
+      return;
+    }
     for (const handler of this.handlers.get(channel) ?? []) handler(message);
   }
 }

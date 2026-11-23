@@ -13,5 +13,8 @@ export * from './layout';
 // Re-export form components
 export * from './form';
 
+// Shell: frame, top bar, navigation rail, status bar
+export * from './shell';
+
 // Data display components that depend on the contracts runtime are NOT re-exported
 // here; import them from "@synan/ui/data" (see components/data/index.ts).

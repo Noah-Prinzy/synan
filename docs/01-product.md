@@ -27,6 +27,21 @@ occupancy live on a venue map, raise security alerts as they happen, and produce
 - Precise indoor positioning. Synan knows which zone a credential last entered, never where a
   person is standing (D-04).
 
+**Not planned.** These have never been part of the plan. Each is recorded here so that its absence
+is a known choice and not an oversight; adding one is a new decision.
+
+- Push or SMS notifications. Attendees see updates in the portal and by email only.
+- Badge printing.
+- Attendance certificates. These would also need per-person session attendance kept after the
+  event, which the retention decision (D-03) does not allow today.
+- Post-event feedback surveys.
+- More than one language.
+- More than one organisation per installation (O-01).
+- Per-person movement history after the event (D-03).
+
+**Planned but not yet built** is tracked in [07 §1](07-roadmap.md); what must exist before launch
+is in [07 §5](07-roadmap.md).
+
 ### 1.1 How it flows, end to end
 
 | # | Stage | What happens | Surface |
@@ -354,8 +369,33 @@ draft → published → live → closed → archived
 | Breach and Compliance | Alerts by kind and severity, time to acknowledge, time to resolve |
 | Gate Throughput | Scans per gate over time, failure breakdown |
 
-Reports are viewed on screen as paginated data. Export is an asynchronous job that produces a CSV
-(always) and a PDF summary, delivered by a signed short-lived link and optionally emailed on a
-schedule.
+Reports are viewed on screen as paginated data. Export is an asynchronous job, delivered by a signed
+short-lived link and optionally emailed on a schedule. It produces:
 
-Reports are built from aggregates, so they remain available after raw scan data is purged.
+- **An Excel workbook** (`.xlsx`) for the whole event (D-21): a summary sheet, then one sheet per
+  report, with real number and date cells, frozen header rows, column widths, and totals, plus an
+  attendee sheet (name, email, tier, registration state, checked in, first check-in time) for
+  operators permitted to see identity. This is the primary download.
+- **A CSV** per report, for other tools.
+- **A PDF summary** of the headline figures.
+
+**Post-event summary (D-21).** Every closed event has a summary: one page that says how the event
+went. It shows the headline figures (registered, checked in, no-shows, peak on site and when, rooms
+that reached capacity, alerts raised and how fast they were handled), attendance by tier, the
+occupancy curve over the event, the busiest rooms and gates, and the downloads above. It is the
+landing page of a closed event and stays available indefinitely.
+
+Reports and the summary are built from aggregates, so they remain available after raw scan data is
+purged.
+
+**What can and cannot be retrieved later (D-03).**
+
+| Kept indefinitely | Destroyed after the grace period |
+| --- | --- |
+| Who registered, their tier, and whether and when they first checked in | Each person's individual scans: which rooms they entered and when |
+| Totals and peaks per room, per gate, and per time slot | The access log for that event |
+| Flow between zones and time spent, as aggregates | |
+| Alerts and the audit log, for 12 months | |
+
+"How many people were in a room at a given time" is answerable forever. "Where did this guest go"
+is answerable only until the purge. Keeping per-person session attendance would be a change to D-03.

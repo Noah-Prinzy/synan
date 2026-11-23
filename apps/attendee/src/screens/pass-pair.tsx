@@ -6,7 +6,7 @@ import { useSession } from "../data/auth";
 import { bindBand, devCodeHint, type BindResult } from "../data/pair";
 import { portal, usePortalVersion } from "../data/mock";
 import { PageHeader, PageShell, Panel } from "../components/page";
-import { buttonClass } from "@synan/ui/components";
+import { buttonClass, RewardMoment } from "@synan/ui/components";
 
 type NdefReader = {
   scan: (options?: { signal?: AbortSignal }) => Promise<void>;
@@ -84,6 +84,9 @@ export default function PassPair() {
       <PageShell bleed>
         <PageHeader label="Bind band" title="Band bound">This band is now you. Tap it at every door inside the venue.</PageHeader>
         <div className="enter px-4 py-10 sm:px-6 md:px-10">
+          <p className="mb-6 text-15 font-medium">
+            <RewardMoment>Bound to your pass</RewardMoment>
+          </p>
           <Panel className="max-w-md">
             <p className="text-13 font-medium text-muted-foreground">Band UID</p>
             <p className="mt-2 font-mono text-17 tracking-wider uppercase">{result.band.uid}</p>

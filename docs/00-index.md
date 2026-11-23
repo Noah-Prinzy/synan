@@ -115,6 +115,8 @@ Decisions taken by the project owner to reconcile sources that disagreed. Each r
 | D-18 | 2026-11-23 | What is the product called? | **Synan**, from the Greek *synántisi*, a meeting or gathering. It replaces the working name Connexia everywhere, including the package scope (`@synan/*`). Kairos was rejected: it is already an identity and access company. A formal trademark search and domain purchase are still to be done. | Everywhere |
 | D-19 | 2026-11-23 | What should the brand feel like, and how is the Attendee Portal structured? | **Hospitable and modern, not security-flavoured.** A full rebrand: logo, colour, and type are all replaced, chosen by the owner from a brand board of options. The Attendee Portal follows **Direction A**, the structure of the owner's sample site, without copying that site's identity. Once an option is chosen, the other options' mock-up files are deleted. | [05 §2.1, §6](05-design-system.md), [06 §1](06-screens.md) |
 | D-20 | 2026-11-23 | Which identity? | **Option 1, "Meeting point" system with the "Fit" logo.** Neutral near-black ground, Daybreak blue `#8AB4FF` accent; Bricolage Grotesque, Instrument Sans, Geist Mono; the Fit mark with the "[S]ynan" lockup, where the mark replaces the S. No design rule was changed. All other options and logo candidates were deleted. | [05 §3, §4, §6](05-design-system.md) |
+| D-21 | 2026-11-23 | How is an event's data retrieved afterwards? | **A post-event summary screen, and an Excel workbook download.** Every closed event has a one-page summary of how it went. The primary export is a real `.xlsx` workbook: a summary sheet, one sheet per report, and an attendee sheet. CSV and a PDF summary remain. Both are built from data that survives the purge. | [01 §10](01-product.md), [06 D13c](06-screens.md) |
+| D-22 | 2026-11-23 | Should the website have ambient motion, and what needs work in the interface? | **Little animation overall; motion is spent on rewarding interaction.** Pressing something that matters is acknowledged instantly, and key moments (completing registration, the pass becoming ready, binding a wristband, acknowledging an alert, an admitted scan) get a short, crafted confirmation. A single minimal ambient background on the Attendee Portal is allowed as an exception to the no-decorative-motion rule. The visual style is approved as it stands; the work now is user-friendliness, app flow, and how content balances on screen. The Command Center is to be calmer and cleaner. | [05 §5](05-design-system.md) |
 
 ---
 
@@ -146,6 +148,8 @@ Tracked here so they are not scattered. None blocks frontend work unless marked.
 | O-20 | Will events have photographs, and who supplies them? | Unknown. Screens are built to look intentional with or without an image. |
 | O-21 | Does leaving through a perimeter exit remove a person from the room they were last counted in? | Not today. |
 | O-22 | Missing endpoints: MFA enrolment, and a scanner heartbeat | To be added to [02 §5–§6](02-architecture.md) in Phase 4. |
+| O-23 | Keep per-person session attendance after the event, for example for attendance certificates? | No. It would reverse part of D-03. Owner to say if wanted. |
+| O-24 | Where is Synan hosted, and on which managed PostgreSQL? | Undecided. Needed before any real event, and to run the tests that need a real server. |
 
 ---
 
@@ -159,3 +163,4 @@ Tracked here so they are not scattered. None blocks frontend work unless marked.
 | 2026-11-23 | `design_base.md` restored as its own file at the owner's request; the bookmark list was moved out of 05 §10.3, which now points to it. |
 | 2026-11-23 | Renamed to Synan (D-18) and rebrand direction set (D-19). First build pass recorded: the database package, the contracts package, the backend skeleton, the mock package, and the scanner scaffold exist and are tested; schema rules, build clarifications, and new open questions O-15…O-22 folded into 01, 02, 03, 05, and 06. Status moved to [07 §1](07-roadmap.md). |
 | 2026-11-23 | Identity chosen (D-20). Backend security review findings fixed; secrets encrypted and enforced by the database; sign-in state moved into the database. |
+| 2026-11-23 | Excel workbook export and the post-event summary screen added (D-21). The "not planned" list recorded in 01 §1 and the launch prerequisites in 07 §5. |

@@ -126,17 +126,24 @@ export const SCENARIOS: Record<ScenarioName, (ctx: ScenarioContext) => void> = {
     });
   },
 
-  /** Two offline gates accept the same single-use emailed QR; caught at sync. */
+  /**
+   * Two offline gates accept the same single-use emailed QR; caught at sync.
+   * The gates' links are carried by gate.health; the client's own link stays up.
+   */
   offline_conflict({ rt, at }) {
     const a = gate(rt, 0);
     const b = gate(rt, 1);
     at(0, () => {
-      rt.setLink("reconnecting");
       rt.gateHealth(a, { link_state: "offline", queue_depth: 14, last_heartbeat_at: null });
       rt.gateHealth(b, { link_state: "offline", queue_depth: 9, last_heartbeat_at: null });
     });
+    for (let s = 1; s <= 4; s++) {
+      at(s * 1000, () => {
+        rt.gateHealth(a, { link_state: "offline", queue_depth: 14 + s * 3, last_heartbeat_at: null });
+        rt.gateHealth(b, { link_state: "offline", queue_depth: 9 + s * 2, last_heartbeat_at: null });
+      });
+    }
     at(5000, () => {
-      rt.setLink("live");
       rt.gateHealth(a, { link_state: "online", queue_depth: 0 });
       rt.gateHealth(b, { link_state: "online", queue_depth: 0 });
       const s1 = rt.scan({ gate: a, result: "admitted", carrier: "qr_email", offline: true, correctedOffsetMs: -4200 });

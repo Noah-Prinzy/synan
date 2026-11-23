@@ -9,7 +9,7 @@
  * The tables are checked with `satisfies Record<Code, …>`: adding a code without copy is a type
  * error here, and so is a typo in a key.
  */
-import type { GateTone, ScanResult } from "../enums/index.js";
+import type { AlertKind, GateTone, ReportKind, ScanResult } from "../enums/index.js";
 import type { ErrorCode } from "../errors/index.js";
 
 /* ------------------------------------------------------------------ tones */
@@ -89,3 +89,31 @@ export const SCAN_RESULT_TONE = Object.fromEntries(
 
 /** Results that are a refusal at the gate. */
 export const DENY_RESULTS = (Object.keys(SCAN_RESULT_COPY) as ScanResult[]).filter((r) => !SCAN_RESULT_COPY[r].admits);
+
+/** Operator-facing copy for each alert kind (06 D10). */
+export const ALERT_KIND_COPY = {
+  invalid_qr: { label: "Invalid QR", description: "A cloned, expired or forged QR code was presented." },
+  pass_replayed: { label: "Pass replayed", description: "A single-use emailed QR was presented again." },
+  unauthorised_tier: { label: "Not permitted here", description: "A pass tried a room its tier may not enter." },
+  impossible_travel: { label: "Impossible travel", description: "The same pass was read at two gates too quickly; it is under review." },
+  capacity_warn: { label: "Room filling", description: "A room passed its warning threshold." },
+  capacity_exceeded: { label: "Capacity exceeded", description: "A room was entered beyond its blocking threshold." },
+  offline_conflict_pass_reuse: { label: "Offline: pass used twice", description: "Two offline gates accepted the same single-use QR." },
+  offline_conflict_passback: { label: "Offline: pass-back", description: "A pass already inside was admitted again at another offline gate." },
+  offline_conflict_capacity: { label: "Offline: capacity overrun", description: "Offline gates together admitted beyond capacity." },
+  clock_skew: { label: "Scanner clock wrong", description: "A scanner's clock is more than two minutes off." },
+  gate_offline: { label: "Gate offline", description: "A gate has sent no heartbeat for over a minute." },
+  rogue_scanner: { label: "Scanner refused", description: "A scanner tried a gate or time it is not assigned to." },
+  stale_allowlist: { label: "Stale allowlist", description: "An offline gate admitted on an allowlist more than 15 minutes old." },
+  reconciliation_fault: { label: "Count corrected", description: "Occupancy would have gone below zero and was clamped." },
+} as const satisfies Record<AlertKind, { label: string; description: string }>;
+
+/** Labels for the five reports (01 §10) and the export formats. */
+export const REPORT_KIND_LABEL = {
+  attendance: "Attendance",
+  dwell_flow: "Dwell and flow",
+  peak_occupancy: "Peak occupancy",
+  breach_compliance: "Breach and compliance",
+  gate_throughput: "Gate throughput",
+} as const satisfies Record<ReportKind, string>;
+export const EXPORT_FORMAT_LABEL = { xlsx: "Excel workbook", csv: "CSV", pdf: "PDF summary" } as const;

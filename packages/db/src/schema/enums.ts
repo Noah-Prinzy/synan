@@ -126,3 +126,6 @@ export const reportKind = pgEnum("report_kind", [
 ]);
 
 export const reportState = pgEnum("report_state", ["queued", "running", "ready", "failed"]);
+
+/** event_reports.format and report_schedules.format — matches contracts ExportFormat (D-21). */
+export const exportFormat = pgEnum("export_format", ["xlsx", "csv", "pdf"]);

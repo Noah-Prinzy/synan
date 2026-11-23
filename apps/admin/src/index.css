@@ -8,3 +8,11 @@
 
 /* The palette lives in packages/ui/src/styles/theme.css. Admin is an instrument:
    no ambient wash, no decoration (docs/05 §2). */
+
+/* Scrollbars as hairline furniture, not chrome. */
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--muted) transparent;
+  }
+}

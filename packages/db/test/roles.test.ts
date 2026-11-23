@@ -152,6 +152,8 @@ describe("SECURITY DEFINER functions", () => {
         where p.prosecdef and n.nspname in ('public','pii_vault') order by 1`,
     );
     expect(r.map((x) => x.name)).toEqual([
+      "pii_vault.attendee_id_by_email_hash",
+      "pii_vault.attendee_ids_by_email_hash",
       "pii_vault.erase_attendee",
       "public.audit_log_chain",
       "public.audit_prune",
@@ -162,7 +164,7 @@ describe("SECURITY DEFINER functions", () => {
     ]);
     for (const x of r) {
       const sp = (x.cfg ?? []).find((c) => c.startsWith("search_path="));
-      expect(sp, x.name).toMatch(/^search_path=pg_catalog, public(, pii_vault)?, pg_temp$/);
+      expect(sp, x.name).toMatch(/^search_path=pg_catalog(, public)?(, pii_vault)?, pg_temp$/);
     }
     // Only the trigger functions stay executable by PUBLIC (they can only run as triggers).
     expect(r.filter((x) => x.public_exec).map((x) => x.name)).toEqual(["public.audit_log_chain", "public.events_scan_partition"]);

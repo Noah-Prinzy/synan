@@ -1,3 +1,6 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 /**
  * Runtime configuration from the environment. See `.env.example`.
  *
@@ -56,6 +59,16 @@ export interface Config {
   mailTransport: "console" | "memory";
   rateLimits: { authPerMin: number; scanPerMin: number; resendPerHour: number };
   /** Validate every response against its contract (on outside production). */
+  /** Absolute origin of this API, for signed report download links. */
+  publicApiOrigin: string;
+  /** Local-disk report storage (development implementation of the storage interface). */
+  reportStorageDir: string;
+  /** Lifetime of a signed report download link. */
+  reportLinkTtlS: number;
+  /** Lifetime of the signed link a scheduled report emails (recipients open it later than a click in the console). */
+  reportEmailLinkTtlS: number;
+  /** Days a stored export file is kept before the retention job deletes it. */
+  exportRetentionDays: number;
   validateResponses: boolean;
   production: boolean;
 }
@@ -109,6 +122,9 @@ export function validateConfig(c: Config): Config {
   range("RATE_AUTH_PER_MIN", c.rateLimits.authPerMin, 1, 1_000_000);
   range("RATE_SCAN_PER_MIN", c.rateLimits.scanPerMin, 1, 10_000_000);
   range("RATE_RESEND_PER_HOUR", c.rateLimits.resendPerHour, 1, 1_000_000);
+  range("REPORT_LINK_TTL_S", c.reportLinkTtlS, 30, 3600);
+  range("REPORT_EMAIL_LINK_TTL_S", c.reportEmailLinkTtlS, 300, 72 * 3600);
+  range("EXPORT_RETENTION_DAYS", c.exportRetentionDays, 1, 365);
   if (c.trustProxy === (true as unknown)) throw new ConfigError("trustProxy must never be true");
   if (typeof c.trustProxy === "number") range("TRUST_PROXY", c.trustProxy, 1, 10);
   if (c.repo === "postgres" && !c.databaseUrl) throw new ConfigError("DATABASE_URL is required with REPO=postgres");
@@ -162,6 +178,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: readonly 
       scanPerMin: int(env, "RATE_SCAN_PER_MIN", 600),
       resendPerHour: int(env, "RATE_RESEND_PER_HOUR", 5),
     },
+    publicApiOrigin: env.API_PUBLIC_ORIGIN ?? "http://127.0.0.1:5180",
+    reportStorageDir: env.REPORT_STORAGE_DIR ?? join(tmpdir(), "synan-reports"),
+    reportLinkTtlS: int(env, "REPORT_LINK_TTL_S", 600),
+    reportEmailLinkTtlS: int(env, "REPORT_EMAIL_LINK_TTL_S", 24 * 3600),
+    exportRetentionDays: int(env, "EXPORT_RETENTION_DAYS", 7),
     validateResponses: !production,
     production,
   });

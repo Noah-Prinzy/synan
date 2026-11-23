@@ -4,7 +4,7 @@ import type { AccessRule, Checkpoint, EventAdmin, EventSummary, Room, ScanBatchR
 import { createApp } from "../src/app.js";
 import { hashPassword } from "../src/lib/crypto.js";
 import { ManualClock } from "../src/lib/clock.js";
-import { band, devEmail, errCode, postScans, REPO_UNDER_TEST, scan, startHarness, addAttendee, type Harness } from "./helpers.js";
+import { band, devEmail, errCode, mfaCode, postScans, REPO_UNDER_TEST, scan, startHarness, addAttendee, type Harness } from "./helpers.js";
 
 let h: Harness;
 let admin: string;
@@ -155,16 +155,23 @@ describe("slice 2 · events and the guarded lifecycle", () => {
 });
 
 describe("slice 2 · access-rule matrix, summary, dashboard", () => {
+  it("republishing on a live event needs a fresh second factor", async () => {
+    const cur = (await h.call<{ version: number; rules: AccessRule[] }>("GET", `/events/${h.seed.eventId}/access-rules`, { token: organiser })).body;
+    const rules = cur.rules.map(({ subject_kind, subject, room_id, window_start, window_end, effect }) => ({ subject_kind, subject, room_id, window_start, window_end, effect }));
+    expect(errCode((await h.call("PUT", `/events/${h.seed.eventId}/access-rules`, { token: organiser, body: { expected_version: cur.version, rules } })).body)).toBe("MFA_REQUIRED");
+  });
+
   it("republish needs the current version (409 otherwise), validates cells, is audited, and takes effect at the gate", async () => {
+    const stepped = (await h.call<TokenPair>("POST", "/auth/mfa/verify", { token: admin, body: { code: mfaCode(h) } })).body.access_token;
     const cur = (await h.call<{ version: number; rules: AccessRule[] }>("GET", `/events/${h.seed.eventId}/access-rules`, { token: organiser })).body;
     const keep = cur.rules.filter((r) => !(r.subject === "VIP" && r.room_id === h.seed.rooms.vip))
       .map(({ subject_kind, subject, room_id, window_start, window_end, effect }) => ({ subject_kind, subject, room_id, window_start, window_end, effect }));
     expect(errCode((await h.call("PUT", `/events/${h.seed.eventId}/access-rules`, {
-      token: organiser, body: { expected_version: cur.version, rules: [...keep, { ...keep[0]!, subject: "GOLD" }] },
+      token: stepped, body: { expected_version: cur.version, rules: [...keep, { ...keep[0]!, subject: "GOLD" }] },
     })).body)).toBe("VALIDATION_FAILED");
-    const put = await h.call<{ version: number }>("PUT", `/events/${h.seed.eventId}/access-rules`, { token: organiser, body: { expected_version: cur.version, rules: keep } });
+    const put = await h.call<{ version: number }>("PUT", `/events/${h.seed.eventId}/access-rules`, { token: stepped, body: { expected_version: cur.version, rules: keep } });
     expect(put.body.version).toBe(cur.version + 1);
-    expect(errCode((await h.call("PUT", `/events/${h.seed.eventId}/access-rules`, { token: organiser, body: { expected_version: cur.version, rules: keep } })).body)).toBe("CONFLICT");
+    expect(errCode((await h.call("PUT", `/events/${h.seed.eventId}/access-rules`, { token: stepped, body: { expected_version: cur.version, rules: keep } })).body)).toBe("CONFLICT");
     const audit = (await h.app.ctx.repos.audit.all()).filter((a) => a.action === "access_rules.republish").at(-1)!;
     expect(audit.meta_jsonb).toMatchObject({ version: cur.version + 1, removed: 1, added: 0, live: true });
     const v = await addAttendee(h, "VIP");

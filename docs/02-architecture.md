@@ -268,6 +268,7 @@ Events
   GET   /events                     POST  /events               GET  /events/:slug
   PATCH /events/:id                 POST  /events/:id/publish
   GET   /events/:id/summary         GET   /events/:id/sessions
+  GET   /events/:id/post-event-summary   (the one-page summary of a closed event — D-21)
   GET   /events/:slug/profile-schema
   GET   /events/:id/access-rules    PUT   /events/:id/access-rules
   GET   /events/:id/allowlist       (signed, for the scanner's offline cache — P-09)
@@ -295,7 +296,7 @@ Staff
 
 Reports
   GET   /reports                    GET   /reports/:eventId     GET   /reports/:eventId/:kind
-  POST  /reports/:id/export         (async job — P-14)
+  POST  /reports/:id/export         (async job: Excel workbook, CSV, PDF summary — P-14, D-21)
   GET   /dashboard
 
 Attendee self-service

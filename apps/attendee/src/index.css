@@ -7,3 +7,46 @@
 @import "@fontsource-variable/geist-mono";
 
 /* The palette lives in packages/ui/src/styles/theme.css. Nothing here declares a colour. */
+
+/*
+ * Ambient field (owner, 2026-11-23). One soft monochrome luminance field behind the
+ * content, drifting over 90 s: atmosphere, never a subject. One fixed layer, transform
+ * only (composited; no layout or paint per frame). Intensity is the --ambient token in
+ * the theme (0 = off). Static under reduced motion; paused while the tab is hidden.
+ * Worst case it lifts the ground from #0A0A0A to about #131313: every text pair stays AA.
+ */
+@layer base {
+  .ambient-field {
+    position: fixed;
+    inset: -25vmax;
+    z-index: -1;
+    pointer-events: none;
+    /* Daybreak blue as atmosphere (owner, 2026-11-23): large, soft, behind the frame. */
+    background: radial-gradient(closest-side, color-mix(in oklch, var(--brand) calc(var(--ambient) * 100%), transparent), transparent);
+    background-size: 70vmax 70vmax;
+    background-repeat: no-repeat;
+    background-position: 18% 12%;
+    will-change: transform;
+    animation: ambientDrift 90s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+  }
+  :root[data-hidden] .ambient-field {
+    animation-play-state: paused;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ambient-field {
+      animation: none;
+    }
+  }
+}
+
+@keyframes ambientDrift {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(22vmax, 14vmax, 0); }
+}
+
+/* The ground lives on body so the ambient field can sit between it and the page. */
+@layer base {
+  body {
+    background: var(--background);
+  }
+}

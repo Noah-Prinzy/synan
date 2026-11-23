@@ -71,7 +71,7 @@ export class AuthService {
   private async accessToken(ctx: AuthContext): Promise<{ token: string; exp: number }> {
     const iat = Math.floor(this.now() / 1000);
     const exp = iat + this.config.accessTokenTtlS;
-    const token = await new SignJWT({ knd: ctx.kind, rol: ctx.role, mfa: ctx.mfaAt ? Math.floor(ctx.mfaAt / 1000) : null, sid: ctx.sid })
+    const token = await new SignJWT({ knd: ctx.kind, rol: ctx.role, mfa: ctx.mfaAt ? Math.floor(ctx.mfaAt / 1000) : null, sid: ctx.sid, ...(ctx.kind === "device" ? { cp: ctx.checkpointId ?? null, tv: ctx.tokenVersion ?? null } : {}) })
       .setProtectedHeader({ alg: "EdDSA", typ: "at+jwt", kid: this.kid })
       .setSubject(ctx.sub)
       .setIssuer(ISSUER)
@@ -99,6 +99,7 @@ export class AuthService {
         role: (payload.rol as Role | null) ?? null,
         mfaAt: typeof payload.mfa === "number" ? payload.mfa * 1000 : null,
         sid: payload.sid,
+        ...(payload.knd === "device" ? { checkpointId: typeof payload.cp === "string" ? payload.cp : null, tokenVersion: typeof payload.tv === "number" ? payload.tv : null } : {}),
       };
     } catch (e) {
       const code = (e as { code?: string }).code;
@@ -255,6 +256,18 @@ export class AuthService {
     // Revoke the current family and start a stepped-up one, so the old refresh token cannot mint mfa tokens.
     await this.repos.auth.revokeFamily(ctx.sid, "mfa_step_up", new Date(now));
     return this.startFamily({ sub: user.id, kind: ctx.kind, role: user.role, mfaAt: now }, user);
+  }
+
+  /**
+   * Fixed readers (O-17): a device token, stored only as a hash, buys a short-lived access token for
+   * the `device` principal, bound to the device's one checkpoint. No refresh token: the reader
+   * re-presents its device token when the access token expires.
+   */
+  async deviceToken(token: string) {
+    const d = await this.repos.devices.authenticate(token);
+    if (!d || (d.kind === "fixed_reader" && !d.checkpoint_id)) throw new ContractError("INVALID_CREDENTIALS");
+    const at = await this.accessToken({ sub: d.id, kind: "device", role: null, mfaAt: null, sid: d.id, checkpointId: d.checkpoint_id, tokenVersion: d.token_version });
+    return { token_type: "Bearer" as const, access_token: at.token, access_expires_at: new Date(at.exp).toISOString(), device_id: d.id, checkpoint_id: d.checkpoint_id };
   }
 
   isMfaFresh(ctx: AuthContext): boolean {

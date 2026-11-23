@@ -1,3 +1,4 @@
+import { Ambient } from "./components/ambient";
 import { lazy, Suspense, type ReactNode } from "react";
 import { Route, Routes, Navigate } from "react-router-dom";
 import { RequireSession } from "./components/require-session";
@@ -25,6 +26,8 @@ function Gate({ children }: { children: ReactNode }) {
 
 export default function App() {
   return (
+    <>
+    <Ambient />
     <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/" element={<Discover />} />
@@ -43,5 +46,6 @@ export default function App() {
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>
+    </>
   );
 }

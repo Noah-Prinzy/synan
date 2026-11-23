@@ -23,7 +23,7 @@ export const ROLE_VALUES = Role.options;
  * Kind of authenticated principal carried in an access token. Attendees are not a
  * `users.role`; they sign in by email link and get an `attendee` principal.
  */
-export const PrincipalKind = z.enum(["operator", "staff", "attendee"]);
+export const PrincipalKind = z.enum(["operator", "staff", "attendee", "device"]);
 export type PrincipalKind = z.infer<typeof PrincipalKind>;
 
 /** Roles that may use Admin Command. */
@@ -174,6 +174,14 @@ export type ReportKind = z.infer<typeof ReportKind>;
 
 export const ReportState = z.enum(["queued", "running", "ready", "failed"]);
 export type ReportState = z.infer<typeof ReportState>;
+
+/** How often a scheduled report is sent (01 §10). `on_close` runs once, when the event closes. */
+export const ReportCadence = z.enum(["on_close", "daily", "weekly", "monthly"]);
+export type ReportCadence = z.infer<typeof ReportCadence>;
+
+/** `failed` after three failed runs in a row (resuming resets it); `done` once an on_close schedule has run. */
+export const ReportScheduleState = z.enum(["active", "paused", "done", "failed"]);
+export type ReportScheduleState = z.infer<typeof ReportScheduleState>;
 
 /* -------------------------------------------------------------------- live */
 

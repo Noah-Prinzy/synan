@@ -28,6 +28,9 @@ export const users = pgTable(
     mfa_enrolled_at: tstz("mfa_enrolled_at"),
     /** Encrypted TOTP / WebAuthn material. Never plaintext. */
     mfa_secret_enc: text("mfa_secret_enc"),
+    /** An MFA enrolment awaiting its first code: encrypted secret and expiry (see startMfaEnrolment). */
+    mfa_pending_secret_enc: text("mfa_pending_secret_enc"),
+    mfa_pending_expires_at: tstz("mfa_pending_expires_at"),
     last_login_at: tstz("last_login_at"),
     disabled_at: tstz("disabled_at"),
     created_at: tstz("created_at").notNull().defaultNow(),

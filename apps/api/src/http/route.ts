@@ -38,6 +38,7 @@ export function allowed(def: EndpointDef, ctx: AuthContext | null): boolean {
   if (def.access.includes("public")) return true;
   if (!ctx) return false;
   if (ctx.kind === "attendee") return def.access.includes("attendee");
+  if (ctx.kind === "device") return def.access.includes("device");
   return ctx.role !== null && def.access.includes(ctx.role);
 }
 
@@ -46,7 +47,15 @@ export async function authenticate(app: AppContext, req: Request): Promise<AuthC
   if (!h) return null;
   const m = /^Bearer ([A-Za-z0-9._-]+)$/.exec(h);
   if (!m) throw new ContractError("UNAUTHENTICATED");
-  return app.auth.verifyAccess(m[1]!);
+  const ctx = await app.auth.verifyAccess(m[1]!);
+  if (ctx.kind === "device") {
+    // Retiring a device or moving it takes effect on its next request, not when its token expires.
+    const d = await app.repos.devices.byId(ctx.sub);
+    if (!d || d.state !== "active" || d.checkpoint_id !== (ctx.checkpointId ?? null) || d.token_version !== (ctx.tokenVersion ?? null)) {
+      throw new ContractError("UNAUTHENTICATED"); // retired, moved, or its token rotated since this access token was minted
+    }
+  }
+  return ctx;
 }
 
 export function mount<E extends EndpointDef>(express: Express, app: AppContext, def: E, handler: Handler<E>) {
