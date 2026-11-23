@@ -29,6 +29,7 @@ const verdictTone: Record<ScanVerdict, string> = {
 
 export default function Command() {
   const [query, setQuery] = useState("");
+  const [railOpen, setRailOpen] = useState(true);
   const needle = query.trim().toLowerCase();
   const visibleScans = needle
     ? recentScans.filter((scan) =>
@@ -39,40 +40,100 @@ export default function Command() {
     : recentScans;
 
   return (
-    <div className="bg-background text-foreground min-h-dvh">
-      <TopBar query={query} onQueryChange={setQuery} />
-      <main id="overview" className="px-6 py-8 md:px-10">
-        <div className="mx-auto w-full max-w-[1600px]">
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
-            <div className="space-y-6">
-              <HeroPanel />
-              <div className="grid gap-6 md:grid-cols-3">
-                <ZonesPanel />
-                <GatesPanel />
-                <CredentialsPanel />
+    <div className="bg-background text-foreground min-h-dvh lg:flex">
+      {railOpen ? <IndexRail onCollapse={() => setRailOpen(false)} /> : null}
+      <div className="min-w-0 flex-1">
+        <TopBar
+          query={query}
+          onQueryChange={setQuery}
+          railOpen={railOpen}
+          onOpenRail={() => setRailOpen(true)}
+        />
+        <main id="overview" className="px-6 py-8 md:px-10">
+          <div className="mx-auto w-full max-w-[1600px]">
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+              <div className="space-y-6">
+                <HeroPanel />
+                <div className="grid gap-6 md:grid-cols-3">
+                  <ZonesPanel />
+                  <GatesPanel />
+                  <CredentialsPanel />
+                </div>
               </div>
+              <aside className="space-y-6">
+                <ScansPanel scans={visibleScans} total={recentScans.length} query={query} />
+                <PeakPanel />
+              </aside>
             </div>
-            <aside className="space-y-6">
-              <ScansPanel scans={visibleScans} total={recentScans.length} query={query} />
-              <PeakPanel />
-            </aside>
+            <footer className="border-border text-muted-foreground mt-8 flex flex-wrap items-center justify-between gap-2 border-t pt-4 font-mono text-[0.5625rem] tracking-[0.16em] uppercase">
+              <span>Connexia Command · {event.name}</span>
+              <span>Scans 4 Hz · Gates 1 Hz</span>
+            </footer>
           </div>
-          <footer className="border-border text-muted-foreground mt-8 flex flex-wrap items-center justify-between gap-2 border-t pt-4 font-mono text-[0.5625rem] tracking-[0.16em] uppercase">
-            <span>Connexia Command · {event.name}</span>
-            <span>Scans 4 Hz · Gates 1 Hz</span>
-          </footer>
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
+  );
+}
+
+function IndexRail({ onCollapse }: { onCollapse: () => void }) {
+  return (
+    <aside className="border-border sticky top-0 hidden h-dvh w-56 shrink-0 flex-col border-r lg:flex">
+      <div className="flex items-center justify-between gap-3 px-5 py-4">
+        <Link to="/" aria-label="Connexia Command home" className="flex items-baseline gap-2">
+          <Wordmark className="h-5 w-auto" />
+          <span className="text-muted-foreground font-mono text-[0.5rem] tracking-[0.2em] uppercase">
+            Command
+          </span>
+        </Link>
+        <button
+          type="button"
+          onClick={onCollapse}
+          aria-label="Hide section index"
+          className="border-border text-muted-foreground hover:border-brand hover:text-brand grid size-6 shrink-0 place-items-center border font-mono text-[0.625rem] transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none"
+        >
+          ←
+        </button>
+      </div>
+      <nav aria-label="Command sections" className="flex-1 px-3">
+        <ul className="flex flex-col">
+          {sections.map((section, index) => (
+            <li key={section.href}>
+              <a
+                href={section.href}
+                aria-current={index === 0 ? "page" : undefined}
+                className={`flex items-baseline gap-3 px-2 py-2.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none ${
+                  index === 0
+                    ? "text-brand"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <span className="text-[0.5625rem] tabular-nums opacity-70">
+                  {(index + 1).toString().padStart(2, "0")}
+                </span>
+                {section.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+      <p className="text-muted-foreground border-border border-t px-5 py-3 font-mono text-[0.5rem] tracking-[0.16em] uppercase">
+        {event.name}
+      </p>
+    </aside>
   );
 }
 
 function TopBar({
   query,
   onQueryChange,
+  railOpen,
+  onOpenRail,
 }: {
   query: string;
   onQueryChange: (value: string) => void;
+  railOpen: boolean;
+  onOpenRail: () => void;
 }) {
   return (
     <header className="border-border border-b">
@@ -81,14 +142,23 @@ function TopBar({
           <Link
             to="/"
             aria-label="Connexia Command home"
-            className="flex shrink-0 items-baseline gap-3"
+            className={`flex shrink-0 items-baseline gap-3 ${railOpen ? "lg:hidden" : ""}`}
           >
             <Wordmark className="h-6 w-auto" />
             <span className="text-muted-foreground hidden font-mono text-[0.5625rem] tracking-[0.2em] uppercase sm:inline">
               Command
             </span>
           </Link>
-          <SectionNav className="hidden md:flex" />
+          {!railOpen ? (
+            <button
+              type="button"
+              onClick={onOpenRail}
+              className="border-border text-muted-foreground hover:border-brand hover:text-brand hidden border px-2.5 py-1.5 font-mono text-[0.625rem] tracking-[0.12em] uppercase transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] lg:block motion-reduce:transition-none"
+            >
+              Index
+            </button>
+          ) : null}
+          <SectionNav className="hidden md:flex lg:hidden" />
           <div className="ml-auto flex items-center gap-3">
             <label htmlFor="scan-filter" className="sr-only">
               Filter recent scans
