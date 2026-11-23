@@ -1,7 +1,7 @@
 /**
  * Connexia Motion - CSS animations and transition utilities
  *
- * Rules (frontend plan §2.3):
+ * Rules (docs/05-design-system.md §5):
  * - cubic-bezier easing only - no spring, no bounce, no parallax
  * - state 120ms / panels 180ms with cubic-bezier(.2,0,0,1)
  * - occupancy bars animate with transform: scaleX, never width

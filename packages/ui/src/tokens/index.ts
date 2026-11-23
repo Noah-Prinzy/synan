@@ -5,7 +5,7 @@
  * These tokens are used across all apps (attendee, admin, scanner).
  * 
  * NOTE: This package intentionally deviates from some parts of the frontend plan
- * to achieve a more modern, premium design. See CHANGELOG.md for details.
+ * to achieve a more modern, premium design. See docs/05-design-system.md.
  * 
  * The following frontend plan rules are ALWAYS respected:
  * - Dark neutral ground

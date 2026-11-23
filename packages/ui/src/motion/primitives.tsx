@@ -20,11 +20,11 @@ import { motion, type Variants, type Transition, type HTMLMotionProps } from 'mo
 
 // ============================================================================
 // EASING CURVES
-// ONLY cubic-bezier - NO spring animations per frontend plan §2.3
+// ONLY cubic-bezier - NO spring animations per docs/05-design-system.md §5
 // ============================================================================
 
 /**
- * Connexia's default easing curve from the frontend plan §2.3
+ * Connexia's default easing curve from the docs/05-design-system.md §5
  */
 export const easeDefault = 'cubic-bezier(0.2, 0, 0, 1)';
 
@@ -64,7 +64,7 @@ export const easing = {
 
 /**
  * Animation durations in milliseconds
- * 120ms for state, 180ms for panels per frontend plan §2.3
+ * 120ms for state, 180ms for panels per docs/05-design-system.md §5
  */
 export const duration = {
   xs: 100,   // Extra fast for immediate feedback
@@ -99,7 +99,7 @@ export const delay = {
  * Predefined transition configurations
  */
 export const transitions = {
-  // From frontend plan §2.3
+  // From docs/05-design-system.md §5
   state: {
     duration: duration.sm / 1000,  // 120ms
     ease: easing.default,
@@ -163,7 +163,7 @@ export const transitions = {
     },
   },
   
-  // NOTE: No spring configurations - per frontend plan §2.3
+  // NOTE: No spring configurations - per docs/05-design-system.md §5
   // Spring animations are explicitly forbidden
 } as const;
 
@@ -437,7 +437,7 @@ export function slideUpStagger(index: number, delayPerItem: number = 0.05) {
 
 // ============================================================================
 // COUNTER ANIMATIONS
-// Uses transform: scaleX for bars (not width) per frontend plan §9
+// Uses transform: scaleX for bars (not width) per docs/02-architecture.md §9
 // ============================================================================
 
 /**
