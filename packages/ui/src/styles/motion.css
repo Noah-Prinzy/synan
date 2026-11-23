@@ -133,6 +133,12 @@
   50% { opacity: 0.35; }
 }
 
+/* Skeleton sweep: horizontal transform only */
+@keyframes skeletonSweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
 /* ============================================================================
    ANIMATION UTILITIES
    ============================================================================ */
@@ -153,6 +159,7 @@
 .animate-shake { animation-name: shake; }
 .animate-scale-x-in { animation-name: scaleXIn; }
 .animate-status-pulse { animation-name: statusPulse; }
+.animate-skeleton-sweep { animation: skeletonSweep 1600ms linear infinite; }
 
 .animate-duration-sm { animation-duration: 120ms; }
 .animate-duration-md { animation-duration: 180ms; }
