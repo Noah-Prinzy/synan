@@ -58,9 +58,9 @@ export const spacing = {
 
 // Font families
 export const fonts = {
-  sans: '"Geist Variable", ui-sans-serif, system-ui, sans-serif',
-  serif: '"Fraunces Variable", ui-serif, Georgia, serif',
-  mono: '"JetBrains Mono Variable", ui-monospace, monospace',
+  sans: '"Instrument Sans Variable", ui-sans-serif, system-ui, sans-serif',
+  serif: '"Bricolage Grotesque Variable", ui-sans-serif, sans-serif',
+  mono: '"Geist Mono Variable", ui-monospace, monospace',
 } as const;
 
 // Font sizes for Attendee Portal (editorial)
@@ -132,7 +132,7 @@ export const letterSpacing = {
 // COLOR TOKENS
 // 
 // Frontend plan specifies:
-// - Brand: #0AA7C2 (accent only, never a surface)
+// - Brand: #8AB4FF (accent only, never a surface)
 // - Success: #43C07A
 // - Warning: #E7B643
 // - Destructive: #FF6467
@@ -184,7 +184,7 @@ export const colors = {
   
   // Semantic colors - FROM FRONTEND PLAN
   // Brand: accent only, never a surface
-  brand: '#0aa7c2',
+  brand: '#8ab4ff',
   
   // Signals: carry state meaning
   success: '#43C07A',    // admitted / healthy
@@ -374,8 +374,8 @@ export const shadows = {
   
   // Brand-colored outlines (not shadows)
   brand: {
-    sm: '0 0 0 1px color-mix(in srgb, #0aa7c2 50%, transparent)',
-    md: '0 0 0 2px color-mix(in srgb, #0aa7c2 30%, transparent)',
+    sm: '0 0 0 1px color-mix(in srgb, #8ab4ff 50%, transparent)',
+    md: '0 0 0 2px color-mix(in srgb, #8ab4ff 30%, transparent)',
   },
 } as const;
 

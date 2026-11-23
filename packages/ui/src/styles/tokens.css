@@ -90,9 +90,9 @@
   --text-admin-4xl: 3.5rem;      /* 56px */
   
   /* Font families */
-  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Fraunces Variable", ui-serif, Georgia, serif;
-  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+  --font-sans: "Instrument Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Bricolage Grotesque Variable", ui-sans-serif, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
   
   /* Font weights */
   --font-weight-normal: 400;
@@ -122,7 +122,7 @@
    COLOR TOKENS - DARK MODE (Shipped)
    
    Frontend plan specifies:
-   - Brand: #0AA7C2 (accent only, never a surface)
+   - Brand: #8AB4FF (accent only, never a surface)
    - Success: #43C07A
    - Warning: #E7B643
    - Destructive: #FF6467
@@ -149,7 +149,7 @@
   --color-muted-foreground: oklch(0.708 0 0); /* #A1A1A1 */
   
   /* Semantic colors - FROM FRONTEND PLAN */
-  --color-brand: #0aa7c2;                   /* Accent only, never a surface */
+  --color-brand: #8ab4ff;                   /* Accent only, never a surface */
   --color-success: #43C07A;                 /* admitted / healthy */
   --color-warning: #E7B643;                 /* already inside / degraded / near capacity */
   --color-destructive: #FF6467;             /* denied / breach / offline */
@@ -235,8 +235,8 @@
   --shadow-md: 0 1px 2px 0 rgb(0 0 0 / 0.1);
   
   /* Brand-colored outlines (not shadows) */
-  --shadow-brand-sm: 0 0 0 1px color-mix(in srgb, #0aa7c2 50%, transparent);
-  --shadow-brand-md: 0 0 0 2px color-mix(in srgb, #0aa7c2 30%, transparent);
+  --shadow-brand-sm: 0 0 0 1px color-mix(in srgb, #8ab4ff 50%, transparent);
+  --shadow-brand-md: 0 0 0 2px color-mix(in srgb, #8ab4ff 30%, transparent);
 }
 
 /* ============================================================================

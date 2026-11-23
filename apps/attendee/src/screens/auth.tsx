@@ -1,5 +1,5 @@
-import { BRAND, pageTitle } from "@synan/ui/brand";
-import { useEffect, useState } from "react";
+import { BRAND, Wordmark, pageTitle } from "@synan/ui/brand";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { linkProblem, verifyToken, useSession, getSession, signOut } from "../data/auth";
 import { PageShell, Eyebrow, Panel } from "../components/page";
@@ -9,6 +9,30 @@ import { ERROR_COPY } from "@synan/contracts/copy";
 /** Only same-origin paths may be a post-sign-in destination (no open redirect). */
 function safeNext(value: string | null): string {
   return value && value.startsWith("/") && !value.startsWith("//") ? value : "/pass";
+}
+
+/**
+ * Direction A sign-in: a brand cell (the logotype and one line) beside the form
+ * cell; on phones the form stands alone with the logotype above it.
+ */
+function AuthLayout({ children }: { children: ReactNode }) {
+  return (
+    <PageShell bleed>
+      <div className="grid md:min-h-160 md:grid-cols-2">
+        <div className="relative hidden flex-col justify-between overflow-hidden border-r border-border p-10 md:flex">
+          <span className="relative text-56">
+            <Wordmark />
+          </span>
+          <p className="relative max-w-sm font-display text-28 leading-tight">
+            Your pass, your agenda and the venue&apos;s updates — for every event you attend.
+          </p>
+        </div>
+        <div className="flex flex-col justify-center px-4 py-12 sm:px-6 md:px-16">
+          <div className="enter mx-auto w-full max-w-md">{children}</div>
+        </div>
+      </div>
+    </PageShell>
+  );
 }
 
 type SignInState = "idle" | "submitting" | "sent";
@@ -51,8 +75,8 @@ function SignInScreen() {
 
   if (state === "sent") {
     return (
-      <PageShell>
-        <div className="mx-auto w-full max-w-[30rem] md:py-8">
+      <AuthLayout>
+        <div>
           <Eyebrow>Sign in</Eyebrow>
           <h1 className="mt-2 font-display text-40 leading-tight">Check your email</h1>
           <p className="mt-4 text-17 leading-relaxed text-muted-foreground">
@@ -80,13 +104,16 @@ function SignInScreen() {
             </Link>
           </div>
         </div>
-      </PageShell>
+      </AuthLayout>
     );
   }
 
   return (
-    <PageShell>
-      <div className="mx-auto w-full max-w-[30rem] md:py-8">
+    <AuthLayout>
+      <div>
+        <p className="mb-10 text-40 md:hidden">
+          <Wordmark />
+        </p>
         <Eyebrow>Sign in</Eyebrow>
         <h1 className="mt-2 font-display text-40 leading-tight">Sign in to {BRAND.name}</h1>
         <p className="mt-4 text-17 leading-relaxed text-muted-foreground">
@@ -118,7 +145,7 @@ function SignInScreen() {
           </button>
         </form>
       </div>
-    </PageShell>
+    </AuthLayout>
   );
 }
 
@@ -150,23 +177,23 @@ function VerifyScreen() {
 
   if (state === "validating") {
     return (
-      <PageShell>
+      <AuthLayout>
         <p role="status" className="text-13 font-medium text-muted-foreground">
           Checking your link…
         </p>
-      </PageShell>
+      </AuthLayout>
     );
   }
 
   if (state === "success") {
     return (
-      <PageShell>
-        <div role="status" className="mx-auto w-full max-w-[30rem] md:py-8">
+      <AuthLayout>
+        <div role="status">
           <Eyebrow>Signed in</Eyebrow>
           <h1 className="mt-2 font-display text-40 leading-tight">You&apos;re in</h1>
           <p className="mt-2 text-15 text-muted-foreground">Taking you to {next === "/pass" ? "your pass" : next}…</p>
         </div>
-      </PageShell>
+      </AuthLayout>
     );
   }
 
@@ -174,8 +201,8 @@ function VerifyScreen() {
   const problem = !token ? { title: "This link is incomplete", message: "The sign-in link is missing its code. Request a new one." } : ERROR_COPY[linkProblem(token) === "expired" ? "LINK_EXPIRED" : "LINK_INVALID"];
 
   return (
-    <PageShell>
-      <div className="mx-auto w-full max-w-[30rem] md:py-8">
+    <AuthLayout>
+      <div>
         <Eyebrow>Sign in</Eyebrow>
         <h1 className="mt-2 font-display text-40 leading-tight">{problem.title}</h1>
         <p role="alert" className="mt-4 text-17 leading-relaxed text-muted-foreground">
@@ -187,7 +214,7 @@ function VerifyScreen() {
           </Link>
         </div>
       </div>
-    </PageShell>
+    </AuthLayout>
   );
 }
 
@@ -203,8 +230,8 @@ function AlreadySignedInScreen() {
   }
 
   return (
-    <PageShell>
-      <div className="mx-auto w-full max-w-[30rem] md:py-8">
+    <AuthLayout>
+      <div>
         <Eyebrow>Signed in</Eyebrow>
         <h1 className="mt-2 font-display text-40 leading-tight">
           Signed in as {session.name}
@@ -224,7 +251,7 @@ function AlreadySignedInScreen() {
           </button>
         </div>
       </div>
-    </PageShell>
+    </AuthLayout>
   );
 }
 

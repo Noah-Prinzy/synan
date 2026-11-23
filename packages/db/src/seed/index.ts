@@ -18,7 +18,7 @@ import { sql } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 import { setVaultScope, type AnyDb, type AnyTx } from "../client";
 import { createCipher, devKeyProvider, type Cipher } from "../crypto/index";
-import { encryptAttendeeColumns, encryptMfaSecret, encryptSigningPrivateKey } from "../secrets";
+import { encryptAttendeeColumns, encryptMfaSecret, encryptSigningPrivateKey, encryptUserEmail } from "../secrets";
 import * as s from "../schema/index";
 
 export interface SeedOptions {
@@ -225,7 +225,7 @@ export async function seed(db: AnyDb, options: SeedOptions = {}): Promise<SeedSu
       const first = pick(FIRST);
       const last = pick(LAST);
       users.push({
-        id, org_id: orgId, role, email: `${role}.${i}@org.example.test`, display_name: `${first} ${last}`,
+        id, org_id: orgId, role, ...encryptUserEmail(cipher, id, `${role}.${i}@org.example.test`), display_name: `${first} ${last}`,
         password_hash: role === "speaker" || role === "crew" ? null : "$argon2id$v=19$seed$not-a-real-hash",
         mfa_enrolled_at: role === "admin" || role === "organiser" ? d(now - 30 * DAY) : null,
         // Development TOTP secret (base32), encrypted and bound to this user row.

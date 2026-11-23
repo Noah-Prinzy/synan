@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, NavLink, Route, Routes } from "react-router-dom";
 import type { ReactNode } from "react";
+import { BRAND, Wordmark } from "@synan/ui/brand";
 import Pair from "./screens/pair";
 import Scan from "./screens/scan";
 import Recent from "./screens/recent";
@@ -37,6 +38,12 @@ const tabs = [
 function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
+      <header className="flex h-12 items-center justify-between border-b border-border px-4">
+        <span className="text-17">
+          <Wordmark small />
+        </span>
+        <span className="text-13 text-muted-foreground">{BRAND.surface.scanner}</span>
+      </header>
       <main className="flex min-h-0 flex-1 flex-col">{children}</main>
       {/* Thumb reach: the only navigation sits at the bottom edge. */}
       <nav aria-label="Scanner" className="grid grid-cols-4 border-t border-border">

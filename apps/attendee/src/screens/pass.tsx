@@ -1,4 +1,4 @@
-import { pageTitle } from "@synan/ui/brand";
+import { Wordmark, pageTitle } from "@synan/ui/brand";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
@@ -100,7 +100,7 @@ function NextCodeRule({ leftMs, ttlMs, codeKey }: { leftMs: number; ttlMs: numbe
   );
   const style = prefersReducedMotion() ? { transform: `scaleX(${fraction})` } : animated;
   return (
-    <div className="mt-5 w-full max-w-[300px]">
+    <div className="mt-5 w-full max-w-75">
       <div className="h-px w-full bg-border" aria-hidden="true">
         <div key={codeKey} className="h-full origin-left bg-foreground" style={style} />
       </div>
@@ -124,7 +124,7 @@ function QrBlock({ holder, online }: { holder: string; online: boolean }) {
           <span aria-hidden="true" className="mr-2 font-mono">!</span>
           Your pass needs a connection
         </p>
-        <p className="max-w-[28rem] text-15 leading-relaxed text-muted-foreground">
+        <p className="max-w-md text-15 leading-relaxed text-muted-foreground">
           This phone has been offline too long to show a fresh code. Show the emailed copy at the
           entrance, or go to the desk with photo ID.
         </p>
@@ -134,7 +134,7 @@ function QrBlock({ holder, online }: { holder: string; online: boolean }) {
 
   return (
     <div className="flex flex-col items-center px-6 pt-8 pb-8">
-      <div className="w-full max-w-[300px] border border-qr-ink bg-qr-field p-3">
+      <div className="w-full max-w-75 border border-qr-ink bg-qr-field p-3">
         <QRCodeSVG
           key={code.code}
           value={code.code}
@@ -224,10 +224,13 @@ export function PassTicket({
   return (
     <article
       aria-label={`Pass for ${pass.event.title}`}
-      className={`mx-auto w-full max-w-[520px] border bg-background ${pass.state === "REVOKED" ? "border-destructive" : "border-border"}`}
+      className={`mx-auto w-full max-w-130 border bg-background ${pass.state === "REVOKED" ? "border-destructive" : "border-border"}`}
     >
       <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-5 sm:px-6">
         <div className="min-w-0">
+          <p className="mb-4 text-17">
+            <Wordmark small />
+          </p>
           <p className="font-display text-21 leading-tight">{pass.event.title}</p>
           <p className="mt-1 text-15 text-muted-foreground">
             <span className="font-mono">{formatDay(pass.event.startsAt, pass.event.timezone)}</span> · doors{" "}
@@ -242,7 +245,7 @@ export function PassTicket({
       <div className="grid grid-cols-[minmax(0,1fr)_auto] border-b border-border">
         <div className="px-5 py-6 sm:px-6">
           <p className="text-13 font-medium text-muted-foreground">Guest</p>
-          <p className="mt-1 font-display text-40 leading-none break-words">{pass.holder}</p>
+          <p className="mt-1 font-display text-40 leading-none wrap-break-word">{pass.holder}</p>
         </div>
         <div className="flex flex-col justify-end border-l border-border px-5 py-6 sm:px-6">
           <p className="text-13 font-medium text-muted-foreground">Tier</p>
@@ -272,7 +275,7 @@ export function PassTicket({
             </span>
             {pass.state === "REVOKED" && liveChange ? "Revoked just now" : pass.state === "UNDER REVIEW" ? "On hold" : pass.state === "REVOKED" ? "Revoked" : "Replaced"}
           </p>
-          <p className="max-w-[28rem] text-15 leading-relaxed">{descriptionFor[pass.state]}</p>
+          <p className="max-w-md text-15 leading-relaxed">{descriptionFor[pass.state]}</p>
           {pass.state !== "REPLACED" ? <p className="text-15 text-muted-foreground">{pass.nearestDesk}</p> : null}
         </div>
       ) : bandFirst ? (
@@ -282,7 +285,7 @@ export function PassTicket({
             aria-expanded={qrOpen}
             aria-controls="arrival-qr"
             onClick={() => setQrOpen((open) => !open)}
-            className="flex min-h-14 w-full items-center justify-between px-5 text-15 text-muted-foreground transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] hover:text-foreground motion-reduce:transition-none sm:px-6"
+            className="flex min-h-14 w-full items-center justify-between px-5 text-15 text-muted-foreground transition-colors duration-120 ease-standard hover:text-foreground motion-reduce:transition-none sm:px-6"
           >
             Arrival code, for the entrance and desk
             <span aria-hidden="true" className="font-mono">{qrOpen ? "−" : "+"}</span>
@@ -307,7 +310,7 @@ export function PassTicket({
               key={action.label}
               type="button"
               onClick={action.run}
-              className="flex min-h-16 items-center justify-center px-2 py-3 text-center text-13 font-medium text-muted-foreground transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] hover:bg-card/40 hover:text-foreground motion-reduce:transition-none"
+              className="flex min-h-16 items-center justify-center px-2 py-3 text-center text-13 font-medium text-muted-foreground transition-colors duration-120 ease-standard hover:bg-card/40 hover:text-foreground motion-reduce:transition-none"
             >
               {action.label}
             </button>
@@ -355,11 +358,11 @@ export default function Pass() {
       <div className="enter">
         <PassTicket pass={pass} online={online} liveChange={pass.state !== firstState.current} onNotice={setNotice} />
       </div>
-      <p role="status" className="mx-auto mt-3 min-h-5 w-full max-w-[520px] text-15 text-muted-foreground">
+      <p role="status" className="mx-auto mt-3 min-h-5 w-full max-w-130 text-15 text-muted-foreground">
         {notice}
       </p>
       {!online ? (
-        <p className="mx-auto mt-4 flex w-full max-w-[520px] items-center gap-2 border border-border px-4 py-3 text-15">
+        <p className="mx-auto mt-4 flex w-full max-w-130 items-center gap-2 border border-border px-4 py-3 text-15">
           <span className="size-1.5 bg-warning" aria-hidden />
           Offline — your pass still works.
         </p>

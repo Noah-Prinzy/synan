@@ -29,12 +29,26 @@ export class OccupancyProjection {
   readonly presence = new Map<string, { roomId: string; checkpointId: string }>();
   /** ephemeral id → time of the last movement applied to presence. */
   readonly lastMoveAt = new Map<string, number>();
-  /** ephemeral id → zone currently inside (mirror of credentials.zone_state for this event). */
+  /** ephemeral id → zone currently inside, for zone occupancy counts. Follows interior moves. */
   readonly zoneOf = new Map<string, string>();
+  /**
+   * ephemeral id → zone of the perimeter the holder entered through (mirror of credentials.zone_state).
+   * Drives perimeter anti-passback. Set only by a perimeter `in`, cleared only by a perimeter `out`,
+   * so an interior admission in another zone does not erase it.
+   */
+  readonly perimeterOf = new Map<string, string>();
+  /** ephemeral id → the perimeter passage that took the holder from OUTSIDE to INSIDE. */
+  readonly perimeterEntry = new Map<string, { checkpointId: string; scanId: string }>();
+  /** ephemeral id → scan that redeemed the holder's emailed QR (for conflict alerts). */
+  readonly emailRedeemScan = new Map<string, string>();
   /** `${eph}|${checkpoint}` → corrected ms of last passage. */
   readonly lastPassage = new Map<string, number>();
   /** ephemeral id → last read (any known-token scan). */
   readonly lastRead = new Map<string, { checkpointId: string; atMs: number }>();
+  /** room → time of the last absolute correction (recount, session-end reset). Earlier scans no longer change it. */
+  readonly anchorAt = new Map<string, number>();
+  /** room → the value of that last anchor. */
+  readonly anchorValue = new Map<string, number>();
   private readonly denials = new Map<string, number[]>();
   /** Reconciliation faults (a count that would have gone negative). */
   faults = 0;
@@ -49,6 +63,24 @@ export class OccupancyProjection {
 
   count(roomId: string) {
     return this.roomCount.get(roomId) ?? 0;
+  }
+
+  /**
+   * Absolute correction at `atMs` (02 §4.4 anchors): the room's count becomes `value`, and scans older
+   * than `atMs` no longer change it. A correction to zero un-counts everyone in the room (01 §7).
+   */
+  setAnchor(roomId: string, value: number, atMs: number) {
+    this.roomCount.set(roomId, value);
+    this.anchorAt.set(roomId, Math.max(atMs, this.anchorAt.get(roomId) ?? -Infinity));
+    this.anchorValue.set(roomId, value);
+    if (value === 0) {
+      for (const [eph, p] of this.presence) if (p.roomId === roomId) this.presence.delete(eph);
+    }
+  }
+
+  /** True when a scan at `atMs` is older than the room's last anchor (already reflected in it). */
+  beforeAnchor(roomId: string, atMs: number): boolean {
+    return atMs < (this.anchorAt.get(roomId) ?? -Infinity);
   }
 
   /** Returns false (and clamps) when the delta would take the room below zero. */

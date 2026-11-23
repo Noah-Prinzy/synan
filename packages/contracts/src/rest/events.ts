@@ -51,15 +51,23 @@ export type EventDetail = z.infer<typeof EventDetail>;
 export const EventAdmin = EventDetail.extend({
   org_id: Id,
   listed: z.boolean(),
+  /** Pass template; publishing requires one (01 §9). */
+  pass_template: z.record(z.string(), z.unknown()).nullable().optional(),
+  /** Version of the access-rule set (bumped on every republish). */
+  access_rules_version: z.number().int().min(0).optional(),
+  /** When the event closed; the retention clock starts here (03 §6). */
+  closed_at: IsoDateTime.nullable().optional(),
   /** Grace period before the post-event purge, in hours (O-06). */
   grace_buffer_hours: z.number().int().min(0).max(24 * 90),
 });
 export type EventAdmin = z.infer<typeof EventAdmin>;
 
 export const EventListQuery = PageQuery.extend({
-  /** Discovery only returns published or live events. */
-  state: z.enum(["published", "live"]).optional(),
+  /** Discovery only returns published or live events; with scope=all (operators) any state. */
+  state: EventState.optional(),
   q: z.string().max(100).optional(),
+  /** `all`: every event in every state, listed or not — operators only (403 otherwise). */
+  scope: z.enum(["public", "all"]).default("public"),
 });
 
 export const CreateEvent = z.object({
@@ -73,8 +81,30 @@ export const CreateEvent = z.object({
   listed: z.boolean().default(true),
   grace_buffer_hours: z.number().int().min(0).max(24 * 90).default(72),
   rooms: z.array(z.object({ room_id: Id, capacity_override: z.number().int().min(0).nullable().optional() })).default([]),
+  /** Pass template (required before publishing). Shape is the template designer's. */
+  pass_template: z.record(z.string(), z.unknown()).nullable().optional(),
+  /** Attendee profile fields collected at registration. */
+  profile_schema: z.array(z.lazy(() => ProfileField)).max(50).optional(),
 });
-export const UpdateEvent = CreateEvent.partial().omit({ venue_id: true });
+/**
+ * PATCH body: every field optional and NO defaults (a `.partial()` of CreateEvent would still apply
+ * the create defaults — listed, grace period, rooms: [] — and silently overwrite them on every patch).
+ */
+export const UpdateEvent = z.object({
+  slug: Slug.optional(),
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().max(10_000).optional(),
+  starts_at: IsoDateTime.optional(),
+  ends_at: IsoDateTime.optional(),
+  timezone: IanaTimezone.optional(),
+  listed: z.boolean().optional(),
+  grace_buffer_hours: z.number().int().min(0).max(24 * 90).optional(),
+  rooms: z.array(z.object({ room_id: Id, capacity_override: z.number().int().min(0).nullable().optional() })).optional(),
+  pass_template: z.record(z.string(), z.unknown()).nullable().optional(),
+  profile_schema: z.array(z.lazy(() => ProfileField)).max(50).optional(),
+});
+/** Not in 02 §5: the rest of the guarded lifecycle (publish has its own endpoint). */
+export const EventTransition = z.object({ state: z.enum(["live", "closed", "archived"]) });
 
 export const EventLiveSummary = z.object({
   event_id: Id,
@@ -156,6 +186,10 @@ export const eventEndpoints = {
   getEvent: endpoint({ method: "GET", path: "/events/:slug", access: PUBLIC, params: SlugParam, response: EventDetail }),
   updateEvent: endpoint({ method: "PATCH", path: "/events/:id", access: OPERATORS, audited: true, params: IdParam, body: UpdateEvent, response: EventAdmin }),
   publishEvent: endpoint({ method: "POST", path: "/events/:id/publish", access: OPERATORS, audited: true, params: IdParam, response: EventAdmin }),
+  /** published → live → closed → archived. Closing starts the retention clock. */
+  transitionEvent: endpoint({ method: "POST", path: "/events/:id/state", access: OPERATORS, audited: true, params: IdParam, body: EventTransition, response: EventAdmin }),
+  /** The operator's full view of one event (drafts and unlisted included). */
+  getEventAdmin: endpoint({ method: "GET", path: "/events/:id/admin", access: OPERATORS, params: IdParam, response: EventAdmin }),
   eventSummary: endpoint({ method: "GET", path: "/events/:id/summary", access: OPERATORS, params: IdParam, response: EventLiveSummary }),
   eventSessions: endpoint({ method: "GET", path: "/events/:id/sessions", access: PUBLIC, params: IdParam, response: z.object({ items: z.array(EventSession) }) }),
   profileSchema: endpoint({ method: "GET", path: "/events/:slug/profile-schema", access: PUBLIC, params: SlugParam, response: ProfileSchema }),

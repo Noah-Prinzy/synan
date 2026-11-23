@@ -259,7 +259,7 @@ export default function EventDetail() {
           aria-label="On this page"
           className="sticky top-14 z-20 border-b border-border bg-background md:top-16 md:self-start md:border-r md:border-b-0"
         >
-          <ul className="flex overflow-x-auto md:flex-col [scrollbar-width:none]">
+          <ul className="flex overflow-x-auto md:flex-col scrollbar-none">
             {sections.map((section) => (
               <li key={section.id} className="shrink-0 border-r border-border md:border-r-0 md:border-b">
                 <a
@@ -270,14 +270,14 @@ export default function EventDetail() {
                     document.getElementById(section.id)?.scrollIntoView({ block: "start" });
                     history.replaceState(null, "", `#${section.id}`);
                   }}
-                  className={`relative flex min-h-12 items-center justify-between gap-3 px-4 text-15 transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none md:px-6 ${
+                  className={`relative flex min-h-12 items-center justify-between gap-3 px-4 text-15 transition-colors duration-120 ease-standard motion-reduce:transition-none md:px-6 ${
                     active === section.id ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   {section.label}
                   <span
                     aria-hidden="true"
-                    className={`absolute bottom-0 left-0 h-px w-full origin-left bg-brand transition-transform duration-[180ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none md:top-0 md:h-full md:w-px md:origin-top ${
+                    className={`absolute bottom-0 left-0 h-px w-full origin-left bg-brand transition-transform duration-180 ease-standard motion-reduce:transition-none md:top-0 md:h-full md:w-px md:origin-top ${
                       active === section.id ? "scale-100" : "scale-x-0 md:scale-x-100 md:scale-y-0"
                     }`}
                   />
@@ -353,7 +353,7 @@ export default function EventDetail() {
                     {item.q}
                     <span
                       aria-hidden="true"
-                      className="text-muted-foreground transition-transform duration-[180ms] ease-[cubic-bezier(.2,0,0,1)] group-open:rotate-45 motion-reduce:transition-none"
+                      className="text-muted-foreground transition-transform duration-180 ease-standard group-open:rotate-45 motion-reduce:transition-none"
                     >
                       +
                     </span>

@@ -29,6 +29,7 @@ const pairs: [string, readonly string[], readonly string[]][] = [
   ["SigningKeyPurpose", E.SigningKeyPurpose.options, schema.signingKeyPurpose.enumValues],
   ["ReportKind", E.ReportKind.options, schema.reportKind.enumValues],
   ["ReportState", E.ReportState.options, schema.reportState.enumValues],
+  ["WsChannel", E.WsChannel.options, schema.wsChannel.enumValues],
 ];
 
 describe("contracts ↔ @synan/db enum parity", () => {

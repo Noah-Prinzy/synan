@@ -7,7 +7,7 @@ import type { Credential, MyCredential, PortalCodeBatch } from "@synan/contracts
 import { API_BRAND } from "../brand.js";
 import type { Config } from "../config.js";
 import type { Clock } from "../lib/clock.js";
-import { randomToken, sha256b64url, sha256hex } from "../lib/crypto.js";
+import { randomToken, sha256b64url } from "../lib/crypto.js";
 import type { Mailer } from "../lib/mailer.js";
 import type { CarrierRow, CredentialRow, RegistrationRow, Repos } from "../repo/types.js";
 import type { AuditService } from "./audit.js";
@@ -138,7 +138,7 @@ export class CredentialService {
       id: carrierId,
       credential_id: cred.id,
       kind: "qr_email",
-      identifier: sha256hex(cid), // the code id is only ever in the signed email; we keep its hash
+      identifier: sha256b64url(cid), // the code id is only ever in the signed email; we keep its hash (43 chars)
       chip_profile: null,
       state: "active",
       bound_at: new Date(now),

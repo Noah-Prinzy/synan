@@ -13,7 +13,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 // Labels are the UI sans in sentence case; mono is for data only. Both sizes meet the
 // 44px touch target. The primary fill is the `--action` token (neutral by rule).
 const base =
-  "inline-flex items-center justify-center gap-2 border font-sans font-medium transition-[color,background-color,border-color] duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none";
+  "inline-flex items-center justify-center gap-2 border font-sans font-medium transition-[color,background-color,border-color] duration-120 ease-standard focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none";
 
 const variants: Record<ButtonVariant, string> = {
   primary: "border-action bg-action text-action-foreground hover:bg-transparent hover:text-foreground",

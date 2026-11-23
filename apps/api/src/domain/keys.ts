@@ -22,7 +22,16 @@ export interface ActiveKey {
   privateKey: Key;
 }
 
-/** Retired keys keep verifying for this long, so codes signed just before rotation stay valid. */
+/**
+ * Retired keys keep verifying for this long, so codes signed just before rotation stay valid.
+ *
+ * CONSTRAINT FOR WHOEVER WIRES UP KEY ROTATION (nothing calls rotate() on a live key today): emailed QR
+ * codes live until event end + 24 h, far longer than this grace. Rotating the `qr` key during an event
+ * would make every outstanding emailed code read as `bad_signature` 24 h later. Before adding a
+ * rotation path, either keep a retired `qr` key verifying until the latest emailed-code expiry it
+ * signed, or re-issue emailed codes on rotation. Retiring also leaves `private_key_enc` in place;
+ * a rotation path should erase it.
+ */
 const RETIRED_VERIFY_GRACE_MS = 24 * 3600 * 1000;
 
 export async function generateEd25519(): Promise<{ privateJwk: JWK; publicJwk: JWK }> {
@@ -86,8 +95,9 @@ export class KeyService {
     await this.repo.insert({
       id: kid,
       purpose,
+      qr_kid: qrKidOf(String(pair.publicJwk.x)),
       public_key: JSON.stringify({ ...pair.publicJwk, kid, alg: "EdDSA" }),
-      private_key_enc: JSON.stringify(pair.privateJwk),
+      private_key: JSON.stringify(pair.privateJwk), // the SQL repository encrypts it
       active_from: now,
       retired_at: null,
     });
@@ -101,12 +111,12 @@ export class KeyService {
       const pubJwk = JSON.parse(row.public_key) as JWK;
       const { d: _d, ...pubOnly } = pubJwk;
       const active = row.retired_at === null;
-      const privJwk = active ? (JSON.parse(row.private_key_enc) as JWK) : null;
+      const privJwk = active ? (JSON.parse(row.private_key) as JWK) : null;
       this.cache.set(row.id, {
         row,
         pub: await importPublic(pubJwk),
         priv: privJwk ? await importPrivate(privJwk) : null,
-        qrKid: qrKidOf(String(pubJwk.x)),
+        qrKid: row.qr_kid,
         nodePub: createPublicKey({ key: pubOnly as NodeJwk, format: "jwk" }),
         nodePriv: privJwk ? createPrivateKey({ key: privJwk as NodeJwk, format: "jwk" }) : null,
       });

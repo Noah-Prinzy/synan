@@ -11,7 +11,7 @@ export function AnimatedUnderline({ active, className }: AnimatedUnderlineProps)
     <span
       aria-hidden="true"
       className={cn(
-        "pointer-events-none absolute inset-x-0 -bottom-px h-px origin-left bg-brand transition-transform duration-[180ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none",
+        "pointer-events-none absolute inset-x-0 -bottom-px h-px origin-left bg-brand transition-transform duration-180 ease-standard motion-reduce:transition-none",
         active ? "scale-x-100" : "scale-x-0",
         className,
       )}

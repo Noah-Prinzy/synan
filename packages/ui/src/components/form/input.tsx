@@ -29,7 +29,7 @@ export function Input({ label, hint, error, id, className, ...props }: InputProp
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
         className={cn(
-          "w-full border border-border bg-transparent min-h-12 px-3 py-2.5 text-17 text-foreground placeholder:text-muted-foreground transition-[border-color] duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] focus:border-brand focus-visible:outline-none motion-reduce:transition-none",
+          "w-full border border-border bg-transparent min-h-12 px-3 py-2.5 text-17 text-foreground placeholder:text-muted-foreground transition-[border-color] duration-120 ease-standard focus:border-brand focus-visible:outline-none motion-reduce:transition-none",
           error && "border-destructive",
           className,
         )}

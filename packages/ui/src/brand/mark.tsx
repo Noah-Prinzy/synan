@@ -1,24 +1,35 @@
+import { DrawingSvg, type BrandTone } from "./drawing";
+import { markDrawing } from "./fit";
 import { BRAND } from "./name";
 
+const FULL = markDrawing(false);
+const SMALL = markDrawing(true);
+
 /**
- * Interim mark: a neutral monogram in a hairline square, until an identity is chosen.
- * Matches public/favicon.svg.
+ * The Synan mark ("Fit"): a square cut by one S-shaped seam into two pieces that only
+ * make sense together. Pass `size` (px) so the simplified drawing — a wider seam — is
+ * used at 24px and below; without it the full drawing is used.
  */
-export function Mark({ className = "" }: { className?: string }) {
+export function Mark({
+  size,
+  className = "",
+  tone = "colour",
+  title = BRAND.name,
+}: {
+  size?: number;
+  className?: string;
+  tone?: BrandTone;
+  /** Empty string hides it from assistive tech (when the name is said next to it). */
+  title?: string;
+}) {
+  const drawing = size !== undefined && size <= 24 ? SMALL : FULL;
   return (
-    <svg viewBox="0 0 32 32" role="img" aria-label={BRAND.name} className={className}>
-      <rect x="0.5" y="0.5" width="31" height="31" fill="none" stroke="currentColor" strokeOpacity="0.4" />
-      <text
-        x="16"
-        y="22"
-        textAnchor="middle"
-        fontFamily="ui-sans-serif, system-ui, sans-serif"
-        fontSize="17"
-        fontWeight="600"
-        fill="currentColor"
-      >
-        {BRAND.name.charAt(0)}
-      </text>
-    </svg>
+    <DrawingSvg
+      drawing={drawing}
+      tone={tone}
+      title={title || undefined}
+      className={className}
+      style={size !== undefined ? { width: size, height: size } : undefined}
+    />
   );
 }

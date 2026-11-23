@@ -1,7 +1,7 @@
 /** Auth endpoints (02 §5 "Auth", 03 §3). */
 import { z } from "zod";
 import { WS_SUBPROTOCOL, WS_TICKET_PREFIX } from "../brand.js";
-import { Email, IsoDateTime } from "../common.js";
+import { Email, Id, IsoDateTime, Ok } from "../common.js";
 import { PrincipalKind, Role, SigningKeyPurpose, WsChannel } from "../enums/index.js";
 import { endpoint, PUBLIC, type Access } from "./endpoint.js";
 
@@ -60,9 +60,9 @@ export type MfaVerifyRequest = z.infer<typeof MfaVerifyRequest>;
 export const WsTicketRequest = z.object({
   channel: WsChannel,
   /** Event to scope the subscription to (required for scans/telemetry/alerts). */
-  event_id: z.uuid().optional(),
+  event_id: Id.optional(),
   /** `/stream/scans` only: the checkpoint the scanner is paired with. */
-  checkpoint_id: z.uuid().optional(),
+  checkpoint_id: Id.optional(),
 });
 export type WsTicketRequest = z.infer<typeof WsTicketRequest>;
 
@@ -109,6 +109,11 @@ export const authEndpoints = {
   emailLink: endpoint({ method: "POST", path: "/auth/email-link", access: PUBLIC, rateLimit: "auth", body: EmailLinkRequest, response: EmailLinkAccepted, status: 202 }),
   verify: endpoint({ method: "POST", path: "/auth/verify", access: PUBLIC, rateLimit: "auth", body: VerifyRequest, response: TokenPair }),
   mfaVerify: endpoint({ method: "POST", path: "/auth/mfa/verify", access: ANY_USER, rateLimit: "auth", body: MfaVerifyRequest, response: TokenPair }),
+  /**
+   * Not in 02 §5: ends the caller's session family. Its refresh tokens and any WebSocket tickets
+   * minted under it stop working; the current access token still lives until it expires (≤ 10 min).
+   */
+  logout: endpoint({ method: "POST", path: "/auth/logout", access: ANY_SIGNED_IN, response: Ok }),
   wsTicket: endpoint({ method: "POST", path: "/auth/ws-ticket", access: ANY_SIGNED_IN, rateLimit: "auth", body: WsTicketRequest, response: WsTicket }),
   signingKeys: endpoint({ method: "GET", path: "/auth/signing-keys", access: PUBLIC, response: SigningKeys }),
   time: endpoint({ method: "GET", path: "/time", access: PUBLIC, response: ServerTime }),

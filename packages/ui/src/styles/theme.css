@@ -36,7 +36,7 @@
   --radius: 0;
 
   /* One accent, never a fill (D-01). */
-  --brand: #0aa7c2;
+  --brand: #8ab4ff; /* Daybreak blue (Option 1, chosen). 9.5:1 on the ground. */
 
   /* Signals — the only semantic chroma. */
   --success: #43c07a; /* admitted / healthy */
@@ -56,10 +56,10 @@
   --action-foreground: var(--background);
 
   /* Type families. An identity overrides these three; components never name a face.
-     Interim: the faces in docs/05 §4. */
-  --type-display: "Fraunces Variable", ui-serif, Georgia, serif;
-  --type-ui: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
-  --type-data: "JetBrains Mono Variable", ui-monospace, monospace;
+     Option 1 (chosen): Bricolage Grotesque, Instrument Sans, Geist Mono. */
+  --type-display: "Bricolage Grotesque Variable", ui-sans-serif, system-ui, sans-serif;
+  --type-ui: "Instrument Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --type-data: "Geist Mono Variable", ui-monospace, monospace;
 
   color-scheme: dark;
 }

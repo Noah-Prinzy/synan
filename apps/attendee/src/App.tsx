@@ -13,8 +13,6 @@ const PassPair = lazy(() => import("./screens/pass-pair"));
 const Agenda = lazy(() => import("./screens/agenda"));
 const Notifications = lazy(() => import("./screens/notifications"));
 const Account = lazy(() => import("./screens/account"));
-// BRAND BOARD (dev only, throwaway): removed from production builds by the DEV check.
-const BrandBoard = import.meta.env.DEV ? lazy(() => import("./screens/brand-board")) : null;
 
 /** RouteFallback: a quiet ground while a route's chunk loads; no spinner for short waits. */
 function RouteFallback() {
@@ -42,7 +40,6 @@ export default function App() {
         <Route path="/account" element={<Gate><Account /></Gate>} />
         <Route path="/sign-in" element={<Auth />} />
         <Route path="/verify" element={<Auth />} />
-        {BrandBoard ? <Route path="/brand" element={<BrandBoard />} /> : null}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>

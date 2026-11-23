@@ -22,8 +22,11 @@ export const Venue = z.object({
   name: z.string().min(1).max(200),
   address: z.string().max(500),
   timezone: IanaTimezone,
+  /** Shown in discovery (venues.city). Optional for backward compatibility. */
+  city: z.string().max(100).nullable().optional(),
 });
 export type Venue = z.infer<typeof Venue>;
+export const UpdateVenue = Venue.omit({ id: true, org_id: true }).partial();
 export const CreateVenue = Venue.omit({ id: true, org_id: true });
 
 export const Zone = z.object({
@@ -82,13 +85,22 @@ export const Checkpoint = z.object({
 export type Checkpoint = z.infer<typeof Checkpoint>;
 
 export const CheckpointQuery = PageQuery.extend({ venue_id: Id.optional(), event_id: Id.optional() });
+export const CreateCheckpoint = Checkpoint.omit({ id: true });
+export type CreateCheckpoint = z.infer<typeof CreateCheckpoint>;
+export const UpdateCheckpoint = Checkpoint.omit({ id: true, venue_id: true }).partial();
+/** GET /checkpoints/:id/scans: scans are per event; without event_id the venue's live event is used. */
+export const CheckpointScansQuery = PageQuery.extend({ event_id: Id.optional() });
 
 /** A scan as seen by operators — ephemeral id only, never identity (03 §5). */
 export const ScanRecord = z.object({
   id: Id,
   event_id: Id,
   checkpoint_id: Id,
-  /** Null for an unknown token. */
+  /**
+   * Always null in general lists (GET /scans, GET /checkpoints/:id/scans): a stable per-person id
+   * would let a list be regrouped into individual movement trails (03 §5). Present only in the
+   * audited access-history lookup, GET /credentials/:id/scans.
+   */
   ephemeral_id: z.string().nullable(),
   /** Server-derived; null for an unknown token. */
   carrier_kind: CarrierKind.nullable(),
@@ -127,6 +139,11 @@ export const venueEndpoints = {
   updateRoom: endpoint({ method: "PUT", path: "/rooms/:id", access: ADMIN_ONLY, audited: true, params: IdParam, body: UpdateRoom, response: Room }),
   recountRoom: endpoint({ method: "POST", path: "/rooms/:id/recount", access: OPERATORS, audited: true, params: IdParam, body: RecountRequest, response: RecountResult }),
   listCheckpoints: endpoint({ method: "GET", path: "/checkpoints", access: OPS_AND_SECURITY, query: CheckpointQuery, response: pageOf(Checkpoint) }),
-  checkpointScans: endpoint({ method: "GET", path: "/checkpoints/:id/scans", access: OPERATORS, params: IdParam, query: PageQuery, response: pageOf(ScanRecord) }),
+  checkpointScans: endpoint({ method: "GET", path: "/checkpoints/:id/scans", access: OPERATORS, params: IdParam, query: CheckpointScansQuery, response: pageOf(ScanRecord) }),
+  /** Not in 02 §5: create and edit gates (the layout needs them; only GET /checkpoints was listed). */
+  createCheckpoint: endpoint({ method: "POST", path: "/checkpoints", access: ADMIN_ONLY, audited: true, body: CreateCheckpoint, response: Checkpoint, status: 201 }),
+  updateCheckpoint: endpoint({ method: "PUT", path: "/checkpoints/:id", access: ADMIN_ONLY, audited: true, params: IdParam, body: UpdateCheckpoint, response: Checkpoint }),
+  /** Not in 02 §5: edit a venue's name, address, timezone or city. */
+  updateVenue: endpoint({ method: "PUT", path: "/venues/:id", access: ADMIN_ONLY, audited: true, params: IdParam, body: UpdateVenue, response: Venue }),
   gateHealth: endpoint({ method: "GET", path: "/gates/health", access: OPERATORS, query: z.object({ event_id: Id }), response: z.object({ items: z.array(GateHealth) }) }),
 } as const;

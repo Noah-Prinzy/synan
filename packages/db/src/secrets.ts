@@ -159,6 +159,42 @@ export function emailBlindIndex(cipher: Cipher, email: string): string {
   return cipher.blindIndex(email);
 }
 
+/* ------------------------------------------------------------------ operator email */
+
+export type NewUserInput = Omit<typeof users.$inferInsert, "email" | "email_hash"> & { email: string };
+
+/** Encrypted users.email and its blind index ("user" domain) for one row. */
+export function encryptUserEmail(cipher: Cipher, userId: string, email: string): { email: string; email_hash: string } {
+  return { email: cipher.encrypt(email, ctx("users", "email", userId)), email_hash: cipher.blindIndex(email, "user") };
+}
+
+/** Inserts an operator or staff user with the address encrypted and blind-indexed. Returns the id. */
+export async function insertUser(db: Db, cipher: Cipher, u: NewUserInput): Promise<string> {
+  const id = u.id ?? randomUUID();
+  await db.insert(users).values({ ...u, id, ...encryptUserEmail(cipher, id, u.email) });
+  return id;
+}
+
+export async function setUserEmail(db: Db, cipher: Cipher, userId: string, email: string): Promise<void> {
+  await db.update(users).set(encryptUserEmail(cipher, userId, email)).where(eq(users.id, userId));
+}
+
+/** A users row with `email` decrypted. */
+export function decryptUserRow(cipher: Cipher, row: typeof users.$inferSelect): typeof users.$inferSelect {
+  return { ...row, email: cipher.decrypt(row.email, ctx("users", "email", row.id)) };
+}
+
+/** Sign-in lookup by blind index, trying every configured key (case-insensitive by normalisation). */
+export async function findUserByEmail(db: Db, cipher: Cipher, email: string): Promise<typeof users.$inferSelect | null> {
+  const rows = await db.select().from(users).where(inArray(users.email_hash, cipher.blindIndexCandidates(email, "user"))).limit(1);
+  return rows[0] ? decryptUserRow(cipher, rows[0]) : null;
+}
+
+export async function readUserEmail(db: Db, cipher: Cipher, userId: string): Promise<string | null> {
+  const rows = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  return rows[0] ? decryptUserRow(cipher, rows[0]).email : null;
+}
+
 /* ------------------------------------------------------------------ MFA secret */
 
 /** Stores (or clears, with null) a user's MFA secret, encrypted and bound to the user row. */
@@ -230,11 +266,14 @@ interface Target {
   column: string;
   jsonb: boolean;
   vault: boolean;
+  /** users.email: also (re)write email_hash in the same statement. */
+  userEmail?: boolean;
 }
 const TARGETS: Target[] = [
   { name: "attendees.email", table: "pii_vault.attendees", column: "email", jsonb: false, vault: true },
   { name: "attendees.full_name", table: "pii_vault.attendees", column: "full_name", jsonb: false, vault: true },
   { name: "attendees.profile_jsonb", table: "pii_vault.attendees", column: "profile_jsonb", jsonb: true, vault: true },
+  { name: "users.email", table: "users", column: "email", jsonb: false, vault: false, userEmail: true },
   { name: "users.mfa_secret_enc", table: "users", column: "mfa_secret_enc", jsonb: false, vault: false },
   { name: "signing_keys.private_key_enc", table: "signing_keys", column: "private_key_enc", jsonb: false, vault: false },
 ];
@@ -255,6 +294,8 @@ export interface ReencryptOptions {
   vault?: AnyDb;
   cipher: Cipher;
   batchSize?: number;
+  /** Re-encrypt users.email (and rewrite users.email_hash). Default true; enforced since migration 0009. */
+  includeUserEmail?: boolean;
   /** Called after each committed batch. Throwing stops the run; committed batches stay done. */
   onBatch?: (p: ReencryptProgress) => void | Promise<void>;
 }
@@ -275,6 +316,7 @@ export async function reencryptSecrets(opts: ReencryptOptions): Promise<Record<s
   const summary: Record<string, { updated: number; raced: number }> = {};
 
   for (const t of TARGETS) {
+    if (t.userEmail && opts.includeUserEmail === false) continue;
     const conn = t.vault ? (opts.vault ?? opts.db) : opts.db;
     const col = sql.identifier(t.column);
     const table = sql.raw(t.table.split(".").map((p) => `"${p}"`).join("."));
@@ -303,14 +345,17 @@ export async function reencryptSecrets(opts: ReencryptOptions): Promise<Record<s
             oldParam = JSON.stringify(v);
           } else {
             const v = String(r.v);
-            const plain = cipher.isEnvelope(v) ? cipher.decrypt(v, where) : v;
+            const plain = cipher.isEnvelope(v) ? cipher.decrypt(v, where) : v; // non-envelope = legacy plaintext to encrypt
             next = cipher.encrypt(plain, where);
             oldParam = v;
           }
           const upd = (await tx.execute(
             t.jsonb
               ? sql`update ${table} set ${col} = ${JSON.stringify(next)}::jsonb where id = ${r.id}::uuid and ${col} = ${oldParam}::jsonb`
-              : sql`update ${table} set ${col} = ${next as string} where id = ${r.id}::uuid and ${col} = ${oldParam}`,
+              : t.userEmail
+                ? sql`update ${table} set ${col} = ${next as string}, email_hash = ${cipher.blindIndex(cipher.decrypt(next as string, where), "user")}
+                       where id = ${r.id}::uuid and ${col} = ${oldParam}`
+                : sql`update ${table} set ${col} = ${next as string} where id = ${r.id}::uuid and ${col} = ${oldParam}`,
           )) as unknown as { rowCount?: number | null; affectedRows?: number };
           const n = upd.rowCount ?? upd.affectedRows ?? 0;
           if (n === 1) updated++;
@@ -337,10 +382,23 @@ export async function reencryptSecrets(opts: ReencryptOptions): Promise<Record<s
  */
 export async function reindexEmailBlindIndex(opts: {
   vault: AnyDb;
+  /** General connection: when given, users.email_hash is re-indexed too (all rows, in one pass). */
+  db?: AnyDb;
   cipher: Cipher;
   batchSize?: number;
   after?: string;
-}): Promise<{ updated: number; scanned: number; lastId: string }> {
+}): Promise<{ updated: number; scanned: number; lastId: string; usersUpdated: number }> {
+  let usersUpdated = 0;
+  if (opts.db) {
+    const all = await opts.db.select({ id: users.id, email: users.email, email_hash: users.email_hash }).from(users);
+    for (const u of all) {
+      const want = opts.cipher.blindIndex(opts.cipher.decrypt(u.email, ctx("users", "email", u.id)), "user");
+      if (want !== u.email_hash) {
+        const res = await opts.db.update(users).set({ email_hash: want }).where(and(eq(users.id, u.id), eq(users.email, u.email))).returning({ id: users.id });
+        usersUpdated += res.length;
+      }
+    }
+  }
   const batch = opts.batchSize ?? 200;
   let after = opts.after ?? "00000000-0000-0000-0000-000000000000";
   let updated = 0;
@@ -371,5 +429,5 @@ export async function reindexEmailBlindIndex(opts: {
     });
     if (n < batch) break;
   }
-  return { updated, scanned, lastId: after };
+  return { updated, scanned, lastId: after, usersUpdated };
 }

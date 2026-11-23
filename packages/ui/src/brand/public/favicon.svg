@@ -1,5 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <title>Synan</title>
   <rect width="32" height="32" fill="#0A0A0A"/>
-  <rect x="0.5" y="0.5" width="31" height="31" fill="none" stroke="#FAFAFA" stroke-opacity="0.25"/>
-  <text x="16" y="22.5" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="18" font-weight="600" fill="#FAFAFA">S</text>
+  <g transform="translate(-1.920 -1.920) scale(1.1200)">
+    <path d="M4 4H16A6.85 6.85 0 0 0 16 17.7A3.45 3.45 0 0 1 16 24.6H4Z" fill="#FAFAFA"/>
+    <path d="M28 7.4H16A3.45 3.45 0 0 0 16 14.3A6.85 6.85 0 0 1 16 28H28Z" fill="#8AB4FF"/>
+  </g>
 </svg>

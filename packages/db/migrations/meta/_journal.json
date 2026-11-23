@@ -50,6 +50,48 @@
       "when": 1795425969822,
       "tag": "0006_enforcement_prepared",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795430004524,
+      "tag": "0007_users_email_hash",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795430005628,
+      "tag": "0008_enforce",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795430938049,
+      "tag": "0009_enforce_user_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795430944648,
+      "tag": "0010_users_email_hash_required",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795431933228,
+      "tag": "0011_reporting_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795431934826,
+      "tag": "0012_phase4_core",
+      "breakpoints": true
     }
   ]
 }

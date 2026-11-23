@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { Id, IsoDateTime, pageOf, PageQuery } from "../common.js";
 import { AlertKind, AlertState, AttendeeTier, CarrierKind, ScanDirection, ScanResult, Severity } from "../enums/index.js";
+import { ErrorCode } from "../errors/index.js";
 import { endpoint, IdParam, OPERATORS, type Access } from "./endpoint.js";
 import { ScanRecord } from "./venue.js";
 
@@ -58,8 +59,23 @@ export const ScanOutcome = z.object({
 });
 export type ScanOutcome = z.infer<typeof ScanOutcome>;
 
+/**
+ * A scan the server refused to apply, with why. The rest of the batch is applied regardless, so one
+ * bad item never blocks an offline queue. The client should drop or park exactly these idem_keys.
+ */
+export const ScanRejection = z.object({
+  idem_key: z.string(),
+  /** CHECKPOINT_NOT_ASSIGNED, OUTSIDE_SHIFT, NOT_FOUND (checkpoint), VALIDATION_FAILED, IDEMPOTENCY_CONFLICT. */
+  code: ErrorCode,
+  message: z.string(),
+});
+export type ScanRejection = z.infer<typeof ScanRejection>;
+
 export const ScanBatchResponse = z.object({
+  /** One outcome per applied (or replayed) scan, in request order. Rejected scans are not here. */
   results: z.array(ScanOutcome),
+  /** Scans refused individually. Always sent by the server (possibly empty). */
+  rejected: z.array(ScanRejection).optional(),
   server_time: IsoDateTime,
 });
 export type ScanBatchResponse = z.infer<typeof ScanBatchResponse>;
@@ -105,4 +121,18 @@ export const scanEndpoints = {
   listAlerts: endpoint({ method: "GET", path: "/breach-alerts", access: OPS_AND_SECURITY, query: AlertQuery, response: pageOf(BreachAlert) }),
   ackAlert: endpoint({ method: "POST", path: "/alerts/:id/ack", access: OPS_AND_SECURITY, audited: true, params: IdParam, response: BreachAlert }),
   resolveAlert: endpoint({ method: "POST", path: "/alerts/:id/resolve", access: OPERATORS, audited: true, params: IdParam, body: ResolveAlert, response: BreachAlert }),
+  /**
+   * Not in 02 §5: the audited access-history lookup of one credential (03 §5, §7). The only way an
+   * operator sees one person's movement over time; every call is written to the audit log.
+   * `event_id` is required for staff credentials, which are not tied to one event.
+   */
+  credentialScans: endpoint({
+    method: "GET",
+    path: "/credentials/:id/scans",
+    access: OPERATORS,
+    audited: true,
+    params: IdParam,
+    query: PageQuery.extend({ event_id: Id.optional() }),
+    response: pageOf(ScanRecord),
+  }),
 } as const;

@@ -2,7 +2,11 @@
 import { z } from "zod";
 
 /** Opaque resource identifier (UUID). Never sequential, never a credential token. */
-export const Id = z.uuid();
+/**
+ * Canonicalised to lower case at the boundary: PostgreSQL compares uuids case-insensitively, so two
+ * spellings of one id must never reach the server as different strings (locks, caches, maps).
+ */
+export const Id = z.uuid().overwrite((s) => s.toLowerCase());
 export type Id = z.infer<typeof Id>;
 
 /** ISO-8601 UTC timestamp string, e.g. `2026-11-23T10:00:00.000Z`. */

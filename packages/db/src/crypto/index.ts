@@ -177,6 +177,9 @@ export function generateKeyMaterial(): string {
 
 /* --------------------------------------------------------------------- cipher */
 
+/** Separates blind-index values of different tables. */
+export type BlindIndexDomain = "attendee" | "user";
+
 export function normalizeEmail(email: string): string {
   return email.normalize("NFKC").trim().toLowerCase();
 }
@@ -187,18 +190,22 @@ export interface Cipher {
   /** Whether stored values that are not envelopes are returned as legacy plaintext (true) or refused. */
   readonly allowLegacyPlaintext: boolean;
   encrypt(plaintext: string, ctx: FieldContext): string;
-  /** Decrypts an envelope; with allowLegacyPlaintext, returns a non-envelope value unchanged. */
-  decrypt(stored: string, ctx: FieldContext): string;
+  /**
+   * Decrypts an envelope. A non-envelope value is refused unless legacy plaintext is allowed — by the
+   * cipher, or for one call with `{ allowPlaintext: true }` (only for columns whose enforcement is
+   * not on yet, e.g. users.email).
+   */
+  decrypt(stored: string, ctx: FieldContext, opts?: { allowPlaintext?: boolean }): string;
   isEnvelope(value: unknown): value is string;
   keyIdOf(envelope: string): string | null;
   /** Blind index (64 hex) under the active blind-index key. */
-  blindIndex(value: string): string;
+  blindIndex(value: string, domain?: BlindIndexDomain): string;
   /** Blind index under every configured blind-index key, active first — for lookups during rotation. */
-  blindIndexCandidates(value: string): string[];
+  blindIndexCandidates(value: string, domain?: BlindIndexDomain): string[];
 }
 
 export interface CreateCipherOptions {
-  /** Default true while existing rows may still be plaintext; set false once enforcement is on. */
+  /** Default false: enforcement is on (migration 0008). Set true only to read data written before it. */
   allowLegacyPlaintext?: boolean;
 }
 
@@ -216,10 +223,14 @@ export async function createCipher(provider: KeyProvider, options: CreateCipherO
   for (const kid of provider.keyIds("blind_index")) biKeys.set(kid, Buffer.from(await provider.getKey("blind_index", kid)));
   const activeData = provider.activeKeyId("data");
   const activeBi = provider.activeKeyId("blind_index");
-  const allowLegacyPlaintext = options.allowLegacyPlaintext ?? true;
+  const allowLegacyPlaintext = options.allowLegacyPlaintext ?? false;
 
-  const hmac = (kid: string, value: string) =>
-    createHmac("sha256", biKeys.get(kid)!).update(normalizeEmail(value), "utf8").digest("hex");
+  // The attendee domain hashes the bare address (unchanged since the first release); other domains
+  // are prefixed, so an operator and an attendee with the same address get unrelated index values.
+  const hmac = (kid: string, value: string, domain: BlindIndexDomain = "attendee") =>
+    createHmac("sha256", biKeys.get(kid)!)
+      .update(domain === "attendee" ? normalizeEmail(value) : `${domain} ${normalizeEmail(value)}`, "utf8")
+      .digest("hex");
 
   const cipher: Cipher = {
     activeDataKeyId: activeData,
@@ -232,10 +243,10 @@ export async function createCipher(provider: KeyProvider, options: CreateCipherO
       const ct = Buffer.concat([c.update(plaintext, "utf8"), c.final(), c.getAuthTag()]);
       return `ev1.${activeData}.${iv.toString("base64url")}.${ct.toString("base64url")}`;
     },
-    decrypt(stored, ctx) {
+    decrypt(stored, ctx, opts) {
       if (!ENVELOPE_RE.test(stored)) {
         if (stored.startsWith("ev1.")) throw new CipherError("malformed", `malformed envelope in ${ctx.table}.${ctx.column}`);
-        if (allowLegacyPlaintext) return stored;
+        if (allowLegacyPlaintext || opts?.allowPlaintext) return stored;
         throw new CipherError("plaintext_rejected", `${ctx.table}.${ctx.column} holds a value that is not encrypted`);
       }
       const [, kid, ivB, ctB] = stored.split(".") as [string, string, string, string];
@@ -262,11 +273,11 @@ export async function createCipher(provider: KeyProvider, options: CreateCipherO
     keyIdOf(envelope) {
       return ENVELOPE_RE.test(envelope) ? envelope.split(".")[1]! : null;
     },
-    blindIndex(value) {
-      return hmac(activeBi, value);
+    blindIndex(value, domain) {
+      return hmac(activeBi, value, domain);
     },
-    blindIndexCandidates(value) {
-      return [...new Set([activeBi, ...biKeys.keys()].map((kid) => hmac(kid, value)))];
+    blindIndexCandidates(value, domain) {
+      return [...new Set([activeBi, ...biKeys.keys()].map((kid) => hmac(kid, value, domain)))];
     },
   };
   Object.defineProperty(cipher, inspect.custom, {

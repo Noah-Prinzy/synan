@@ -8,18 +8,18 @@ something is built, update §1 here; do not write a separate report.
 ## 1. Where we are
 
 Last updated: 2026-11-23. Checked on this date by running them: all 8 workspace packages typecheck;
-all three apps build; 252 automated tests pass (database 70, contracts 15, API 167 on each of its two
+all three apps build; 355 automated tests pass (database 120, contracts 16, API 219 on each of its two
 storage backends).
 
 | Phase | Status | Detail |
 | --- | --- | --- |
-| Checkpoint 0 — look | **Reopened** | Full rebrand to Synan (D-18, D-19). Structure decided (Direction A); identity being chosen from a brand board |
+| Checkpoint 0 — look | **Done** | Identity chosen and applied (D-20). Mock-up files deleted |
 | 0 — Foundations | **Done, with gaps** | See §1.1 |
 | 1 — Attendee Portal | **In progress** | A1–A9 run on the mock layer; Direction A redesign under way. A10, A11 not started. See §1.2 |
 | 1B — Backend skeleton | **Mostly done** | See §1.3 |
 | 2 — Admin Command | **Started** | D1 only, and not yet to the specified structure |
 | 3 — Gate Scanner | **Scaffolded** | Five routes; one working verdict screen on mock data, four placeholders |
-| 4 — Backend completion | Not started | 46 of the 70 endpoints have contracts only |
+| 4 — Backend completion | Not started | 46 of the 72 endpoints have contracts only |
 | 5 — Hardening | Not started | |
 | 6 — Edge AI | Not started | |
 
@@ -31,7 +31,7 @@ storage backends).
 | `apps/attendee`, `apps/admin`, `apps/scanner` | All exist, build, and share one theme from `packages/ui` |
 | `apps/api` | Exists (see §1.3) |
 | `packages/ui` | Tokens, one shared theme file, motion, 10 components, the brand module |
-| `packages/contracts` | Done: every enum, all 70 REST endpoints, all four WebSocket channels, error and scan-result copy |
+| `packages/contracts` | Done: every enum, all 72 REST endpoints, all four WebSocket channels, error and scan-result copy |
 | `packages/db` | Done: the full schema, migrations, rules, purge, seed (see §1.4) |
 | `packages/mock` | Seeded fixtures, controllable clock, `MockRealtime`, all nine scenarios. **MSW request handlers not built**: apps read an in-process store that returns the contract shapes |
 
@@ -56,7 +56,7 @@ admin 113 KB (budget 180 KB, met); scanner scaffold 117 KB.
 
 ### 1.3 Backend — what exists
 
-- **Implemented and tested (24 endpoints):** operator sign-in and refresh, attendee email-link
+- **Implemented and tested (26 endpoints):** operator sign-in and refresh, attendee email-link
   sign-in, MFA step-up, WebSocket tickets, signing keys, server time; event list, detail, and
   sessions; own credential, own registration, and signed QR codes; credential revoke, clear-review, and resend; scan
   ingest with the full decision order and occupancy rules; scan list; alerts list, acknowledge, and
@@ -76,20 +76,26 @@ in-process PostgreSQL (PGlite). That leaves these **unverified**:
 
 ### 1.5 Known gaps against the specification
 
-1. **Identity.** The wordmark, mark, and icons are being replaced for Synan (D-18).
-2. **Secrets are stored unencrypted**: MFA secrets, signing private keys, and attendee name and
-   email in the identity vault. No key management exists yet. Must be closed before any real data.
-3. **Sign-in sessions, email links, WebSocket tickets, and rate-limit counters live in server
-   memory.** They are lost on restart and unsafe across more than one server. Tables are needed.
-4. **Not built in the backend:** the signed offline allowlist, wristband binding, invitations,
+1. **Identity.** Done: the Fit logo and custom "[S]ynan" wordmark are applied in all three apps. Not yet seen: the browser-tab icon in a real tab, and the pass at phone width after the last change.
+2. **Secrets are now encrypted by the API** on the SQL backend: attendee identity, MFA secrets, and
+   signing keys, verified by a raw dump of stored rows. Still open: the database rule that rejects
+   plaintext is switched on, and now covers operator email too (migrations 0008–0010); the in-memory
+   backend used for development does not encrypt.
+3. **Sign-in sessions, email links, and WebSocket tickets now live in the database** and survive a
+   restart. Rate-limit counters and the MFA replay guard remain in memory. The three-role
+   database split is wired in but has never run against a real PostgreSQL server.
+4. **The backend security review's 18 confirmed findings are fixed**, each with a test, on both storage
+   backends. One residual: an offline scanner can still back-date a scan within its own shift
+   until the sync grace period ends.
+5. **Not built in the backend:** the signed offline allowlist, wristband binding, invitations,
    registration, venue and staff management, reports, webhooks, background jobs (purge, export,
    email), session-end occupancy reset, scanner heartbeats, real email delivery.
-5. **Fixed readers cannot authenticate** — no mechanism is specified (O-17).
-6. **Pass bundle over budget** (O-15).
-7. **Attendee screens** still lack loading, error, and offline states on most screens, and the
+6. **Fixed readers cannot authenticate** — no mechanism is specified (O-17).
+7. **Pass bundle over budget** (O-15).
+8. **Attendee screens** still lack loading, error, and offline states on most screens, and the
    phone bottom bar, footer, and error boundary. Being addressed in the Direction A rebuild.
-8. **Admin D1** does not match its specification: no map, rooms rail, live indicator, or alert strip.
-9. **Operator login lockout** (5 failures in 15 minutes) can be used to lock a named operator out.
+9. **Admin D1** does not match its specification: no map, rooms rail, live indicator, or alert strip.
+10. **Operator login lockout** (5 failures in 15 minutes) can be used to lock a named operator out.
 
 ---
 

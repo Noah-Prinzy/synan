@@ -22,6 +22,7 @@ import type {
   CheckpointDirection,
   CredentialState,
   EventState,
+  InvitationState,
   OccupancyAdjustmentReason,
   RegistrationState,
   Role,
@@ -98,6 +99,16 @@ export interface EventRow {
   listed_bool: boolean;
   /** Hours (O-06). */
   grace_buffer: number;
+  /** Pass template; publishing requires one (01 §9). */
+  pass_template_jsonb: Record<string, unknown> | null;
+  /** Event-defined attendee profile fields (GET /events/:slug/profile-schema). */
+  profile_schema_jsonb: unknown[];
+  /** Optimistic-concurrency version of the access-rule set; bumped on every republish. */
+  access_rules_version: number;
+  /** Bumped on every revocation; carried in the signed offline allowlist. */
+  revocation_epoch: number;
+  /** Set when the event closes; starts the retention clock (03 §6). */
+  closed_at: Date | null;
 }
 export interface EventRoomRow { event_id: string; room_id: string; capacity_override: number | null }
 export interface SessionRow { id: string; event_id: string; room_id: string; title: string; starts_at: Date; ends_at: Date }
@@ -150,10 +161,15 @@ export interface CarrierRow {
 export interface SigningKeyRow {
   id: string;
   purpose: SigningKeyPurpose;
+  /** 4-byte key id carried in compact QR codes, 8 lowercase hex (unique). */
+  qr_kid: string;
   /** Public JWK JSON. */
   public_key: string;
-  /** Private JWK JSON (encrypted in the real store). */
-  private_key_enc: string;
+  /**
+   * Private JWK JSON, in the clear at this boundary. The SQL repository encrypts it into
+   * signing_keys.private_key_enc (AES-256-GCM envelope); the in-memory repository does not encrypt.
+   */
+  private_key: string;
   active_from: Date;
   retired_at: Date | null;
 }
@@ -236,25 +252,64 @@ export interface GateRateRollupRow {
   by_tier_jsonb: Partial<Record<AttendeeTier | "UNKNOWN" | "STAFF", number>>;
 }
 
-/** PROPOSED table `auth_sessions`: refresh-token families with rotation and reuse detection. */
-export interface AuthSessionRow {
-  id: string;
-  principal_kind: "user" | "attendee";
-  principal_id: string;
-  refresh_hash: string;
-  family_id: string;
-  expires_at: Date;
-  used_at: Date | null;
-  revoked_at: Date | null;
-  mfa_at: Date | null;
+/* ---- sign-in state (mirrors @synan/db src/auth.ts and the SQL functions of migration 0004) ---- */
+
+export type AuthHolder = { userId: string; attendeeId?: never } | { attendeeId: string; userId?: never };
+export type AuthRevokeReason = "logout" | "reuse_detected" | "mfa_step_up" | "operator" | "credential_change" | "erasure";
+export type WsChannelPath = "/stream/scans" | "/stream/telemetry" | "/stream/alerts" | "/stream/me";
+
+export interface StartSessionInput {
+  holder: AuthHolder;
+  familyId: string;
+  /** base64url SHA-256 of the refresh token (43 chars). */
+  tokenHash: string;
+  expiresAt: Date;
+  mfaAt: Date | null;
+  userAgent?: string | null;
+  ip?: string | null;
+  now: Date;
 }
 
-/** PROPOSED table `auth_links`: single-use attendee sign-in links. */
-export interface AuthLinkRow {
-  token_hash: string;
-  attendee_id: string;
-  expires_at: Date;
-  used_at: Date | null;
+/** New refresh lifetime by holder kind; the store picks it inside the same atomic step as the exchange. */
+export interface RefreshTtl {
+  userSeconds: number;
+  attendeeSeconds: number;
+}
+
+export interface RotateResult {
+  status: "rotated" | "invalid" | "revoked" | "expired" | "reuse_detected";
+  family_id: string | null;
+  user_id: string | null;
+  attendee_id: string | null;
+  mfa_at: Date | null;
+  /** When rotated: expiry of the new token. */
+  expires_at: Date | null;
+}
+
+export interface RedeemLinkResult {
+  status: "redeemed" | "invalid" | "already_redeemed" | "expired";
+  attendee_id: string | null;
+}
+
+export interface MintTicketInput {
+  ticketHash: string;
+  holder: AuthHolder;
+  sessionFamilyId: string | null;
+  channel: WsChannelPath;
+  eventId: string | null;
+  checkpointId: string | null;
+  expiresAt: Date;
+  now: Date;
+}
+
+export interface ConsumeTicketResult {
+  status: "valid" | "invalid" | "already_consumed" | "expired" | "revoked";
+  user_id: string | null;
+  attendee_id: string | null;
+  session_family_id: string | null;
+  channel: WsChannelPath | null;
+  event_id: string | null;
+  checkpoint_id: string | null;
 }
 
 /* ---------------------------------------------------------------- interfaces */
@@ -269,6 +324,36 @@ export interface AttendeesRepo {
   byEmail(email: string): Promise<AttendeeRow | null>;
   byId(id: string): Promise<AttendeeRow | null>;
   insert(row: AttendeeRow): Promise<void>;
+  /** Identity through the vault helpers (SQL: updateAttendeeIdentity). False when no such attendee. */
+  update(id: string, patch: { full_name?: string | null; profile_jsonb?: Record<string, unknown>; email?: string | null }): Promise<boolean>;
+  byIds(ids: readonly string[]): Promise<AttendeeRow[]>;
+  /** Every attendee, ordered by id, keyset on id (operator listing; decrypts on the SQL backend). */
+  list(opts: { after?: string; limit: number }): Promise<AttendeeRow[]>;
+}
+
+export interface InvitationRow {
+  id: string;
+  event_id: string;
+  /** Email blind index (64 hex). The address itself is never stored with the invitation. */
+  email_hash: string;
+  /** base64url SHA-256 of the invite token (43 chars). */
+  token_hash: string;
+  state: InvitationState;
+  expires_at: Date;
+  redeemed_at: Date | null;
+  created_at: Date;
+}
+export interface InvitationsRepo {
+  /** The blind index the store uses for `email_hash` (SQL: @synan/db emailBlindIndex; memory: SHA-256 hex). */
+  hashEmail(email: string): string;
+  /** Every hash the store would accept for this address (blind-index rotation). */
+  hashCandidates(email: string): string[];
+  /** `duplicate` when an open (`sent`) invitation already exists for this recipient and event. */
+  insert(row: InvitationRow): Promise<"ok" | "duplicate">;
+  byTokenHash(tokenHash: string): Promise<InvitationRow | null>;
+  /** Atomically `sent` → `redeemed` (stamping redeemed_at) or → `revoked`, only while unexpired at `now`. */
+  consume(id: string, outcome: "redeemed" | "revoked", now: Date): Promise<boolean>;
+  forEvent(eventId: string): Promise<InvitationRow[]>;
 }
 export interface VenuesRepo {
   zonesOfVenue(venueId: string): Promise<ZoneRow[]>;
@@ -278,6 +363,16 @@ export interface VenuesRepo {
   checkpointsOfVenue(venueId: string): Promise<CheckpointRow[]>;
   venue(id: string): Promise<VenueRow | null>;
   transitTimes(venueId: string): Promise<TransitTimeRow[]>;
+  /** Single organisation in v1 (O-01). */
+  organizations(): Promise<{ id: string; name: string; timezone: string; support_email: string }[]>;
+  /** Ordered by name then id; keyset on id. */
+  listVenues(opts: { after?: string; limit: number }): Promise<VenueRow[]>;
+  zone(id: string): Promise<ZoneRow | null>;
+  roomsOfVenue(venueId: string): Promise<RoomRow[]>;
+  updateVenue(id: string, patch: Partial<Omit<VenueRow, "id" | "org_id">>): Promise<VenueRow>;
+  updateZone(id: string, patch: Partial<Omit<ZoneRow, "id" | "venue_id">>): Promise<ZoneRow>;
+  updateRoom(id: string, patch: Partial<Omit<RoomRow, "id" | "venue_id">>): Promise<RoomRow>;
+  updateCheckpoint(id: string, patch: Partial<Omit<CheckpointRow, "id" | "venue_id">>): Promise<CheckpointRow>;
 }
 export interface EventsRepo {
   /** Published or live, listed, ordered by starts_at, keyset-paginated on (starts_at, id). */
@@ -287,12 +382,29 @@ export interface EventsRepo {
   rooms(eventId: string): Promise<EventRoomRow[]>;
   sessions(eventId: string): Promise<SessionRow[]>;
   accessRules(eventId: string): Promise<AccessRuleRow[]>;
+  /** Every event (operators), optionally by state; ordered by starts_at, id; keyset on (starts_at, id). */
+  listAll(opts: { state?: EventState; q?: string; after?: { starts_at: Date; id: string }; limit: number }): Promise<EventRow[]>;
+  update(id: string, patch: Partial<Omit<EventRow, "id" | "org_id" | "venue_id">>): Promise<EventRow>;
+  /** Replace the event's rooms (draft or published only; the caller checks). */
+  setRooms(eventId: string, rooms: EventRoomRow[]): Promise<void>;
+  /**
+   * Atomically replace the rule set if the stored version equals `expectedVersion`. Returns the new
+   * version, or null when another republish won (optimistic concurrency).
+   */
+  replaceAccessRules(eventId: string, expectedVersion: number, rules: AccessRuleRow[]): Promise<number | null>;
 }
 export interface RegistrationsRepo {
   byId(id: string): Promise<RegistrationRow | null>;
   forAttendee(attendeeId: string): Promise<RegistrationRow[]>;
+  forEvent(eventId: string): Promise<RegistrationRow[]>;
   /** Set checked_in_at if it is still null (first admission only). */
   markCheckedIn(id: string, at: Date): Promise<void>;
+  /** `duplicate` when the attendee is already registered for the event (registrations_event_attendee_uq). */
+  insert(row: RegistrationRow & { invitation_id?: string | null }): Promise<"ok" | "duplicate">;
+  /** Tier and state changes. Bumps the event's revocation epoch like the database trigger does. */
+  update(id: string, patch: Partial<Pick<RegistrationRow, "tier" | "state">>): Promise<RegistrationRow>;
+  /** Registration counts per attendee (cancelled excluded). */
+  countByAttendee(attendeeIds: readonly string[]): Promise<Map<string, number>>;
 }
 export interface StaffRepo {
   assignmentsFor(userId: string): Promise<StaffAssignmentRow[]>;
@@ -320,13 +432,15 @@ export interface SigningKeysRepo {
 export interface EphemeralIdsRepo {
   /** Returns the event-scoped ephemeral id for a credential, creating it on first use. */
   getOrCreate(eventId: string, credentialId: string): Promise<string>;
+  /** Read-only lookup; null when the credential has no scans at this event. */
+  find(eventId: string, credentialId: string): Promise<string | null>;
 }
 export interface ScansRepo {
   byIdemKey(eventId: string, idemKey: string): Promise<ScanRow | null>;
   insert(row: ScanRow): Promise<void>;
   /** All scans for an event, ordered by corrected time (occurred_at + clock_offset_ms). Used to rebuild projections. */
   forEvent(eventId: string): Promise<ScanRow[]>;
-  page(eventId: string, opts: { checkpointId?: string; result?: ScanResult; limit: number; before?: string }): Promise<ScanRow[]>;
+  page(eventId: string, opts: { checkpointId?: string; result?: ScanResult; ephemeralId?: string; limit: number; before?: string }): Promise<ScanRow[]>;
 }
 export interface OccupancyRepo {
   insertAdjustment(row: OccupancyAdjustmentRow): Promise<void>;
@@ -336,7 +450,8 @@ export interface AlertsRepo {
   insert(row: BreachAlertRow): Promise<void>;
   byId(id: string): Promise<BreachAlertRow | null>;
   update(id: string, patch: Partial<BreachAlertRow>): Promise<BreachAlertRow>;
-  list(opts: { eventId?: string; state?: AlertState; severity?: Severity; limit: number }): Promise<BreachAlertRow[]>;
+  /** `checkpointIds` scopes the list (an empty array returns nothing); the limit applies after scoping. */
+  list(opts: { eventId?: string; state?: AlertState; severity?: Severity; checkpointIds?: readonly string[]; limit: number }): Promise<BreachAlertRow[]>;
 }
 export interface AuditRepo {
   /** Append to the hash chain. The store assigns id, prev_hash and hash atomically. */
@@ -366,15 +481,27 @@ export interface RollupsRepo {
   incrementGateRate(key: { event_id: string; checkpoint_id: string; minute_start: Date }, inc: { admitted: number; denied: number; tier: string }): Promise<void>;
   gateRates(eventId: string): Promise<GateRateRollupRow[]>;
 }
+/**
+ * Sign-in state. Same semantics on both backends (the SQL one is @synan/db's atomic functions):
+ * every secret arrives already hashed; every call takes `now` so a manual clock works.
+ */
 export interface AuthRepo {
-  insertSession(row: AuthSessionRow): Promise<void>;
-  sessionByRefreshHash(hash: string): Promise<AuthSessionRow | null>;
-  /** Atomically mark used if unused. Returns false if it was already used (reuse). */
-  markSessionUsed(id: string, at: Date): Promise<boolean>;
-  revokeFamily(familyId: string, at: Date): Promise<void>;
-  insertLink(row: AuthLinkRow): Promise<void>;
-  /** Atomically consume a link if unused and unexpired. */
-  consumeLink(tokenHash: string, at: Date): Promise<AuthLinkRow | null>;
+  /** Login, email-link sign-in, MFA step-up: a new refresh-token family. */
+  startSession(i: StartSessionInput): Promise<void>;
+  /**
+   * Exchange a refresh token. Presenting an already-exchanged token is reuse: the whole family is
+   * revoked and `reuse_detected` returned. Creates the new row itself.
+   */
+  rotateSession(i: { tokenHash: string; newTokenHash: string; ttl: RefreshTtl; now: Date }): Promise<RotateResult>;
+  revokeFamily(familyId: string, reason: AuthRevokeReason, now: Date): Promise<number>;
+  createLink(i: { tokenHash: string; attendeeId: string; expiresAt: Date; now: Date }): Promise<void>;
+  /** Single use, even under concurrency. Only `redeemed` grants anything. */
+  redeemLink(tokenHash: string, now: Date): Promise<RedeemLinkResult>;
+  mintTicket(i: MintTicketInput): Promise<void>;
+  /** Consumed on first presentation, valid or not. `revoked` when its session family is no longer live. */
+  consumeTicket(ticketHash: string, now: Date): Promise<ConsumeTicketResult>;
+  /** Delete expired state (scheduled). */
+  cleanup(now: Date): Promise<{ sessions: number; links: number; tickets: number }>;
 }
 
 export interface Repos {
@@ -394,6 +521,7 @@ export interface Repos {
   audit: AuditRepo;
   rollups: RollupsRepo;
   auth: AuthRepo;
+  invitations: InvitationsRepo;
   fixtures: FixtureWriter;
   /** Which implementation this is, for logs and tests. */
   kind: "memory" | "drizzle";

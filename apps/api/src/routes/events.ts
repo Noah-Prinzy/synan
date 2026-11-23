@@ -19,7 +19,7 @@ function decodeCursor(c: string | undefined): { starts_at: Date; id: string } | 
   }
 }
 
-async function summary(app: AppContext, e: EventRow): Promise<EventSummary> {
+export async function summary(app: AppContext, e: EventRow): Promise<EventSummary> {
   const venue = await app.repos.venues.venue(e.venue_id);
   return {
     id: e.id,
@@ -35,13 +35,16 @@ async function summary(app: AppContext, e: EventRow): Promise<EventSummary> {
 }
 
 /**
- * People on site now (inside any zone of the event), for public discovery. Same rule as public
- * telemetry: null unless the event is live and the count reaches the minimum crowd size (O-08).
+ * People on site now, for public discovery. Same rule as public telemetry: null unless the event
+ * is live and the count reaches the minimum crowd size (O-08).
  */
 export async function publicOnSite(app: AppContext, e: EventRow): Promise<number | null> {
   if (e.state !== "live") return null;
-  const n = (await app.scans.projection(e.id)).zoneOf.size;
-  return n >= app.config.kAnon ? n : null;
+  const k = app.config.kAnon;
+  // Sum only zones that are themselves shown publicly, so this total reveals nothing the public zone
+  // view hides: total − visible zones can never recover a suppressed zone's count.
+  const n = (await app.scans.projection(e.id)).allZones().reduce((sum, z) => sum + ((z.occupancy ?? 0) >= k ? z.occupancy! : 0), 0);
+  return n >= k ? n : null;
 }
 
 /**
@@ -61,13 +64,22 @@ export async function canSeeEvent(app: AppContext, e: EventRow, ctx: AuthContext
 }
 
 export function eventRoutes(x: Express, app: AppContext) {
-  mount(x, app, endpoints.listEvents, async ({ query }) => {
-    const rows = await app.repos.events.listPublic({
-      state: query.state,
-      q: query.q,
-      after: decodeCursor(query.cursor),
-      limit: query.limit + 1,
-    });
+  mount(x, app, endpoints.listEvents, async ({ query, ctx }) => {
+    let rows: EventRow[];
+    if (query.scope === "all") {
+      // Every state, listed or not: operators only. Refused (not silently narrowed) for anyone else.
+      if (ctx?.kind !== "operator") throw new ContractError("FORBIDDEN");
+      rows = await app.repos.events.listAll({ state: query.state, q: query.q, after: decodeCursor(query.cursor), limit: query.limit + 1 });
+    } else {
+      // Discovery: published or live, listed only. Any other requested state matches nothing.
+      if (query.state && query.state !== "published" && query.state !== "live") return { items: [], next_cursor: null };
+      rows = await app.repos.events.listPublic({
+        state: query.state as "published" | "live" | undefined,
+        q: query.q,
+        after: decodeCursor(query.cursor),
+        limit: query.limit + 1,
+      });
+    }
     const page = rows.slice(0, query.limit);
     return {
       items: await Promise.all(page.map((e) => summary(app, e))),
@@ -78,6 +90,29 @@ export function eventRoutes(x: Express, app: AppContext) {
   mount(x, app, endpoints.getEvent, async ({ params, ctx }) => {
     const e = await app.repos.events.bySlug(params.slug);
     if (!e || !(await canSeeEvent(app, e, ctx))) throw new ContractError("NOT_FOUND");
+    return detailOf(app, e);
+  });
+
+  mount(x, app, endpoints.eventSessions, async ({ params, ctx }) => {
+    const e = await app.repos.events.byId(params.id);
+    if (!e || !(await canSeeEvent(app, e, ctx))) throw new ContractError("NOT_FOUND");
+    const sessions = await app.repos.events.sessions(e.id);
+    return {
+      items: sessions.map((s) => ({
+        id: s.id,
+        event_id: s.event_id,
+        room_id: s.room_id,
+        title: s.title,
+        starts_at: s.starts_at.toISOString(),
+        ends_at: s.ends_at.toISOString(),
+      })),
+    };
+  });
+}
+
+/** Public detail of an event (the caller has already checked visibility). */
+export async function detailOf(app: AppContext, e: EventRow): Promise<EventDetail> {
+  {
     const eventRooms = await app.repos.events.rooms(e.id);
     const rooms = await app.repos.venues.roomsByIds(eventRooms.map((r) => r.room_id));
     const sessions = await app.repos.events.sessions(e.id);
@@ -100,21 +135,5 @@ export function eventRoutes(x: Express, app: AppContext) {
       })),
     };
     return detail;
-  });
-
-  mount(x, app, endpoints.eventSessions, async ({ params, ctx }) => {
-    const e = await app.repos.events.byId(params.id);
-    if (!e || !(await canSeeEvent(app, e, ctx))) throw new ContractError("NOT_FOUND");
-    const sessions = await app.repos.events.sessions(e.id);
-    return {
-      items: sessions.map((s) => ({
-        id: s.id,
-        event_id: s.event_id,
-        room_id: s.room_id,
-        title: s.title,
-        starts_at: s.starts_at.toISOString(),
-        ends_at: s.ends_at.toISOString(),
-      })),
-    };
-  });
+  }
 }

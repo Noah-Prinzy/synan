@@ -46,7 +46,7 @@ export default function Command() {
           onOpenRail={() => setRailOpen(true)}
         />
         <main id="overview" className="px-6 py-8 md:px-10">
-          <div className="mx-auto w-full max-w-[1600px]">
+          <div className="mx-auto w-full max-w-400">
             <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
               <div className="space-y-6">
                 <HeroPanel />
@@ -77,7 +77,7 @@ function IndexRail({ onCollapse }: { onCollapse: () => void }) {
     <aside className="border-border sticky top-0 hidden h-dvh w-56 shrink-0 flex-col border-r lg:flex">
       <div className="flex items-center justify-between gap-3 px-5 py-4">
         <Link to="/" aria-label={`${surfaceName("admin")} home`} className="flex items-baseline gap-2">
-          <Wordmark className="text-17" />
+          <Wordmark small className="text-17" />
           <span className="text-muted-foreground font-mono text-11 tracking-[0.2em] uppercase">
             Command
           </span>
@@ -86,7 +86,7 @@ function IndexRail({ onCollapse }: { onCollapse: () => void }) {
           type="button"
           onClick={onCollapse}
           aria-label="Hide section index"
-          className="border-border text-muted-foreground hover:border-brand hover:text-brand grid size-6 shrink-0 place-items-center border font-mono text-11 transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none"
+          className="border-border text-muted-foreground hover:border-brand hover:text-brand grid size-6 shrink-0 place-items-center border font-mono text-11 transition-colors duration-120 ease-standard motion-reduce:transition-none"
         >
           ←
         </button>
@@ -98,7 +98,7 @@ function IndexRail({ onCollapse }: { onCollapse: () => void }) {
               <a
                 href={section.href}
                 aria-current={index === 0 ? "page" : undefined}
-                className={`flex items-baseline gap-3 px-2 py-2.5 font-mono text-11 tracking-[0.12em] uppercase transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none ${
+                className={`flex items-baseline gap-3 px-2 py-2.5 font-mono text-11 tracking-[0.12em] uppercase transition-colors duration-120 ease-standard motion-reduce:transition-none ${
                   index === 0
                     ? "text-brand"
                     : "text-muted-foreground hover:text-foreground"
@@ -133,14 +133,14 @@ function TopBar({
 }) {
   return (
     <header className="border-border border-b">
-      <div className="mx-auto w-full max-w-[1600px] px-6 md:px-10">
+      <div className="mx-auto w-full max-w-400 px-6 md:px-10">
         <div className="flex items-center gap-6 py-3.5">
           <Link
             to="/"
             aria-label={`${surfaceName("admin")} home`}
             className={`flex shrink-0 items-baseline gap-3 ${railOpen ? "lg:hidden" : ""}`}
           >
-            <Wordmark className="text-21" />
+            <Wordmark small className="text-21" />
             <span className="text-muted-foreground hidden font-mono text-11 tracking-[0.2em] uppercase sm:inline">
               Command
             </span>
@@ -149,7 +149,7 @@ function TopBar({
             <button
               type="button"
               onClick={onOpenRail}
-              className="border-border text-muted-foreground hover:border-brand hover:text-brand hidden border px-2.5 py-1.5 font-mono text-11 tracking-[0.12em] uppercase transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] lg:block motion-reduce:transition-none"
+              className="border-border text-muted-foreground hover:border-brand hover:text-brand hidden border px-2.5 py-1.5 font-mono text-11 tracking-[0.12em] uppercase transition-colors duration-120 ease-standard lg:block motion-reduce:transition-none"
             >
               Index
             </button>
@@ -177,7 +177,7 @@ function TopBar({
             </span>
           </div>
         </div>
-        <SectionNav className="border-border flex items-center gap-5 overflow-x-auto border-t py-2.5 [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden" />
+        <SectionNav className="border-border flex items-center gap-5 overflow-x-auto border-t py-2.5 scrollbar-none md:hidden [&::-webkit-scrollbar]:hidden" />
       </div>
     </header>
   );

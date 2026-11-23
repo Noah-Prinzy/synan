@@ -17,6 +17,16 @@ corepack pnpm --filter @synan/api typecheck
 Configuration: copy `.env.example` to `.env`. Every key is optional in development; keys are generated
 at startup when absent. The startup log prints the seeded accounts and the admin TOTP secret.
 
+Storage (`REPO`): `memory` (default; stores nothing at rest and does not encrypt), `pglite`, or
+`postgres` (production: three role-separated connections and real data keys are required, or startup
+fails). On the SQL backends, attendee identity, MFA secrets and signing private keys are encrypted
+with `@synan/db`, and sessions, sign-in links and WebSocket tickets live in the database as hashes.
+After adopting encryption on an existing database, or after rotating a key, run:
+
+```sh
+corepack pnpm --filter @synan/api secrets:maintain   # re-encrypt and re-index; safe while live
+```
+
 ## Using it from a client
 
 - Base path `/api/v1`. Every request and response matches `@synan/contracts/rest` (`endpoints.*`);

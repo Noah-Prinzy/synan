@@ -7,7 +7,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { withVaultScope } from "../src/client";
 import { eraseAttendee, purgeEventMovementData } from "../src/functions";
 import * as s from "../src/schema/index";
-import { attendeeWithCredential, miniVenue, scan, type MiniVenue } from "./fixtures";
+import { encryptAttendeeColumns } from "../src/secrets";
+import { attendeeWithCredential, devCipher, miniVenue, scan, type MiniVenue } from "./fixtures";
 import { createTestDb, q, rejects, type TestDb } from "./helpers";
 
 let db: TestDb;
@@ -46,7 +47,7 @@ describe("identity vault RLS (as a non-superuser role)", () => {
   it("hides everything and rejects writes without a scope", async () => {
     expect(await attendeesVisible()).toHaveLength(0);
     expect(await db.select().from(s.ephemeral_ids)).toHaveLength(0);
-    await rejects(db.insert(s.attendees).values({ full_name: "Mallory" }), /row-level security/);
+    await rejects(db.insert(s.attendees).values({ profile_jsonb: {} }), /row-level security/);
     await rejects(
       db.insert(s.ephemeral_ids).values({ event_id: v.eventId, credential_id: alice.credentialId }),
       /row-level security/,
@@ -69,9 +70,9 @@ describe("identity vault RLS (as a non-superuser role)", () => {
       async (tx) => {
         const rows = await tx.select().from(s.attendees);
         expect(rows.map((r) => r.id)).toEqual([alice.attendeeId]);
-        const mine = await tx.update(s.attendees).set({ full_name: "Alice A." }).where(eq(s.attendees.id, alice.attendeeId)).returning();
+        const mine = await tx.update(s.attendees).set(encryptAttendeeColumns(devCipher, alice.attendeeId, { full_name: "Alice A." })).where(eq(s.attendees.id, alice.attendeeId)).returning();
         expect(mine).toHaveLength(1);
-        const theirs = await tx.update(s.attendees).set({ full_name: "pwned" }).where(eq(s.attendees.id, bob.attendeeId)).returning();
+        const theirs = await tx.update(s.attendees).set({ full_name: null }).where(eq(s.attendees.id, bob.attendeeId)).returning();
         expect(theirs).toHaveLength(0);
         expect(await tx.select().from(s.ephemeral_ids)).toHaveLength(0);
       },
@@ -112,7 +113,7 @@ describe("identity vault RLS (as a non-superuser role)", () => {
 
   it("erasure scrubs identity but keeps the row and the registration", async () => {
     await withVaultScope(db, "operator", async (tx) => {
-      await tx.update(s.attendees).set({ email: "bob@example.test", email_hash: "h-bob" }).where(eq(s.attendees.id, bob.attendeeId));
+      await tx.update(s.attendees).set(encryptAttendeeColumns(devCipher, bob.attendeeId, { email: "bob@example.test" })).where(eq(s.attendees.id, bob.attendeeId));
     });
     expect(await eraseAttendee(db, bob.attendeeId)).toBe(true);
     const [row] = await withVaultScope(db, "system", (tx) => tx.select().from(s.attendees).where(eq(s.attendees.id, bob.attendeeId)));

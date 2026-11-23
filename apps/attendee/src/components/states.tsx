@@ -21,13 +21,13 @@ export function StateBlock({
 }) {
   const toneText = tone === "warning" ? "text-warning" : tone === "destructive" ? "text-destructive" : "text-muted-foreground";
   return (
-    <div role="status" className="flex flex-col items-start gap-3 px-4 py-14 sm:px-6 md:px-10">
-      <p className={`text-15 font-medium ${toneText}`}>
+    <div role="status" className="relative flex flex-col items-start gap-3 overflow-hidden px-4 py-14 sm:px-6 md:px-10">
+      <p className={`relative text-15 font-medium ${toneText}`}>
         <span aria-hidden="true" className="mr-2 font-mono">{glyph}</span>
         {title}
       </p>
-      {children ? <div className="max-w-[46ch] text-15 leading-relaxed text-muted-foreground">{children}</div> : null}
-      {action ? <div className="mt-2">{action}</div> : null}
+      {children ? <div className="relative max-w-[46ch] text-15 leading-relaxed text-muted-foreground">{children}</div> : null}
+      {action ? <div className="relative mt-2">{action}</div> : null}
     </div>
   );
 }

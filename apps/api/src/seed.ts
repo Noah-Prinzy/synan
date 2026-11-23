@@ -106,6 +106,7 @@ export async function seedDev(app: AppContext): Promise<SeedResult> {
       id, org_id: orgId, venue_id: venueId, slug, title, description: `${title} at Harbour Hall.`,
       starts_at: new Date(now + startOff), ends_at: new Date(now + endOff), timezone: "Africa/Kampala",
       state, listed_bool: listed, grace_buffer: 72,
+      pass_template_jsonb: state === "draft" ? null : { layout: "standard" }, profile_schema_jsonb: [], access_rules_version: 0, revocation_epoch: 0, closed_at: null,
     });
     return id;
   };

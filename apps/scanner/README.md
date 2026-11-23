@@ -3,7 +3,7 @@
 Gate Scanner. Usage only; screens are specified in
 [docs/06-screens.md §3](../../docs/06-screens.md).
 
-```
+```text
 corepack pnpm --filter @synan/scanner dev        # http://localhost:5175/scan/
 corepack pnpm --filter @synan/scanner typecheck
 corepack pnpm --filter @synan/scanner build

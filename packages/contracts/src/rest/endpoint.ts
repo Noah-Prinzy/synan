@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Id } from "../common.js";
 import type { Role } from "../enums/index.js";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -78,5 +79,5 @@ export const SCANNERS = ["security_staff"] as const satisfies readonly Access[];
 export const ATTENDEE = ["attendee"] as const satisfies readonly Access[];
 export const PUBLIC = ["public"] as const satisfies readonly Access[];
 
-export const IdParam = z.object({ id: z.uuid() });
+export const IdParam = z.object({ id: Id });
 export const SlugParam = z.object({ slug: z.string().min(1).max(80) });

@@ -22,8 +22,7 @@ describe("event summary: venue city and public on-site total", () => {
 
   it("carries the venue city", async () => {
     const e = await live();
-    // The SQL schema has no venues.city column yet, so the Drizzle backend reports null.
-    expect(e.venue.city).toBe(REPO_UNDER_TEST === "pglite" ? null : "Kampala");
+    expect(e.venue.city).toBe("Kampala"); // stored in venues.city on the SQL backend
   });
 
   it("hides the on-site count below k = 5, shows it from 5, and is null for events not live", async () => {

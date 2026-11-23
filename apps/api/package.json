@@ -5,12 +5,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "tsx watch src/main.ts --seed=dev",
     "start": "tsx src/main.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:pg": "vitest run --mode pglite",
-    "dev:pg": "tsx watch src/main.ts --repo=pglite"
+    "secrets:maintain": "tsx src/tasks/secrets.ts",
+    "dev:pg": "tsx watch src/main.ts --repo=pglite --seed=dev"
   },
   "dependencies": {
     "@synan/contracts": "workspace:*",

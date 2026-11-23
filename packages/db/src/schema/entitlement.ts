@@ -6,7 +6,10 @@ import {
   check,
   foreignKey,
   index,
+  integer,
+  jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -80,6 +83,25 @@ export const registrations = pgTable(
       .on(t.invitation_id)
       .where(sql`${t.invitation_id} IS NOT NULL`),
   ],
+);
+
+/**
+ * One snapshot of an event's whole access-rule set per published version, so any two versions can
+ * be diffed. Written by access_rules_replace(); version 0 is the set before the first replace.
+ */
+export const access_rule_versions = pgTable(
+  "access_rule_versions",
+  {
+    event_id: uuid("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    /** [{subject_kind, subject, room_id, window_start, window_end, effect}], sorted. */
+    rules_jsonb: jsonb("rules_jsonb").notNull(),
+    published_by: uuid("published_by"),
+    published_at: tstz("published_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ name: "access_rule_versions_pk", columns: [t.event_id, t.version] })],
 );
 
 /**

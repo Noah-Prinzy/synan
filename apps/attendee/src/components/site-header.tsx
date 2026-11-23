@@ -10,8 +10,12 @@ const navItems = [
   { to: "/pass", label: "My pass" },
 ];
 
+/** The logotype reveal plays once: when the app first loads on the home page, nowhere else. */
+const revealOnLoad = typeof window !== "undefined" && window.location.pathname === "/";
+let revealConsumed = false;
+
 const cell =
-  "relative flex items-center border-l border-border px-5 text-15 transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none";
+  "relative flex items-center border-l border-border px-5 text-15 transition-colors duration-120 ease-standard motion-reduce:transition-none";
 
 /** Active cell: foreground text and a 1px brand rule along the bottom edge (an "active rule"). */
 function NavCell({ to, label, onClick }: { to: string; label: string; onClick?: () => void }) {
@@ -29,7 +33,7 @@ function NavCell({ to, label, onClick }: { to: string; label: string; onClick?: 
           {label}
           <span
             aria-hidden="true"
-            className={`absolute inset-x-0 -bottom-px h-px origin-left bg-brand transition-transform duration-[180ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none ${
+            className={`absolute inset-x-0 -bottom-px h-px origin-left bg-brand transition-transform duration-180 ease-standard motion-reduce:transition-none ${
               isActive ? "scale-x-100" : "scale-x-0"
             }`}
           />
@@ -94,6 +98,11 @@ export default function SiteHeader() {
 
   useFocusTrap(sheetRef, open, close);
 
+  const [reveal] = useState(() => revealOnLoad && !revealConsumed);
+  useEffect(() => {
+    revealConsumed = true;
+  }, []);
+
   const account = session ? { to: "/account", label: "Account" } : { to: "/sign-in", label: "Sign in" };
 
   return (
@@ -102,9 +111,9 @@ export default function SiteHeader() {
         <Link
           to="/"
           aria-label={`${BRAND.name} home`}
-          className="flex items-center px-4 text-21 sm:px-6 md:px-8"
+          className="flex items-center px-4 text-21 sm:px-6 md:px-8 md:text-28"
         >
-          <Wordmark />
+          <Wordmark small reveal={reveal} />
         </Link>
 
         <nav aria-label="Main" className="ml-auto hidden items-stretch md:flex">
@@ -122,9 +131,9 @@ export default function SiteHeader() {
           onClick={() => setOpen((value) => !value)}
           className="ml-auto flex min-w-14 items-center justify-center gap-2 border-l border-border px-4 text-15 md:hidden"
         >
-          <span aria-hidden="true" className="flex w-4 flex-col gap-[4px]">
-            <span className={`h-px w-full bg-current transition-transform duration-[180ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none ${open ? "translate-y-[2.5px] rotate-45" : ""}`} />
-            <span className={`h-px w-full bg-current transition-transform duration-[180ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none ${open ? "-translate-y-[2.5px] -rotate-45" : ""}`} />
+          <span aria-hidden="true" className="flex w-4 flex-col gap-1">
+            <span className={`h-px w-full bg-current transition-transform duration-180 ease-standard motion-reduce:transition-none ${open ? "translate-y-[2.5px] rotate-45" : ""}`} />
+            <span className={`h-px w-full bg-current transition-transform duration-180 ease-standard motion-reduce:transition-none ${open ? "translate-y-[-2.5px] -rotate-45" : ""}`} />
           </span>
           {open ? "Close" : "Menu"}
         </button>

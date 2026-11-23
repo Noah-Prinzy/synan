@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 103.5 84" width="1656" height="1344">
+  <title>Synan — stacked, dark</title>
+  <rect width="103.5" height="84" fill="#0A0A0A"/>
+  <g transform="translate(10 10) scale(1)">
+    <path d="M26.75 0H41.75A8.313 8.313 0 0 0 41.75 16.625A5.063 5.063 0 0 1 41.75 26.75H26.75Z" fill="#FAFAFA"/>
+    <path d="M56.75 3.25H41.75A5.063 5.063 0 0 0 41.75 13.375A8.313 8.313 0 0 1 41.75 30H56.75Z" fill="#8AB4FF"/>
+    <path d="M5.15 39h5.15v3.6h-5.15Z" fill="#FAFAFA"/>
+    <path d="M5.15 49.3A5.15 5.15 0 0 1 5.15 39L5.15 42.6A1.55 1.55 0 0 0 5.15 45.7Z" fill="#FAFAFA"/>
+    <path d="M5.15 45.7A5.15 5.15 0 0 1 5.15 56L5.15 52.4A1.55 1.55 0 0 0 5.15 49.3Z" fill="#FAFAFA"/>
+    <path d="M0 52.4h5.15v3.6h-5.15Z" fill="#FAFAFA"/>
+    <path d="M12.9 39h4v9.9h-4Z" fill="#FAFAFA"/>
+    <path d="M27.9 48.9A7.5 7.5 0 0 1 12.9 48.9L16.9 48.9A3.5 3.5 0 0 0 23.9 48.9Z" fill="#FAFAFA"/>
+    <path d="M23.9 39h4v19h-4Z" fill="#FAFAFA"/>
+    <path d="M27.9 58A5.6 5.6 0 0 1 22.3 63.6L22.3 59.6A1.5999999999999996 1.5999999999999996 0 0 0 23.9 58Z" fill="#FAFAFA"/>
+    <path d="M15.5 59.6h6.8v4h-6.8Z" fill="#FAFAFA"/>
+    <path d="M30.7 39h4v17h-4Z" fill="#FAFAFA"/>
+    <path d="M30.991 44.033A7.5 7.5 0 0 1 45.7 46.1L41.7 46.1A3.5 3.5 0 0 0 34.836 45.135Z" fill="#FAFAFA"/>
+    <path d="M41.7 46.1h4v9.9h-4Z" fill="#FAFAFA"/>
+    <path d="M64.858 51.678A8.9 8.9 0 1 1 64.858 43.322L61.326 45.2A4.9 4.9 0 1 0 61.326 49.8Z" fill="#FAFAFA"/>
+    <path d="M61.9 39h4v17h-4Z" fill="#FAFAFA"/>
+    <path d="M68.5 39h4v17h-4Z" fill="#FAFAFA"/>
+    <path d="M68.791 44.033A7.5 7.5 0 0 1 83.5 46.1L79.5 46.1A3.5 3.5 0 0 0 72.636 45.135Z" fill="#FAFAFA"/>
+    <path d="M79.5 46.1h4v9.9h-4Z" fill="#FAFAFA"/>
+  </g>
+</svg>

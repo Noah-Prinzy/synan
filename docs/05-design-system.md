@@ -62,10 +62,8 @@ decorative motion). The sample's own identity is never copied (§6).
 Type roles on this surface: mono is for data only — dates, counts, identifiers. Labels, navigation,
 and buttons use the UI sans in sentence case. Small mono capitals on every label make nothing rank.
 
-**Rules the rebrand may reopen, for this surface only.** "Hospitable" may call for a warm-tinted
-ground instead of pure neutral black, a light theme, or the accent as a fill on the one primary
-action. Each is a change to §1 and takes effect only if the owner approves the brand option that
-needs it.
+**No rule was reopened.** The chosen identity (D-20) needs no change to §1: the ground stays
+neutral near-black, the theme stays dark-only, and the accent is never a fill.
 
 ---
 
@@ -77,7 +75,7 @@ also specifies Noto Sans + Geist Mono headings and Phosphor icons, which were no
 
 Dark is the default and the only shipped mode; the light block exists because the preset ships it.
 
-```
+```text
 :root (light, reference only)          .dark (shipped)
 --background  oklch(1 0 0)             --background  oklch(0.145 0 0)   #0A0A0A
 --foreground  oklch(0.145 0 0)         --foreground  oklch(0.985 0 0)   #FAFAFA
@@ -86,22 +84,22 @@ Dark is the default and the only shipped mode; the light block exists because th
 --muted-fg    oklch(0.556 0 0)         --muted-fg    oklch(0.708 0 0)   #A1A1A1
 --border      oklch(0.922 0 0)         --border      oklch(1 0 0 / 10%)
 --input       oklch(0.922 0 0)         --input       oklch(1 0 0 / 15%)
---ring        #0AA7C2                    --ring        #0AA7C2
+--ring        #8AB4FF                    --ring        #8AB4FF
 --destructive oklch(0.577 0.245 27.3)  --destructive oklch(0.704 0.191 22.2)  #FF6467
---brand       #0AA7C2                  --brand       #0AA7C2
+--brand       #8AB4FF                  --brand       #8AB4FF
 --radius      0                        --radius      0
 ```
 
-There is one brand hue, `--brand #0AA7C2`, taken from the X in the wordmark. It is an accent, never a
+There is one brand hue, `--brand #8AB4FF`, Daybreak blue (9.5:1 on the ground; chosen under D-20). It is an accent, never a
 surface: a 1px thread at the top page edge, focus rings and text selection, the active rule on filter
 tabs and the registration stepper, and checked controls. It never fills buttons, cards or rows, never
 sets body or link text at rest, and never carries a state — success, warning and stop keep that job. If
 the accent starts to read as decoration, remove it; the page should look monochrome at a glance and
-teal only where the interface is asking to be touched.
+blue only where the interface is asking to be touched.
 
 Signals remain the only semantic chroma, added on top of the preset:
 
-```
+```text
 --success  #43C07A   admitted / healthy
 --warning  #E7B643   already inside / degraded / near capacity
 --destructive #FF6467  denied / breach / offline
@@ -130,12 +128,12 @@ the app references a raw value; changing the theme is one file per app.
 
 | Role | Family | Notes |
 | --- | --- | --- |
-| Display | **Fraunces** 300–600 | screen titles, event names, hero copy. Optical size axis on. |
-| UI | **Geist Sans** 400–600 | all controls, tables, body. |
-| Data | **JetBrains Mono** 400–600 | KPIs, UIDs, timestamps, coordinates, counts. Tabular by default. |
+| Display | **Bricolage Grotesque** | screen titles, event names, hero copy, the wordmark. |
+| UI | **Instrument Sans** | all controls, labels, tables, body. Sentence case. |
+| Data | **Geist Mono** | data only: KPIs, identifiers, timestamps, counts. Tabular by default. |
 
-All three are self-hosted via Fontsource variable packages (`@fontsource-variable/fraunces`, `-geist`,
-`-jetbrains-mono`) and imported once in each app's `index.css`. No Google CDN at a cold venue.
+All three are self-hosted via Fontsource variable packages, exposed as theme tokens
+(`--type-display`, `--type-ui`, `--type-data`) and imported once in each app. No font CDN at a cold venue.
 
 The preset proposed Noto Sans with Geist Mono headings and Phosphor icons. Only its **colour and radius**
 were taken (`apply --only theme`). Mono headings would have made the admin read as a terminal and cost
@@ -143,7 +141,7 @@ the attendee portal its editorial voice; icons stay Lucide at 1.5px to match the
 
 Scale: 11 / 12 / 13 / 15 / 17 / 21 / 28 / 40 / 56, plus 96 for the scanner's verdict word only.
 Admin body is 13px. Attendee body is 17px, secondary text 15px. Nothing is set below 11px.
-Section eyebrows: mono, 11px, `+0.14em`, muted-foreground, with an editorial numeral (`01 —`).
+Section eyebrows are set in the UI sans, not mono.
 
 The scale is fixed. The Attendee Portal uses the upper end more freely; it does not add sizes.
 
@@ -171,24 +169,29 @@ columns, with gutters of 24 (attendee) and 16 (admin).
 
 ## 6. Identity
 
-**The identity is being replaced (D-18, D-19).** The product is now Synan, from the Greek
-*synántisi*: a meeting, a gathering. The brand is the host at the door, not the guard: hospitable,
-warm, modern. It must not read as a security or surveillance product.
+**Chosen 2026-11-23 (D-20).** Synan, from the Greek *synántisi*: a meeting, a gathering. The brand
+is the host at the door, not the guard: hospitable, warm, modern.
 
-The wordmark, the mark, the accent colour, and the typefaces are all open. Three complete options
-are presented on a brand board for the owner to choose from; until one is chosen the apps show the
-name as text on the neutral palette. When the choice is made, this section, §3 (the accent), and §4
-(the typefaces) are rewritten to record it.
+**The mark is "Fit":** a square cut by a single S-shaped seam into two pieces that only make sense
+together. The line where they meet spells the initial.
 
-What is fixed regardless of the option:
+**The wordmark is the "[S]ynan" lockup:** the mark stands in for the S, followed by "ynan" drawn to
+match it. It has horizontal and stacked forms, and one-colour white and black versions.
 
-- The name, wordmark, mark, and icons live in exactly one place: `packages/ui/src/brand/`. All three
-  apps read from it; page titles and `index.html` are filled from it at build time.
-- The wordmark must be legible at about 16px in a navigation cell. The mark must work alone as the
-  favicon and app icon at 16, 32, 180, and 512px.
-- The accent must not be mistakable for the success, warning, or destructive signals.
-- Synan takes the sample site's **structure**, never its identity: no pixel-art mosaics or mascots,
-  no orange, yellow, and red block stacks, nothing resembling another company's logo.
+| Part | Rule |
+| --- | --- |
+| Where it lives | Only in `packages/ui/src/brand/`: the name, the mark, the wordmark, and the icons, all generated from one drawing file, `fit.ts`. All three apps read from it; page titles are filled from it at build time |
+| Hand-off files | `packages/ui/src/brand/assets/`: the logo as standalone SVG and PNG, for use outside the product |
+| Small sizes | A simplified drawing with a wider seam is used at 24px and below. The wordmark must stay legible at about 16px in a navigation cell |
+| Never as decoration | The logo is never tiled, repeated, or used as a pattern, texture, or watermark. It appears once where it has a job: header, footer lockup, pass, sign-in, not-found, favicon, app icon |
+| Motion | One 240ms reveal, on first load of the attendee home only. Never on Admin or Scanner |
+| Colour | The mark is drawn in the foreground colour with the accent on one piece. The accent is never a fill on interface components (§1) |
+
+Synan took the sample site's **structure**, never its identity: no pixel-art mosaics or mascots, no
+orange, yellow, and red block stacks.
+
+Before public launch: a formal trademark search on the name and the mark, and purchase of the
+domains.
 
 ---
 
@@ -306,7 +309,7 @@ contrast-checked tones, and the do/don't list.
 
 ### 9.2 Loop
 
-```
+```text
 brief → sitemap → flow-web / flow-mobile → journey
                         ↓
         brand + design-system  (tokens only change here)

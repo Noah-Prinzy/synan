@@ -15,7 +15,8 @@ import {
   startSession,
 } from "../src/auth";
 import * as s from "../src/schema/index";
-import { attendeeWithCredential, miniVenue } from "./fixtures";
+import { insertUser } from "../src/secrets";
+import { attendeeWithCredential, devCipher, miniVenue } from "./fixtures";
 import { createTestDb, q, rejects, type TestDb } from "./helpers";
 
 let db: TestDb;
@@ -30,15 +31,8 @@ beforeAll(async () => {
   db = await createTestDb();
   const v = await miniVenue(db);
   eventId = v.eventId;
-  const [u, u2] = await db
-    .insert(s.users)
-    .values([
-      { email: "op@example.test", role: "organiser" },
-      { email: "op2@example.test", role: "admin" },
-    ])
-    .returning();
-  userId = u!.id;
-  otherUserId = u2!.id;
+  userId = await insertUser(db, devCipher, { email: "op@example.test", role: "organiser" });
+  otherUserId = await insertUser(db, devCipher, { email: "op2@example.test", role: "admin" });
   attendeeId = (await attendeeWithCredential(db, v.eventId)).attendeeId;
   // Run everything as the general application role, as the API will.
   await q(db, "set role app_api");
@@ -82,6 +76,20 @@ describe("auth_sessions", () => {
     expect(parent.rotated_at?.toISOString()).toBe(at(5).toISOString());
     expect(child.parent_id).toBe(a.id);
     expect(child.rotated_at).toBeNull();
+  });
+
+  it("picks the new lifetime by holder kind when given a ttl (12 h operators, 30 days attendees)", async () => {
+    const ttl = { userSeconds: 12 * 3600, attendeeSeconds: 30 * 86400 };
+    const op = await login({ userId });
+    const att = await login({ attendeeId });
+    const r1 = await rotateSession(db, { tokenHash: hashToken(op.token), newTokenHash: hashToken(newToken()), ttl, now: at(1) });
+    const r2 = await rotateSession(db, { tokenHash: hashToken(att.token), newTokenHash: hashToken(newToken()), ttl, now: at(1) });
+    expect(r1.status).toBe("rotated");
+    expect(r1.expires_at!.getTime() - at(1).getTime()).toBe(12 * 3600 * 1000);
+    expect(r2.expires_at!.getTime() - at(1).getTime()).toBe(30 * 86400 * 1000);
+    // Same statuses as the fixed-expiry form.
+    expect((await rotateSession(db, { tokenHash: hashToken(op.token), newTokenHash: hashToken(newToken()), ttl, now: at(2) })).status).toBe("reuse_detected");
+    expect((await rotateSession(db, { tokenHash: hashToken("unknown"), newTokenHash: hashToken(newToken()), ttl, now: at(2) })).status).toBe("invalid");
   });
 
   it("detects reuse of a rotated token and revokes the whole family", async () => {
@@ -202,8 +210,8 @@ describe("cleanup", () => {
     );
     // Nothing is old enough relative to T0 + 1 day.
     expect(await cleanupAuthState(db, { now: at(60 * 24) })).toEqual({ sessions: 0, links: 0, tickets: before[0]!.t });
-    // 40 days later every session, link and ticket has expired more than 30 days ago.
-    const res = await cleanupAuthState(db, { now: at(60 * 24 * 40), batch: 2 });
+    // 70 days later every session (including the 30-day attendee ones), link and ticket expired > 30 days ago.
+    const res = await cleanupAuthState(db, { now: at(60 * 24 * 70), batch: 2 });
     expect(res).toEqual({ sessions: before[0]!.s, links: before[0]!.l, tickets: 0 });
     const after = await q<{ n: number }>(db, `select ((select count(*) from auth_sessions) + (select count(*) from auth_links) + (select count(*) from ws_tickets))::int n`);
     expect(after[0]!.n).toBe(0);

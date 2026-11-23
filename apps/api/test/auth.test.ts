@@ -133,8 +133,9 @@ describe("RBAC", () => {
   });
 
   it("unimplemented endpoints enforce RBAC before answering 501", async () => {
-    expect((await h.call("GET", "/venues", { token: attendee.access_token })).status).toBe(403);
-    const r = await h.call("GET", "/venues", { token: organiser.access_token });
+    // GET /reports is still unbuilt (slice 8).
+    expect((await h.call("GET", "/reports", { token: attendee.access_token })).status).toBe(403);
+    const r = await h.call("GET", "/reports", { token: organiser.access_token });
     expect(r.status).toBe(501);
     expect(errCode(r.body)).toBe("NOT_IMPLEMENTED");
   });

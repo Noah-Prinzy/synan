@@ -1,23 +1,27 @@
 /**
- * In-memory repository implementation. Single-process only; state is lost on
- * restart. Used for dev and tests until the Drizzle implementation lands.
+ * In-memory repository implementation. Single-process only; state is lost on restart.
+ *
+ * DOES NOT ENCRYPT. Attendee identity, MFA secrets and signing private keys are held in the clear
+ * in process memory (there is no storage to protect). Observable behaviour matches the SQL
+ * repository, including sign-in state semantics; use the SQL repository (`pglite` / `postgres`)
+ * for anything where data at rest matters.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { entryHash, GENESIS_HASH, verifyChain } from "../domain/audit.js";
 import type {
   FixtureWriter,
   AccessRuleRow,
   AttendeeRow,
   AuditRow,
-  AuthLinkRow,
-  AuthSessionRow,
   BreachAlertRow,
+  WsChannelPath,
   CarrierRow,
   CheckpointRow,
   CredentialRow,
   EventRoomRow,
   EventRow,
   GateRateRollupRow,
+  InvitationRow,
   OccupancyAdjustmentRow,
   RegistrationRow,
   Repos,
@@ -33,6 +37,7 @@ import type {
 } from "./types.js";
 
 export class MemoryTables {
+  organizations = new Map<string, { id: string; name: string; timezone: string; support_email: string }>();
   users = new Map<string, UserRow>();
   attendees = new Map<string, AttendeeRow>();
   venues = new Map<string, VenueRow>();
@@ -44,6 +49,9 @@ export class MemoryTables {
   eventRooms: EventRoomRow[] = [];
   sessions = new Map<string, SessionRow>();
   registrations = new Map<string, RegistrationRow>();
+  /** registration id → the invitation it redeemed. */
+  registrationInvitation = new Map<string, string>();
+  invitations = new Map<string, InvitationRow>();
   accessRules = new Map<string, AccessRuleRow>();
   staffAssignments = new Map<string, StaffAssignmentRow>();
   credentials = new Map<string, CredentialRow>();
@@ -56,15 +64,55 @@ export class MemoryTables {
   alerts = new Map<string, BreachAlertRow>();
   audit: AuditRow[] = [];
   gateRates = new Map<string, GateRateRollupRow>();
-  authSessions = new Map<string, AuthSessionRow>();
-  authLinks = new Map<string, AuthLinkRow>();
+  /** token hash → session (mirrors public.auth_sessions). */
+  authSessions = new Map<string, MemSession>();
+  /** token hash → link (mirrors public.auth_links). */
+  authLinks = new Map<string, { attendee_id: string; created_at: Date; expires_at: Date; redeemed_at: Date | null }>();
+  /** ticket hash → ticket (mirrors public.ws_tickets). */
+  wsTickets = new Map<string, MemTicket>();
+}
+
+interface MemSession {
+  family_id: string;
+  user_id: string | null;
+  attendee_id: string | null;
+  mfa_at: Date | null;
+  created_at: Date;
+  rotated_at: Date | null;
+  expires_at: Date;
+  revoked_at: Date | null;
+}
+interface MemTicket {
+  user_id: string | null;
+  attendee_id: string | null;
+  session_family_id: string | null;
+  channel: WsChannelPath;
+  event_id: string | null;
+  checkpoint_id: string | null;
+  expires_at: Date;
+  consumed_at: Date | null;
 }
 
 const clone = <T>(v: T): T => structuredClone(v);
 
+/* State machines (01 §5.2), mirroring @synan/db migration 0012's guard triggers. */
+const CREDENTIAL_MOVES = new Set([
+  "issued>active", "issued>suspended_review", "issued>revoked", "issued>replaced",
+  "active>suspended_review", "active>revoked", "active>replaced",
+  "suspended_review>active", "suspended_review>revoked", "suspended_review>replaced",
+]);
+const CARRIER_MOVES = new Set([
+  "stock>assigned", "stock>retired", "assigned>stock", "assigned>bound", "assigned>lost", "assigned>retired",
+  "bound>active", "bound>lost", "bound>retired", "active>lost", "active>retired",
+]);
+const LIVE_CARRIER = new Set(["assigned", "bound", "active"]);
+
+/** Blind index stand-in for the in-memory store (it does not encrypt; SQL uses the keyed HMAC). */
+const memEmailHash = (email: string) => createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
+
 function memoryFixtures(t: MemoryTables): FixtureWriter {
   return {
-    async organization() {},
+    async organization(r) { t.organizations.set(r.id, clone(r)); },
     async venue(r) { t.venues.set(r.id, clone(r)); },
     async zone(r) { t.zones.set(r.id, clone(r)); },
     async room(r) { t.rooms.set(r.id, clone(r)); },
@@ -89,6 +137,19 @@ function memoryFixtures(t: MemoryTables): FixtureWriter {
 const correctedMs = (s: ScanRow) => s.occurred_at.getTime() + s.clock_offset_ms;
 
 export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos & { tables: MemoryTables } {
+  // Revocation epoch, mirroring @synan/db 0012's triggers: bumped whenever access shrinks.
+  const bumpEvent = (eventId: string) => {
+    const e = t.events.get(eventId);
+    if (e) e.revocation_epoch += 1;
+  };
+  const bumpForCredential = (c: CredentialRow) => {
+    if (c.registration_id) {
+      const r = t.registrations.get(c.registration_id);
+      if (r) bumpEvent(r.event_id);
+    } else {
+      for (const e of t.events.values()) if (e.state === "published" || e.state === "live") e.revocation_epoch += 1;
+    }
+  };
   return {
     kind: "memory",
     tables: t,
@@ -124,6 +185,43 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       async insert(row) {
         t.attendees.set(row.id, clone(row));
       },
+      async update(id, patch) {
+        const a = t.attendees.get(id);
+        if (!a) return false;
+        Object.assign(a, clone(Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined))));
+        return true;
+      },
+      async byIds(ids) {
+        return ids.flatMap((id) => (t.attendees.has(id) ? [clone(t.attendees.get(id)!)] : []));
+      },
+      async list({ after, limit }) {
+        return [...t.attendees.values()].sort((a, b) => a.id.localeCompare(b.id)).filter((a) => !after || a.id > after).slice(0, limit).map(clone);
+      },
+    },
+    invitations: {
+      hashEmail: memEmailHash,
+      hashCandidates: (email) => [memEmailHash(email)],
+      async insert(row) {
+        for (const i of t.invitations.values()) {
+          if (i.event_id === row.event_id && i.email_hash === row.email_hash && i.state === "sent") return "duplicate";
+        }
+        t.invitations.set(row.id, clone(row));
+        return "ok";
+      },
+      async byTokenHash(h) {
+        for (const i of t.invitations.values()) if (i.token_hash === h) return clone(i);
+        return null;
+      },
+      async consume(id, outcome, now) {
+        const i = t.invitations.get(id);
+        if (!i || i.state !== "sent" || i.expires_at.getTime() <= now.getTime()) return false;
+        i.state = outcome;
+        if (outcome === "redeemed") i.redeemed_at = now;
+        return true;
+      },
+      async forEvent(eventId) {
+        return [...t.invitations.values()].filter((i) => i.event_id === eventId).sort((a, b) => a.created_at.getTime() - b.created_at.getTime()).map(clone);
+      },
     },
     venues: {
       async zonesOfVenue(venueId) {
@@ -149,6 +247,47 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       },
       async transitTimes(venueId) {
         return t.transitTimes.filter((x) => x.venue_id === venueId).map(clone);
+      },
+      async organizations() {
+        return [...t.organizations.values()].map(clone);
+      },
+      async listVenues({ after, limit }) {
+        return [...t.venues.values()]
+          .sort((a, b) => a.id.localeCompare(b.id))
+          .filter((v) => !after || v.id > after)
+          .slice(0, limit)
+          .map(clone);
+      },
+      async zone(id) {
+        const z = t.zones.get(id);
+        return z ? clone(z) : null;
+      },
+      async roomsOfVenue(venueId) {
+        return [...t.rooms.values()].filter((r) => r.venue_id === venueId).map(clone);
+      },
+      async updateVenue(id, p) {
+        const v = t.venues.get(id);
+        if (!v) throw new Error(`venue ${id} not found`);
+        Object.assign(v, clone(p));
+        return clone(v);
+      },
+      async updateZone(id, p) {
+        const z = t.zones.get(id);
+        if (!z) throw new Error(`zone ${id} not found`);
+        Object.assign(z, clone(p));
+        return clone(z);
+      },
+      async updateRoom(id, p) {
+        const r = t.rooms.get(id);
+        if (!r) throw new Error(`room ${id} not found`);
+        Object.assign(r, clone(p));
+        return clone(r);
+      },
+      async updateCheckpoint(id, p) {
+        const c = t.checkpoints.get(id);
+        if (!c) throw new Error(`checkpoint ${id} not found`);
+        Object.assign(c, clone(p));
+        return clone(c);
       },
     },
     events: {
@@ -185,8 +324,40 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       async accessRules(eventId) {
         return [...t.accessRules.values()].filter((r) => r.event_id === eventId).map(clone);
       },
+      async listAll({ state, q, after, limit }) {
+        const needle = q?.toLowerCase();
+        return [...t.events.values()]
+          .filter((e) => (!state || e.state === state) && (!needle || e.title.toLowerCase().includes(needle)))
+          .sort((a, b) => a.starts_at.getTime() - b.starts_at.getTime() || a.id.localeCompare(b.id))
+          .filter((e) => !after || e.starts_at.getTime() > after.starts_at.getTime() || (e.starts_at.getTime() === after.starts_at.getTime() && e.id > after.id))
+          .slice(0, limit)
+          .map(clone);
+      },
+      async update(id, p) {
+        const e = t.events.get(id);
+        if (!e) throw new Error(`event ${id} not found`);
+        // Mirrors the database trigger: closing stamps closed_at (starts the retention clock).
+        if (p.state === "closed" && e.state !== "closed" && !e.closed_at) e.closed_at = new Date(Date.now());
+        Object.assign(e, clone(p));
+        return clone(e);
+      },
+      async setRooms(eventId, rooms) {
+        t.eventRooms = t.eventRooms.filter((r) => r.event_id !== eventId).concat(rooms.map(clone));
+      },
+      async replaceAccessRules(eventId, expectedVersion, rules) {
+        const e = t.events.get(eventId);
+        if (!e || e.access_rules_version !== expectedVersion) return null;
+        for (const [id, r] of t.accessRules) if (r.event_id === eventId) t.accessRules.delete(id);
+        for (const r of rules) t.accessRules.set(r.id, clone(r));
+        e.access_rules_version = expectedVersion + 1;
+        e.revocation_epoch += 1; // a republish can shrink access (access_rules_bump_epoch)
+        return e.access_rules_version;
+      },
     },
     registrations: {
+      async forEvent(eventId) {
+        return [...t.registrations.values()].filter((r) => r.event_id === eventId).map(clone);
+      },
       async byId(id) {
         const r = t.registrations.get(id);
         return r ? clone(r) : null;
@@ -197,6 +368,30 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       },
       async forAttendee(attendeeId) {
         return [...t.registrations.values()].filter((r) => r.attendee_id === attendeeId).map(clone);
+      },
+      async insert(row) {
+        const { invitation_id, ...reg } = row;
+        for (const r of t.registrations.values()) if (r.event_id === reg.event_id && r.attendee_id === reg.attendee_id) return "duplicate";
+        if (invitation_id && [...t.registrationInvitation.values()].includes(invitation_id)) return "duplicate";
+        t.registrations.set(reg.id, clone(reg));
+        if (invitation_id) t.registrationInvitation.set(reg.id, invitation_id);
+        return "ok";
+      },
+      async update(id, patch) {
+        const r = t.registrations.get(id);
+        if (!r) throw new Error(`registration ${id} not found`);
+        const bump = (patch.tier !== undefined && patch.tier !== r.tier) || (r.state === "confirmed" && patch.state !== undefined && patch.state !== "confirmed");
+        Object.assign(r, clone(patch));
+        if (bump) bumpEvent(r.event_id);
+        return clone(r);
+      },
+      async countByAttendee(ids) {
+        const want = new Set(ids);
+        const out = new Map<string, number>();
+        for (const r of t.registrations.values()) {
+          if (want.has(r.attendee_id) && r.state !== "cancelled") out.set(r.attendee_id, (out.get(r.attendee_id) ?? 0) + 1);
+        }
+        return out;
       },
     },
     staff: {
@@ -225,14 +420,24 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       async update(id, patch) {
         const c = t.credentials.get(id);
         if (!c) throw new Error(`credential ${id} not found`);
+        const from = c.state;
+        if (patch.state !== undefined && patch.state !== from && !CREDENTIAL_MOVES.has(`${from}>${patch.state}`)) {
+          throw new Error(`check_violation: credential ${id} cannot move from ${from} to ${patch.state}`);
+        }
         Object.assign(c, patch);
+        const to = c.state;
+        if (from !== to && (to === "revoked" || to === "suspended_review" || to === "replaced" || (from === "suspended_review" && to === "active"))) {
+          bumpForCredential(c);
+        }
         return clone(c);
       },
     },
     carriers: {
       async byIdentifier(kind, identifier) {
-        for (const c of t.carriers.values()) if (c.kind === kind && c.identifier === identifier) return clone(c);
-        return null;
+        // Newest first, retired last: a retired emailed code must still resolve (it reads as spent).
+        const all = [...t.carriers.values()].filter((c) => c.kind === kind && c.identifier === identifier);
+        all.sort((a, b) => Number(a.state === "retired") - Number(b.state === "retired"));
+        return all[0] ? clone(all[0]) : null;
       },
       async forCredential(credentialId) {
         return [...t.carriers.values()].filter((c) => c.credential_id === credentialId).map(clone);
@@ -243,7 +448,15 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       async update(id, patch) {
         const c = t.carriers.get(id);
         if (!c) throw new Error(`carrier ${id} not found`);
+        const from = c.state;
+        if (patch.state !== undefined && patch.state !== from && !CARRIER_MOVES.has(`${from}>${patch.state}`)) {
+          throw new Error(`check_violation: carrier ${id} cannot move from ${from} to ${patch.state}`);
+        }
         Object.assign(c, patch);
+        if (c.credential_id && LIVE_CARRIER.has(from) && (c.state === "lost" || c.state === "retired")) {
+          const cred = t.credentials.get(c.credential_id);
+          if (cred) bumpForCredential(cred);
+        }
         return clone(c);
       },
       async redeemOnce(id, at) {
@@ -266,6 +479,9 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       },
     },
     ephemeralIds: {
+      async find(eventId, credentialId) {
+        return t.ephemeralIds.get(`${eventId}:${credentialId}`) ?? null;
+      },
       async getOrCreate(eventId, credentialId) {
         const k = `${eventId}:${credentialId}`;
         let v = t.ephemeralIds.get(k);
@@ -290,9 +506,9 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       async forEvent(eventId) {
         return [...t.scans.values()].filter((s) => s.event_id === eventId).sort((a, b) => correctedMs(a) - correctedMs(b)).map(clone);
       },
-      async page(eventId, { checkpointId, result, limit, before }) {
+      async page(eventId, { checkpointId, result, ephemeralId, limit, before }) {
         const all = [...t.scans.values()]
-          .filter((s) => s.event_id === eventId && (!checkpointId || s.checkpoint_id === checkpointId) && (!result || s.result === result))
+          .filter((s) => s.event_id === eventId && (!checkpointId || s.checkpoint_id === checkpointId) && (!result || s.result === result) && (!ephemeralId || s.ephemeral_id === ephemeralId))
           .sort((a, b) => b.received_at.getTime() - a.received_at.getTime() || b.id.localeCompare(a.id));
         const start = before ? all.findIndex((s) => s.id === before) + 1 : 0;
         return all.slice(start, start + limit).map(clone);
@@ -320,9 +536,11 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
         Object.assign(a, patch);
         return clone(a);
       },
-      async list({ eventId, state, severity, limit }) {
+      async list({ eventId, state, severity, checkpointIds, limit }) {
+        const scope = checkpointIds ? new Set(checkpointIds) : null;
         return [...t.alerts.values()]
           .filter((a) => (!eventId || a.event_id === eventId) && (!state || a.state === state) && (!severity || a.severity === severity))
+          .filter((a) => !scope || (a.checkpoint_id !== null && scope.has(a.checkpoint_id)))
           .sort((a, b) => b.occurred_at.getTime() - a.occurred_at.getTime())
           .slice(0, limit)
           .map(clone);
@@ -362,31 +580,100 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
         return [...t.gateRates.values()].filter((r) => r.event_id === eventId).map(clone);
       },
     },
+    // Same semantics as @synan/db migration 0004 (auth_rotate_session, auth_redeem_link,
+    // ws_consume_ticket, auth_cleanup). Each method is synchronous between read and write, so it is
+    // atomic in-process the way the SQL functions are atomic under row locks.
     auth: {
-      async insertSession(row) {
-        t.authSessions.set(row.id, clone(row));
+      async startSession(i) {
+        t.authSessions.set(i.tokenHash, {
+          family_id: i.familyId, user_id: i.holder.userId ?? null, attendee_id: i.holder.attendeeId ?? null,
+          mfa_at: i.mfaAt, created_at: i.now, rotated_at: null, expires_at: i.expiresAt, revoked_at: null,
+        });
       },
-      async sessionByRefreshHash(hash) {
-        for (const s of t.authSessions.values()) if (s.refresh_hash === hash) return clone(s);
-        return null;
+      async rotateSession({ tokenHash, newTokenHash, ttl, now }) {
+        const s = t.authSessions.get(tokenHash);
+        if (!s) return { status: "invalid", family_id: null, user_id: null, attendee_id: null, mfa_at: null, expires_at: null };
+        const out = { family_id: s.family_id, user_id: s.user_id, attendee_id: s.attendee_id, mfa_at: s.mfa_at, expires_at: s.expires_at };
+        if (s.revoked_at) return { status: "revoked", ...out };
+        if (s.rotated_at) {
+          for (const x of t.authSessions.values()) if (x.family_id === s.family_id && !x.revoked_at) x.revoked_at = now;
+          return { status: "reuse_detected", ...out };
+        }
+        if (s.expires_at.getTime() <= now.getTime()) return { status: "expired", ...out };
+        s.rotated_at = now;
+        // Lifetime by holder kind, chosen in the same step (as auth_rotate_session_by_kind does).
+        const expiresAt = new Date(now.getTime() + (s.user_id ? ttl.userSeconds : ttl.attendeeSeconds) * 1000);
+        t.authSessions.set(newTokenHash, { ...s, created_at: now, rotated_at: null, expires_at: expiresAt, revoked_at: null });
+        return { status: "rotated", ...out, expires_at: expiresAt };
       },
-      async markSessionUsed(id, at) {
-        const s = t.authSessions.get(id);
-        if (!s || s.used_at) return false;
-        s.used_at = at;
-        return true;
+      async revokeFamily(familyId, _reason, now) {
+        let n = 0;
+        for (const s of t.authSessions.values()) {
+          if (s.family_id === familyId && !s.revoked_at) {
+            s.revoked_at = now;
+            n++;
+          }
+        }
+        return n;
       },
-      async revokeFamily(familyId, at) {
-        for (const s of t.authSessions.values()) if (s.family_id === familyId && !s.revoked_at) s.revoked_at = at;
+      async createLink({ tokenHash, attendeeId, expiresAt, now }) {
+        t.authLinks.set(tokenHash, { attendee_id: attendeeId, created_at: now, expires_at: expiresAt, redeemed_at: null });
       },
-      async insertLink(row) {
-        t.authLinks.set(row.token_hash, clone(row));
-      },
-      async consumeLink(tokenHash, at) {
+      async redeemLink(tokenHash, now) {
         const l = t.authLinks.get(tokenHash);
-        if (!l || l.used_at || l.expires_at.getTime() <= at.getTime()) return null;
-        l.used_at = at;
-        return clone(l);
+        if (!l) return { status: "invalid", attendee_id: null };
+        if (l.redeemed_at) return { status: "already_redeemed", attendee_id: l.attendee_id };
+        if (l.expires_at.getTime() <= now.getTime()) return { status: "expired", attendee_id: l.attendee_id };
+        l.redeemed_at = now;
+        return { status: "redeemed", attendee_id: l.attendee_id };
+      },
+      async mintTicket(i) {
+        t.wsTickets.set(i.ticketHash, {
+          user_id: i.holder.userId ?? null, attendee_id: i.holder.attendeeId ?? null, session_family_id: i.sessionFamilyId,
+          channel: i.channel, event_id: i.eventId, checkpoint_id: i.checkpointId, expires_at: i.expiresAt, consumed_at: null,
+        });
+      },
+      async consumeTicket(ticketHash, now) {
+        const r = t.wsTickets.get(ticketHash);
+        const none = { user_id: null, attendee_id: null, session_family_id: null, channel: null, event_id: null, checkpoint_id: null };
+        if (!r) return { status: "invalid", ...none };
+        if (r.consumed_at) return { status: "already_consumed", ...none };
+        r.consumed_at = now;
+        const out = {
+          user_id: r.user_id, attendee_id: r.attendee_id, session_family_id: r.session_family_id,
+          channel: r.channel, event_id: r.event_id, checkpoint_id: r.checkpoint_id,
+        };
+        if (r.expires_at.getTime() <= now.getTime()) return { status: "expired", ...out };
+        if (r.session_family_id) {
+          const live = [...t.authSessions.values()].some(
+            (s) => s.family_id === r.session_family_id && !s.revoked_at && s.expires_at.getTime() > now.getTime(),
+          );
+          if (!live) return { status: "revoked", ...out };
+        }
+        return { status: "valid", ...out };
+      },
+      async cleanup(now) {
+        const keep = 30 * 86400_000;
+        const n = { sessions: 0, links: 0, tickets: 0 };
+        for (const [k, s] of t.authSessions) {
+          if (s.expires_at.getTime() < now.getTime() - keep || (s.revoked_at && s.revoked_at.getTime() < now.getTime() - keep)) {
+            t.authSessions.delete(k);
+            n.sessions++;
+          }
+        }
+        for (const [k, l] of t.authLinks) {
+          if (l.expires_at.getTime() < now.getTime() - keep || (l.redeemed_at && l.redeemed_at.getTime() < now.getTime() - keep)) {
+            t.authLinks.delete(k);
+            n.links++;
+          }
+        }
+        for (const [k, r] of t.wsTickets) {
+          if (r.expires_at.getTime() < now.getTime() - 10 * 60_000) {
+            t.wsTickets.delete(k);
+            n.tickets++;
+          }
+        }
+        return n;
       },
     },
   };

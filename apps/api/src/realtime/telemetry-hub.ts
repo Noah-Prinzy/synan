@@ -37,6 +37,9 @@ interface EventState {
   lastFlushAt: number;
   timer: NodeJS.Timeout | null;
   subs: Set<{ scope: TelemetryScope; send: Send }>;
+  /** Last values sent to the public scope (suppressed). Public frames carry only changes to these. */
+  pubRooms: Map<string, RoomOccupancy>;
+  pubZones: Map<string, ZoneOccupancy>;
 }
 
 export class TelemetryHub {
@@ -44,6 +47,8 @@ export class TelemetryHub {
   private events = new Map<string, EventState>();
   /** Counts flushes, for tests and metrics. */
   flushes = 0;
+  /** Wall-clock times of the most recent flushes (last 100), for tests and metrics. */
+  readonly flushTimes: number[] = [];
 
   constructor(
     private readonly clock: Clock,
@@ -63,6 +68,8 @@ export class TelemetryHub {
         lastFlushAt: 0,
         timer: null,
         subs: new Set(),
+        pubRooms: new Map(),
+        pubZones: new Map(),
       };
       this.events.set(eventId, s);
     }
@@ -72,8 +79,14 @@ export class TelemetryHub {
   /** Set the full state without emitting (startup / projection rebuild). */
   prime(eventId: string, rooms: RoomOccupancy[], zones: ZoneOccupancy[]) {
     const s = this.state(eventId);
-    for (const r of rooms) s.rooms.set(r.room_id, r);
-    for (const z of zones) s.zones.set(z.zone_id, z);
+    for (const r of rooms) {
+      s.rooms.set(r.room_id, r);
+      s.pubRooms.set(r.room_id, this.suppress(r, "public"));
+    }
+    for (const z of zones) {
+      s.zones.set(z.zone_id, z);
+      s.pubZones.set(z.zone_id, this.suppress(z, "public"));
+    }
   }
 
   update(eventId: string, rooms: RoomOccupancy[], zones: ZoneOccupancy[]) {
@@ -119,21 +132,53 @@ export class TelemetryHub {
     const max = this.opts.ringSize ?? 2400; // 10 min at 4 Hz
     if (s.ring.length > max) s.ring.splice(0, s.ring.length - max);
     this.flushes++;
+    this.flushTimes.push(s.lastFlushAt);
+    if (this.flushTimes.length > 100) this.flushTimes.shift();
     const full = this.toMessage(eventId, delta, "full");
-    let pub: TelemetryEvent | null = null;
+    const pub = this.publicDelta(eventId, s, delta);
     for (const sub of s.subs) {
       if (sub.scope === "full") sub.send(full);
-      else sub.send((pub ??= this.toMessage(eventId, delta, "public")));
+      else if (pub) sub.send(pub);
     }
+  }
+
+  /**
+   * The public view of a delta: only entries whose *suppressed* value changed since the last public
+   * frame. A change that stays below k (or a level change on a suppressed room) produces nothing, so
+   * a public viewer cannot see when a lone person moves (O-08, 03 §5). Null when nothing changed.
+   */
+  private publicDelta(eventId: string, s: EventState, d: Delta): TelemetryEvent | null {
+    const rooms: RoomOccupancy[] = [];
+    for (const r of d.rooms) {
+      const v = this.suppress(r, "public");
+      const prev = s.pubRooms.get(r.room_id);
+      if (prev && prev.occupancy === v.occupancy && prev.level === v.level && prev.capacity === v.capacity) continue;
+      s.pubRooms.set(r.room_id, v);
+      rooms.push(v);
+    }
+    const zones: ZoneOccupancy[] = [];
+    for (const z of d.zones) {
+      const v = this.suppress(z, "public");
+      const prev = s.pubZones.get(z.zone_id);
+      if (prev && prev.occupancy === v.occupancy) continue;
+      s.pubZones.set(z.zone_id, v);
+      zones.push(v);
+    }
+    if (!rooms.length && !zones.length) return null;
+    return { id: this.cursor(d.seq), type: "occupancy.delta", at: d.at, data: { event_id: eventId, rooms, zones } };
   }
 
   private cursor(seq: number) {
     return `${this.bootId}.${seq}`;
   }
 
+  /**
+   * Public scope: a count below k is hidden, and so is anything derived from it — a suppressed room's
+   * `level` reads "ok", because warn/block thresholds below k would otherwise state the count.
+   */
   private suppress<T extends { occupancy: number | null }>(x: T, scope: TelemetryScope): T {
     if (scope === "full" || x.occupancy === null || x.occupancy >= this.opts.kAnon) return x;
-    return { ...x, occupancy: null };
+    return { ...x, occupancy: null, ...("level" in x ? { level: "ok" as const } : {}) };
   }
 
   private toMessage(eventId: string, d: Delta, scope: TelemetryScope): TelemetryEvent {
@@ -177,13 +222,15 @@ export class TelemetryHub {
     const sub = { scope, send };
     let resumed = false;
     let catchUp: TelemetryEvent[] = [];
-    if (lastEventId) {
+    // Only the full scope resumes. A public subscriber always gets a fresh suppressed snapshot, so the
+    // retained history cannot be replayed to reconstruct sub-k movements from before it connected.
+    if (lastEventId && scope === "full") {
       const [boot, seqStr] = lastEventId.split(".");
       const seq = Number(seqStr);
       const oldest = s.ring[0]?.seq ?? s.seq + 1;
       if (boot === this.bootId && Number.isInteger(seq) && seq <= s.seq && seq >= oldest - 1) {
         resumed = true;
-        catchUp = s.ring.filter((d) => d.seq > seq).map((d) => this.toMessage(eventId, d, scope));
+        catchUp = s.ring.filter((d) => d.seq > seq).map((d) => this.toMessage(eventId, d, "full"));
       }
     }
     if (!resumed) catchUp = [this.snapshot(eventId, scope)];

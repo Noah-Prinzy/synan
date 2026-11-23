@@ -109,7 +109,7 @@ Every attendee registration belongs to exactly one of four tiers (D-02).
 **Entitlement (P-04).** Whether a scan is admitted is decided on the server, at scan time, by
 following this chain:
 
-```
+```text
 credential → registration (tier) → event room → access rule (tier × room × time window)
 ```
 
@@ -154,7 +154,7 @@ fast, simple carrier.
 
 ### 5.2 Lifecycle (P-02, D-06)
 
-```
+```text
 Credential:  issued → active → revoked
                        ↓  ↑
                 suspended_review          (impossible travel; cleared or revoked by a supervisor)
@@ -195,7 +195,7 @@ six-character code from the desk clerk ([06 §1](06-screens.md), screen A5).
 
 ## 6. Venue model (P-03, P-05)
 
-```
+```text
 Organisation → Venue → Zone (a floor or area) → Room
 ```
 
@@ -333,7 +333,7 @@ The security properties of the cached allowlist are in [03 §4](03-security-priv
 
 ## 9. Event lifecycle (P-13)
 
-```
+```text
 draft → published → live → closed → archived
 ```
 

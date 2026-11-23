@@ -27,7 +27,7 @@ export default function SiteFooter() {
     <footer className="border-t border-border">
       <div className="grid md:grid-cols-3">
         <div className="border-b border-border px-4 py-8 sm:px-6 md:border-b-0 md:px-8">
-          <span className="text-21">
+          <span className="text-28">
             <Wordmark />
           </span>
           <p className="mt-3 max-w-[32ch] text-15 text-muted-foreground">

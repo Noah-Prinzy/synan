@@ -43,7 +43,35 @@
   to { transform: scaleX(0); }
 }
 
+/* Brand reveal (attendee home, first load only): the two pieces of the mark arrive from
+   either side and meet; the letters follow. */
+@keyframes brandIn {
+  from {
+    opacity: 0;
+    transform: translateX(var(--brand-from, 0));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @layer utilities {
+  .brand-reveal {
+    transform-box: fill-box;
+    animation: brandIn 240ms cubic-bezier(0.2, 0, 0, 1) both;
+    animation-delay: calc(var(--i, 0) * 30ms);
+  }
+  .brand-reveal-ink {
+    --brand-from: -18%;
+  }
+  .brand-reveal-accent {
+    --brand-from: 18%;
+  }
+  .brand-reveal-letter {
+    --brand-from: 0;
+  }
+
   .enter {
     animation: enter 240ms cubic-bezier(0.2, 0, 0, 1) both;
     animation-delay: calc(var(--i, 0) * 40ms);
@@ -65,6 +93,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .enter,
+  .brand-reveal,
   .fade-in,
   .animate-status-pulse,
   .animate-skeleton-sweep {

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <title>Synan</title>
+  <rect width="32" height="32" fill="#0A0A0A"/>
+  <g transform="translate(-1.920 -1.920) scale(1.1200)">
+    <path d="M4 4H16A6.85 6.85 0 0 0 16 17.7A3.45 3.45 0 0 1 16 24.6H4Z" fill="#FAFAFA"/>
+    <path d="M28 7.4H16A3.45 3.45 0 0 0 16 14.3A6.85 6.85 0 0 1 16 28H28Z" fill="#8AB4FF"/>
+  </g>
+</svg>

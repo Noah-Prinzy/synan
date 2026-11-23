@@ -1,11 +1,12 @@
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { pageTitle } from "@synan/ui/brand";
+import { buttonClass } from "@synan/ui/components";
 import { groupAgenda, getSpaceLeft, type AgendaGroupItem, type AgendaSession } from "../data/agenda";
-import { formatLongDay, formatTime } from "../data/format";
-import { clock } from "../data/mock";
-import { dayKey } from "../data/format";
-import { PageShell } from "../components/page";
+import { dayKey, formatLongDay, formatTime } from "../data/format";
+import { clock, useResource } from "../data/mock";
+import { PageHeader, PageShell, RuledRow } from "../components/page";
+import { ErrorState, OfflineState, SkeletonCells, StateBlock } from "../components/states";
 
 const groupLabel: Record<AgendaGroupItem["group"], string> = {
   NOW: "Now",
@@ -19,56 +20,65 @@ export default function Agenda() {
     document.title = pageTitle("Agenda");
   }, []);
 
-  const groups = groupAgenda();
+  const agenda = useResource("agenda", () => groupAgenda());
 
   return (
-    <PageShell>
-      <div className="max-w-[56rem]">
-        <p className="text-13 font-medium text-muted-foreground">My schedule</p>
-        <h1 className="mt-2 font-display text-40">My agenda</h1>
+    <PageShell bleed>
+      <PageHeader label="My schedule" title="My agenda">
+        The sessions on your pass, in the event's local time. Tap one to see it in the programme.
+      </PageHeader>
 
-        {groups.length === 0 ? (
-          <p className="mt-12 text-17 text-muted-foreground">Nothing on your agenda yet. Sessions you register for appear here.</p>
-        ) : (
-          <div className="mt-8">
-            {groups.map((group, index) => (
-              <AgendaSection key={group.group} group={group} index={index} />
-            ))}
-          </div>
-        )}
-      </div>
+      {agenda.status === "loading" ? (
+        <SkeletonCells count={3} />
+      ) : agenda.status === "offline" ? (
+        <OfflineState what="Your agenda" onRetry={agenda.retry} />
+      ) : agenda.status === "error" ? (
+        <ErrorState what="your agenda" onRetry={agenda.retry} />
+      ) : agenda.data.length === 0 ? (
+        <StateBlock
+          glyph="·"
+          title="Nothing on your agenda yet."
+          action={
+            <Link to="/" className={buttonClass("secondary", "sm")}>
+              Browse events
+            </Link>
+          }
+        >
+          Sessions appear here once you're registered for an event.
+        </StateBlock>
+      ) : (
+        agenda.data.map((group, index) => <AgendaGroup key={group.group} group={group} index={index} />)
+      )}
     </PageShell>
   );
 }
 
-function AgendaSection({ group, index }: { group: AgendaGroupItem; index: number }) {
+function AgendaGroup({ group, index }: { group: AgendaGroupItem; index: number }) {
   const isNow = group.group === "NOW";
   const earlier = group.group === "EARLIER";
   const today = group.sessions[0] ? dayKey(new Date(clock.now()).toISOString(), group.sessions[0].timezone) : "";
   let lastDay = "";
-
   return (
-    <section aria-labelledby={`agenda-${group.group}`} className="enter border-t border-border py-8" style={{ ["--i" as string]: index }}>
-      <h2 id={`agenda-${group.group}`} className="mb-4 font-display text-28">
-        {groupLabel[group.group]}
-      </h2>
-      <ul>
-        {group.sessions.map((session) => {
-          const dayChanged = session.day !== lastDay;
-          lastDay = session.day;
-          return (
-            <li key={session.id}>
-              {dayChanged && (session.day !== today || group.group === "LATER") ? (
-                <p className="mt-4 mb-2 text-15 font-medium text-muted-foreground">
-                  {session.day === today ? "Today" : formatLongDay(session.startsAt, session.timezone)}
-                </p>
-              ) : null}
-              <AgendaRow session={session} isNow={isNow} muted={earlier} />
-            </li>
-          );
-        })}
-      </ul>
-    </section>
+    <div className="enter" style={{ ["--i" as string]: index }}>
+      <RuledRow label={groupLabel[group.group]}>
+        <ul>
+          {group.sessions.map((session) => {
+            const dayChanged = session.day !== lastDay;
+            lastDay = session.day;
+            return (
+              <li key={session.id}>
+                {dayChanged && session.day !== today ? (
+                  <p className="mt-4 mb-2 text-15 font-medium text-muted-foreground first:mt-0">
+                    {formatLongDay(session.startsAt, session.timezone)}
+                  </p>
+                ) : null}
+                <AgendaRow session={session} isNow={isNow} muted={earlier} />
+              </li>
+            );
+          })}
+        </ul>
+      </RuledRow>
+    </div>
   );
 }
 
@@ -77,7 +87,7 @@ function AgendaRow({ session, isNow, muted }: { session: AgendaSession; isNow: b
   return (
     <Link
       to={`/events/${session.eventSlug}#session-${session.id}`}
-      className={`-mt-px flex items-center justify-between gap-4 border border-border p-4 transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] hover:bg-card/40 motion-reduce:transition-none ${
+      className={`-mt-px flex min-h-16 items-center justify-between gap-4 border border-border px-4 py-3 transition-colors duration-120 ease-standard hover:bg-card/40 motion-reduce:transition-none ${
         isNow ? "border-l-2 border-l-foreground" : ""
       } ${muted ? "text-muted-foreground" : ""}`}
     >

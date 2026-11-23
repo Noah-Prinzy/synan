@@ -14,7 +14,13 @@ export const users = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     org_id: uuid("org_id").references(() => organizations.id),
+    /**
+     * Sign-in address: an encrypted envelope bound to this row (enforced, migration 0009). Write it
+     * only through src/secrets.ts (`insertUser`, `setUserEmail`); look users up by `email_hash`.
+     */
     email: text("email").notNull(),
+    /** Blind index of the normalised address (HMAC-SHA-256 under the blind-index key, "user" domain, 64 hex). Unique. */
+    email_hash: text("email_hash").notNull(),
     display_name: text("display_name").notNull().default(""),
     /** Null for staff without a console (speaker, crew) or not yet activated. */
     password_hash: text("password_hash"),
@@ -27,7 +33,11 @@ export const users = pgTable(
     created_at: tstz("created_at").notNull().defaultNow(),
     updated_at: tstz("updated_at").notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("users_email_lower_uq").on(sql`lower(${t.email})`), index("users_role_idx").on(t.role)],
+  (t) => [
+    // Case-insensitive uniqueness of the address (the blind index is computed on the normalised form).
+    uniqueIndex("users_email_hash_uq").on(t.email_hash),
+    index("users_role_idx").on(t.role),
+  ],
 );
 
 /**

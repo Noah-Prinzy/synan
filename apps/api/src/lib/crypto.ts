@@ -107,10 +107,14 @@ export function totp(secretB32: string, atMs: number, step = 30): string {
   return code;
 }
 
-/** Accepts the current step and one either side (±30 s drift). */
-export function verifyTotp(secretB32: string, code: string, atMs: number): boolean {
+/**
+ * Accepts the current step and one either side (±30 s drift). Returns the matched time-step counter
+ * (so callers can refuse any step at or before the last one accepted), or null.
+ */
+export function verifyTotp(secretB32: string, code: string, atMs: number): number | null {
   for (const d of [-1, 0, 1]) {
-    if (safeEqual(totp(secretB32, atMs + d * 30_000), code)) return true;
+    const t = atMs + d * 30_000;
+    if (safeEqual(totp(secretB32, t), code)) return Math.floor(t / 1000 / 30);
   }
-  return false;
+  return null;
 }

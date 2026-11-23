@@ -57,9 +57,10 @@ export class QrService {
     if (!this.keys.verifyQr(p.kid, p.signed, p.signature)) return { ok: false, reason: "bad_signature" };
     const now = atMs / 1000;
     const leeway = this.opts.leewayS;
-    if (now >= p.exp + leeway) return { ok: false, reason: "expired" };
+    // Written as "must be inside", so a non-finite operand (bad config, bad clock) fails closed.
+    if (!(now < p.exp + leeway)) return { ok: false, reason: "expired" };
     if (p.kind === "portal") {
-      if (now < p.exp - p.ttl - leeway) return { ok: false, reason: "not_yet_valid" };
+      if (!(now >= p.exp - p.ttl - leeway)) return { ok: false, reason: "not_yet_valid" };
       return { ok: true, typ: "portal", credentialRef: p.ref, kid: p.kid };
     }
     return { ok: true, typ: "email", credentialRef: p.ref, carrierCid: p.cid, kid: p.kid };

@@ -44,7 +44,7 @@ function ColumnGuides() {
 function Cell({ label, children, index }: { label: string; children: React.ReactNode; index: number }) {
   return (
     <div
-      className="enter flex min-h-28 flex-col justify-between gap-3 border-b border-border px-4 py-5 sm:px-6 md:border-b-0 md:px-8 [&:nth-child(odd)]:border-r md:[&:not(:last-child)]:border-r"
+      className="enter flex min-h-28 flex-col justify-between gap-3 border-b border-border px-4 py-5 sm:px-6 md:border-b-0 md:px-8 odd:border-r md:not-last:border-r"
       style={{ ["--i" as string]: index + 3 }}
     >
       <p className="text-13 font-medium text-muted-foreground">{label}</p>
@@ -130,11 +130,11 @@ export function Featured({ event }: { event: EventSummary }) {
 function EventPlate({ event }: { event: EventSummary }) {
   const { weekday, day, month } = dateParts(event.startsAt, event.timezone);
   if (event.image) {
-    return <img src={event.image} alt="" className="aspect-[16/10] w-full border-b border-border object-cover" loading="lazy" />;
+    return <img src={event.image} alt="" className="aspect-16/10 w-full border-b border-border object-cover" loading="lazy" />;
   }
   const live = event.state === "live";
   return (
-    <div aria-hidden="true" className="relative aspect-[16/10] overflow-hidden border-b border-border">
+    <div aria-hidden="true" className="relative aspect-16/10 overflow-hidden border-b border-border">
       <svg className="absolute inset-0 h-full w-full text-border" preserveAspectRatio="none" viewBox="0 0 160 100">
         <path d="M0 100 A100 100 0 0 1 100 0" fill="none" stroke="currentColor" vectorEffect="non-scaling-stroke" />
         <line x1="100" y1="0" x2="100" y2="100" stroke="currentColor" vectorEffect="non-scaling-stroke" />
@@ -164,7 +164,7 @@ export function EventCard({ event, index }: { event: EventSummary; index: number
     <li className="enter" style={{ ["--i" as string]: index }}>
       <Link
         to={`/events/${event.slug}`}
-        className="group flex h-full flex-col transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] hover:bg-card/40 motion-reduce:transition-none"
+        className="group flex h-full flex-col transition-colors duration-120 ease-standard hover:bg-card/40 motion-reduce:transition-none"
       >
         <EventPlate event={event} />
         <div className="flex flex-1 flex-col gap-4 p-5 sm:p-6">
@@ -255,7 +255,7 @@ export default function Discover() {
                 type="button"
                 aria-pressed={filter === id}
                 onClick={() => setFilter(id)}
-                className={`relative flex min-h-14 items-center gap-2 border-l border-border px-4 text-15 transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none sm:px-5 ${
+                className={`relative flex min-h-14 items-center gap-2 border-l border-border px-4 text-15 transition-colors duration-120 ease-standard motion-reduce:transition-none sm:px-5 ${
                   filter === id ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -263,7 +263,7 @@ export default function Discover() {
                 <span className="font-mono text-13 text-muted-foreground">{counts[id]}</span>
                 <span
                   aria-hidden="true"
-                  className={`absolute inset-x-0 -bottom-px h-px origin-left bg-brand transition-transform duration-[180ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none ${
+                  className={`absolute inset-x-0 -bottom-px h-px origin-left bg-brand transition-transform duration-180 ease-standard motion-reduce:transition-none ${
                     filter === id ? "scale-x-100" : "scale-x-0"
                   }`}
                 />

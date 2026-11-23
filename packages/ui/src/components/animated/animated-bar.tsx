@@ -59,7 +59,7 @@ export function AnimatedBar({ value, tone = "neutral", label, className }: Anima
     >
       <div
         className={cn(
-          "h-full w-full origin-left transition-transform duration-[240ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none",
+          "h-full w-full origin-left transition-transform duration-240 ease-standard motion-reduce:transition-none",
           fillTone[tone],
         )}
         style={{ transform: `scaleX(${seen ? clamped / 100 : 0})` }}

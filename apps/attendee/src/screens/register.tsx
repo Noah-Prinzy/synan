@@ -2,8 +2,9 @@ import { pageTitle } from "@synan/ui/brand";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { buttonClass } from "@synan/ui/components";
-import { PageShell } from "../components/page";
-import { StateBlock } from "../components/states";
+import { PageHeader, PageShell } from "../components/page";
+import { ErrorState, OfflineState, SkeletonCells, StateBlock } from "../components/states";
+import { useResource } from "../data/mock";
 import {
   clearDraft,
   findEvent,
@@ -26,14 +27,14 @@ const steps: { id: Step; label: string }[] = [
 ];
 
 const fieldClass =
-  "min-h-12 w-full border border-border bg-transparent px-3 py-2.5 text-17 text-foreground outline-none transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] placeholder:text-muted-foreground focus:border-brand aria-[invalid=true]:border-destructive motion-reduce:transition-none";
+  "min-h-12 w-full border border-border bg-transparent px-3 py-2.5 text-17 text-foreground outline-none transition-colors duration-120 ease-standard placeholder:text-muted-foreground focus:border-brand aria-[invalid=true]:border-destructive motion-reduce:transition-none";
 
 const primaryButton = buttonClass("primary", "md");
 
 const secondaryButton = buttonClass("secondary", "md");
 
 const checkboxClass =
-  "mt-0.5 size-5 shrink-0 appearance-none border border-border bg-transparent transition-colors checked:border-brand checked:bg-brand focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand motion-reduce:transition-none";
+  "mt-0.5 size-5 shrink-0 appearance-none border border-border bg-transparent transition-colors checked:border-brand checked:bg-brand focus-visible:outline focus-visible:outline-brand motion-reduce:transition-none";
 
 function Field({
   id,
@@ -93,6 +94,8 @@ export default function Register({ step }: { step: Step }) {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [failed, setFailed] = useState<null | "offline" | "error">(null);
+  // GET /events/:slug/profile-schema — the form waits for it (loading / error / offline).
+  const schema = useResource(`register:${slug}`, () => fields.length);
 
   useEffect(() => {
     saveDraft(slug, draft);
@@ -217,18 +220,34 @@ export default function Register({ step }: { step: Step }) {
     }, 700);
   }
 
+  if (schema.status !== "ready") {
+    return (
+      <PageShell bleed>
+        {schema.status === "loading" ? (
+          <SkeletonCells count={2} />
+        ) : schema.status === "offline" ? (
+          <OfflineState what="Registration" onRetry={schema.retry} />
+        ) : (
+          <ErrorState what="the registration form" onRetry={schema.retry} />
+        )}
+      </PageShell>
+    );
+  }
+
   if (!event) {
     return (
-      <PageShell>
-        <div>
-          <h1 className="font-serif text-40">Registration unavailable.</h1>
-          <p className="mt-3 text-15 text-muted-foreground">
-            This event does not exist, or registration has not opened.
-          </p>
-          <Link to="/" className={`${secondaryButton} mt-8`}>
-            Browse events
-          </Link>
-        </div>
+      <PageShell bleed>
+        <StateBlock
+          glyph="·"
+          title="Registration isn't open for this event."
+          action={
+            <Link to="/" className={secondaryButton}>
+              Browse events
+            </Link>
+          }
+        >
+          It may not exist, or registration hasn't opened yet.
+        </StateBlock>
       </PageShell>
     );
   }
@@ -252,17 +271,10 @@ export default function Register({ step }: { step: Step }) {
   ];
 
   return (
-    <PageShell>
-      <div className="pb-6">
-        <p className="text-13 font-medium text-muted-foreground">
-          {dateLine} · {event.city}
-        </p>
-        <h1 className="mt-3 font-display text-40 leading-tight md:text-56">{event.title}</h1>
+    <PageShell bleed>
+        <PageHeader label={`Register · ${dateLine} · ${event.city}`} title={event.title} />
 
-        <ol
-          aria-label="Registration steps"
-          className="border-border mt-8 grid grid-cols-3 border-b"
-        >
+        <ol aria-label="Registration steps" className="grid grid-cols-3 border-b border-border">
           {steps.map((item, index) => {
             const state =
               index < activeIndex ? "done" : index === activeIndex ? "current" : "todo";
@@ -282,8 +294,9 @@ export default function Register({ step }: { step: Step }) {
             return (
               <li
                 key={item.id}
-                className={`relative -mb-px border-b-2 ${
-                  state === "current" ? "border-brand" : "border-transparent"
+                aria-current={state === "current" ? "step" : undefined}
+                className={`relative border-r border-border px-4 last:border-r-0 sm:px-6 md:px-10 ${
+                  state === "current" ? "after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:bg-brand" : ""
                 }`}
               >
                 {state === "done" ? (
@@ -300,6 +313,8 @@ export default function Register({ step }: { step: Step }) {
             );
           })}
         </ol>
+
+        <div className="px-4 pb-14 sm:px-6 md:px-10">
 
         {sent ? (
           <section className="pt-10">
@@ -550,7 +565,7 @@ export default function Register({ step }: { step: Step }) {
                   <dt className="text-13 font-medium text-muted-foreground">
                     {row.label}
                   </dt>
-                  <dd className="text-15 break-words">{row.value}</dd>
+                  <dd className="text-15 wrap-break-word">{row.value}</dd>
                 </div>
               ))}
             </dl>

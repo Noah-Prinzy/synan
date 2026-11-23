@@ -165,13 +165,14 @@ describe("idempotency (idem_key)", () => {
     expect(rows).toHaveLength(1);
   });
 
-  it("the same key with a different payload is a 409", async () => {
+  it("the same key with a different payload is rejected for that item only (IDEMPOTENCY_CONFLICT)", async () => {
     const a = await addAttendee(h, "ORDINARY");
     const s = scan(h, h.seed.checkpoints.expo, band(a.uid));
     await post([s]);
-    const r = await post([{ ...s, checkpoint_id: h.seed.checkpoints.auditorium, direction: "in" }]);
-    expect(r.status).toBe(409);
-    expect(errCode(r.body)).toBe("IDEMPOTENCY_CONFLICT");
+    const r = await post([{ ...s, occurred_at: new Date(h.clock.now() - 5_000).toISOString() }]);
+    expect(r.status).toBe(200);
+    expect(r.body.results).toEqual([]);
+    expect(r.body.rejected).toEqual([{ idem_key: s.idem_key, code: "IDEMPOTENCY_CONFLICT", message: expect.any(String) }]);
   });
 
   it("duplicate keys inside one batch are applied once", async () => {
@@ -220,10 +221,11 @@ describe("occupancy rules (01 §7, D-10)", () => {
     expect(implied[0]!.checkpoint_id).toBe(h.seed.checkpoints.auditorium);
   });
 
-  it("a two-way checkpoint requires a direction", async () => {
+  it("a two-way checkpoint requires a direction (that item is rejected)", async () => {
     const a = await addAttendee(h, "ORDINARY");
     const r = await post([scan(h, h.seed.checkpoints.auditorium, band(a.uid))]);
-    expect(r.status).toBe(400);
+    expect(r.body.rejected?.map((x) => x.code)).toEqual(["VALIDATION_FAILED"]);
+    expect(r.body.results).toEqual([]);
   });
 
   it("tier not permitted → denied_room, with escalating alerts on repeat attempts", async () => {
@@ -309,11 +311,14 @@ describe("scanner authorisation (03 §4)", () => {
     const a = await addAttendee(h, "ORDINARY");
     const before = (await alerts("rogue_scanner")).length;
     const notAssigned = await post([scan(h, h.seed.checkpoints.expo, band(a.uid))], g2.access_token);
-    expect(notAssigned.status).toBe(403);
-    expect(errCode(notAssigned.body)).toBe("CHECKPOINT_NOT_ASSIGNED");
+    expect(notAssigned.status).toBe(200);
+    expect(notAssigned.body.results).toEqual([]);
+    expect(notAssigned.body.rejected?.map((x) => x.code)).toEqual(["CHECKPOINT_NOT_ASSIGNED"]);
     const outside = await post([scan(h, h.seed.checkpoints.mainIn, band(a.uid))], g2.access_token);
-    expect(errCode(outside.body)).toBe("OUTSIDE_SHIFT");
+    expect(outside.body.rejected?.map((x) => x.code)).toEqual(["OUTSIDE_SHIFT"]);
     expect((await alerts("rogue_scanner")).length).toBe(before + 2);
+    // Nothing was applied for either.
+    expect((await allScans()).some((x) => x.staff_user_id === h.seed.users.gate2)).toBe(false);
   });
 
   it("refuses scans for an event that is not live", async () => {
@@ -415,10 +420,14 @@ describe("gate_rate_rollups (D-16)", () => {
 });
 
 describe("alerts lifecycle", () => {
-  it("ack then resolve, both audited", async () => {
+  it("ack then resolve, both audited; gate staff may ack only alerts at their own checkpoint", async () => {
     const [a] = await alerts("unauthorised_tier");
-    const ack = await h.call<BreachAlert>("POST", `/alerts/${a!.id}/ack`, { token: await h.gateToken(h.seed.checkpoints.mainIn) });
+    expect(a!.checkpoint_id).toBe(h.seed.checkpoints.vip);
+    const elsewhere = await h.call("POST", `/alerts/${a!.id}/ack`, { token: await h.gateToken(h.seed.checkpoints.mainIn) });
+    expect(elsewhere.status).toBe(404);
+    const ack = await h.call<BreachAlert>("POST", `/alerts/${a!.id}/ack`, { token: await h.gateToken(h.seed.checkpoints.vip) });
     expect(ack.body.state).toBe("acked");
+    expect(ack.body.credential_id).toBeNull(); // staff see what to act on, not who
     const res = await h.call<BreachAlert>("POST", `/alerts/${a!.id}/resolve`, { token: organiser.access_token, body: { note: "Escorted out" } });
     expect(res.body).toMatchObject({ state: "resolved", resolution_note: "Escorted out" });
     const audit = await h.app.ctx.repos.audit.all();

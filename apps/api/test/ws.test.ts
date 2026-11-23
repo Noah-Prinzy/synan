@@ -166,7 +166,11 @@ describe("/stream/telemetry", () => {
     // 40 changes, coalesced: far fewer frames than scans, and never faster than one per ~250 ms.
     expect(deltas.length).toBeLessThanOrEqual(Math.ceil((burstMs + 400) / 250) + 1);
     expect(deltas.length).toBeLessThan(40);
-    for (let i = 1; i < deltas.length; i++) expect(deltas[i]!.at - deltas[i - 1]!.at).toBeGreaterThanOrEqual(230);
+    // ≤ 4 Hz is a property of the server's flushes. Measure it there: client receive times compress
+    // whenever the event loop is busy (it is, under PGlite), which says nothing about the send rate.
+    const flushes = h.app.ctx.telemetry.flushTimes.filter((t) => t >= t0);
+    expect(flushes.length).toBe(deltas.length);
+    for (let i = 1; i < flushes.length; i++) expect(flushes[i]! - flushes[i - 1]!).toBeGreaterThanOrEqual(248); // timers may fire ~1 ms early
     for (const d of deltas) {
       if (d.msg.type !== "occupancy.delta") throw new Error();
       expect(d.msg.data.rooms.map((r) => r.room_id)).toEqual([h.seed.rooms.expo]);

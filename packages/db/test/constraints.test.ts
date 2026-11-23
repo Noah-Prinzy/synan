@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import * as s from "../src/schema/index";
-import { attendeeWithCredential, miniVenue, scan, type MiniVenue } from "./fixtures";
+import { insertUser } from "../src/secrets";
+import { attendeeWithCredential, b64Hash, devCipher, credentialRef, hexIndex, miniVenue, scan, type MiniVenue } from "./fixtures";
+
+const UID_HASH = b64Hash("04A1B2C3D4E5F6");
 import { createTestDb, q, rejects, type TestDb } from "./helpers";
 
 let db: TestDb;
@@ -12,20 +15,19 @@ let userId: string;
 beforeAll(async () => {
   db = await createTestDb();
   v = await miniVenue(db);
-  const [u] = await db.insert(s.users).values({ email: "Guard@Example.test", role: "security_staff" }).returning();
-  userId = u!.id;
+  userId = await insertUser(db, devCipher, { email: "Guard@Example.test", role: "security_staff" });
 });
 
 describe("credentials", () => {
   it("require exactly one of registration_id and staff_user_id", async () => {
     const a = await attendeeWithCredential(db, v.eventId);
     await rejects(
-      db.insert(s.credentials).values({ token_hash: "none-" + randomUUID() }),
+      db.insert(s.credentials).values({ token_hash: credentialRef() }),
       /credentials_exactly_one_holder/,
     );
     await rejects(
       db.insert(s.credentials).values({
-        token_hash: "both-" + randomUUID(),
+        token_hash: credentialRef(),
         registration_id: a.registrationId,
         staff_user_id: userId,
         state: "revoked",
@@ -35,7 +37,7 @@ describe("credentials", () => {
     );
     const [staffCred] = await db
       .insert(s.credentials)
-      .values({ token_hash: "staff-" + randomUUID(), staff_user_id: userId })
+      .values({ token_hash: credentialRef(), staff_user_id: userId })
       .returning();
     expect(staffCred!.zone_state).toBe("OUTSIDE");
   });
@@ -43,14 +45,14 @@ describe("credentials", () => {
   it("allow only one live credential per registration, and unique token hashes", async () => {
     const a = await attendeeWithCredential(db, v.eventId);
     await rejects(
-      db.insert(s.credentials).values({ registration_id: a.registrationId, token_hash: "x-" + randomUUID() }),
+      db.insert(s.credentials).values({ registration_id: a.registrationId, token_hash: credentialRef() }),
       /credentials_one_live_per_registration_uq/,
     );
     // A replaced credential does not block its re-issue.
     await db.update(s.credentials).set({ state: "replaced" }).where(eq(s.credentials.id, a.credentialId));
     const [reissued] = await db
       .insert(s.credentials)
-      .values({ registration_id: a.registrationId, token_hash: "reissue-" + randomUUID() })
+      .values({ registration_id: a.registrationId, token_hash: credentialRef() })
       .returning();
     await rejects(
       db.insert(s.credentials).values({ staff_user_id: userId, token_hash: (await q<{ token_hash: string }>(db, `select token_hash from credentials where id = $1`, [reissued!.id]))[0]!.token_hash, state: "revoked", revoked_at: new Date() }),
@@ -74,29 +76,29 @@ describe("credentials", () => {
 
 describe("carriers", () => {
   it("keep NFC identifiers unique among non-retired carriers", async () => {
-    await db.insert(s.carriers).values({ kind: "nfc", identifier: "04A1B2C3D4E5F6", state: "stock", chip_profile: "ntag_uid" });
+    await db.insert(s.carriers).values({ kind: "nfc", identifier: UID_HASH, state: "stock", chip_profile: "ntag_uid" });
     await rejects(
-      db.insert(s.carriers).values({ kind: "nfc", identifier: "04A1B2C3D4E5F6", state: "stock" }),
+      db.insert(s.carriers).values({ kind: "nfc", identifier: UID_HASH, state: "stock" }),
       /carriers_identifier_uq/,
     );
-    await db.update(s.carriers).set({ state: "retired" }).where(eq(s.carriers.identifier, "04A1B2C3D4E5F6"));
+    await db.update(s.carriers).set({ state: "retired" }).where(eq(s.carriers.identifier, UID_HASH));
     // A reusable Public band can be re-entered once its previous carrier is retired.
-    await db.insert(s.carriers).values({ kind: "nfc", identifier: "04A1B2C3D4E5F6", state: "stock" });
+    await db.insert(s.carriers).values({ kind: "nfc", identifier: UID_HASH, state: "stock" });
   });
 
   it("enforce stock ⇔ unassigned, one live carrier per kind per credential, and kind-specific columns", async () => {
     const a = await attendeeWithCredential(db, v.eventId);
     await rejects(
-      db.insert(s.carriers).values({ kind: "nfc", identifier: "BAND-1", state: "stock", credential_id: a.credentialId }),
+      db.insert(s.carriers).values({ kind: "nfc", identifier: b64Hash("band-1"), state: "stock", credential_id: a.credentialId }),
       /carriers_stock_unassigned/,
     );
     await rejects(
-      db.insert(s.carriers).values({ kind: "nfc", identifier: "BAND-2", state: "bound" }),
+      db.insert(s.carriers).values({ kind: "nfc", identifier: b64Hash("band-2"), state: "bound" }),
       /carriers_stock_unassigned/,
     );
-    await db.insert(s.carriers).values({ kind: "nfc", identifier: "BAND-3", state: "bound", credential_id: a.credentialId, bound_at: new Date() });
+    await db.insert(s.carriers).values({ kind: "nfc", identifier: b64Hash("band-3"), state: "bound", credential_id: a.credentialId, bound_at: new Date() });
     await rejects(
-      db.insert(s.carriers).values({ kind: "nfc", identifier: "BAND-4", state: "active", credential_id: a.credentialId }),
+      db.insert(s.carriers).values({ kind: "nfc", identifier: b64Hash("band-4"), state: "active", credential_id: a.credentialId }),
       /carriers_one_live_per_kind_uq/,
     );
     await rejects(
@@ -108,7 +110,7 @@ describe("carriers", () => {
       /carriers_chip_profile_nfc_only/,
     );
     await rejects(
-      db.insert(s.carriers).values({ kind: "nfc", identifier: "BAND-5", state: "stock", redeemed_at: new Date() }),
+      db.insert(s.carriers).values({ kind: "nfc", identifier: b64Hash("band-5"), state: "stock", redeemed_at: new Date() }),
       /carriers_redeemed_email_only/,
     );
   });
@@ -178,7 +180,7 @@ describe("scans", () => {
 
 describe("staff_assignments", () => {
   it("reject overlapping shifts for one user, allow back-to-back shifts and other users", async () => {
-    const [u2] = await db.insert(s.users).values({ email: "g2@example.test", role: "security_staff" }).returning();
+    const u2 = { id: await insertUser(db, devCipher, { email: "g2@example.test", role: "security_staff" }) };
     await db.insert(s.staff_assignments).values({
       user_id: userId,
       checkpoint_id: v.cpAin,
@@ -299,21 +301,48 @@ describe("breach_alerts", () => {
 });
 
 describe("users", () => {
-  it("treat emails case-insensitively for uniqueness", async () => {
-    await rejects(db.insert(s.users).values({ email: "guard@example.TEST", role: "crew" }), /users_email_lower_uq/);
+  it("treat emails case-insensitively for uniqueness (through the blind index)", async () => {
+    await rejects(insertUser(db, devCipher, { email: " guard@example.TEST", role: "crew" }), /users_email_hash_uq/);
+    await rejects(q(db, `insert into users (email, role) values ($1, 'crew')`, [devCipher.encrypt("x@example.test", { table: "users", column: "email", rowId: "x" })]), /users_email_hash_required|null value in column "email_hash"/);
+    await rejects(q(db, `update users set email = 'plain@example.test' where id = $1`, [userId]), /users_email_encrypted/);
   });
 });
 
 describe("invitations", () => {
   it("keep token hashes unique and one open invitation per recipient per event", async () => {
-    const base = { event_id: v.eventId, email_hash: "h-alice", expires_at: new Date("2027-01-01T00:00:00Z") };
-    await db.insert(s.invitations).values({ ...base, token_hash: "tok-1" });
-    await rejects(db.insert(s.invitations).values({ ...base, token_hash: "tok-2" }), /invitations_open_per_recipient_uq/);
-    await rejects(db.insert(s.invitations).values({ ...base, email_hash: "h-bob", token_hash: "tok-1" }), /invitations_token_hash_uq/);
+    const alice = hexIndex("alice");
+    const tok1 = b64Hash("tok-1");
+    const base = { event_id: v.eventId, email_hash: alice, expires_at: new Date("2027-01-01T00:00:00Z") };
+    await db.insert(s.invitations).values({ ...base, token_hash: tok1 });
+    await rejects(db.insert(s.invitations).values({ ...base, token_hash: b64Hash("tok-2") }), /invitations_open_per_recipient_uq/);
+    await rejects(db.insert(s.invitations).values({ ...base, email_hash: hexIndex("bob"), token_hash: tok1 }), /invitations_token_hash_uq/);
     await rejects(
-      db.update(s.invitations).set({ state: "redeemed" }).where(eq(s.invitations.token_hash, "tok-1")),
+      db.update(s.invitations).set({ state: "redeemed" }).where(eq(s.invitations.token_hash, tok1)),
       /invitations_redeemed_consistent/,
     );
     void sql;
+  });
+
+  it("enforce the settled formats: token_hash 43 base64url, email_hash 64 lowercase hex", async () => {
+    const ok = { event_id: v.eventId, expires_at: new Date("2027-01-01T00:00:00Z") };
+    // token_hash: hex SHA-256 (the old emailed-QR style), padded base64, wrong length, wrong alphabet.
+    for (const bad of [hexIndex("t"), b64Hash("t") + "=", b64Hash("t").slice(0, 42), b64Hash("t").slice(0, 42) + "+"]) {
+      await rejects(
+        db.insert(s.invitations).values({ ...ok, email_hash: hexIndex(), token_hash: bad }),
+        /invitations_token_hash_format/,
+      );
+    }
+    // email_hash: uppercase hex, base64url, a raw address, wrong length.
+    for (const bad of [hexIndex("e").toUpperCase(), b64Hash("e"), "someone@example.test", hexIndex("e").slice(0, 63)]) {
+      await rejects(
+        db.insert(s.invitations).values({ ...ok, email_hash: bad, token_hash: b64Hash() }),
+        /invitations_email_hash_format/,
+      );
+    }
+    await db.insert(s.invitations).values({ ...ok, email_hash: hexIndex(), token_hash: b64Hash() });
+    await rejects(
+      db.update(s.invitations).set({ token_hash: "short" }).where(eq(s.invitations.event_id, v.eventId)),
+      /invitations_token_hash_format/,
+    );
   });
 });

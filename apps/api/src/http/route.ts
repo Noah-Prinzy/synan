@@ -1,7 +1,8 @@
 /**
  * Mounts a contract endpoint on Express. Every request passes, in order:
- *   per-IP rate limit → bearer verification → RBAC (def.access) → MFA freshness (def.mfa)
- *   → per-subject rate limit → Zod validation of params, query, body → handler
+ *   bearer verification → rate limit (signed in: per subject; public sign-in endpoints: per IP,
+ *   failures only; anonymous calls to protected endpoints: per IP) → RBAC (def.access)
+ *   → MFA freshness (def.mfa) → Zod validation of params, query, body → handler
  *   → response validated against def.response (outside production) → JSON.
  */
 import type { Express, NextFunction, Request, Response } from "express";
@@ -53,24 +54,46 @@ export function mount<E extends EndpointDef>(express: Express, app: AppContext, 
   const path = API_BASE_PATH + def.path;
   app.mounted.add(def);
   express[method](path, async (req: Request, res: Response, next: NextFunction) => {
+    const ip = req.ip ?? req.socket.remoteAddress ?? "unknown";
+    const limits = app.config.rateLimits;
+    const ipKey = def.rateLimit === "scan" ? `ip:${ip}:scan` : `ip:${ip}:${def.path}`;
+    const ipLimit = def.rateLimit === "scan" ? limits.scanPerMin * 2 : limits.authPerMin;
+    let chargeIpOnFailure = false;
     try {
-      const ip = req.ip ?? req.socket.remoteAddress ?? "unknown";
-      const limits = app.config.rateLimits;
-      const rl = (key: string, limit: number, windowMs: number) => {
-        const retry = app.rateLimiter.hit(key, limit, windowMs);
+      const limited = (retry: number | null) => {
         if (retry !== null) {
           res.setHeader("Retry-After", String(retry));
           throw new ContractError("RATE_LIMITED");
         }
       };
-      if (def.rateLimit === "auth") rl(`ip:${ip}:${def.path}`, limits.authPerMin, 60_000);
-      if (def.rateLimit === "scan") rl(`ip:${ip}:scan`, limits.scanPerMin * 2, 60_000);
+      const rl = (key: string, limit: number, windowMs: number) => limited(app.rateLimiter.hit(key, limit, windowMs));
 
-      const ctx = await authenticate(app, req);
+      // Authenticate before charging any shared per-IP bucket, so anonymous traffic from a shared
+      // address (venue NAT, guest Wi-Fi, a proxy) cannot exhaust the bucket real users depend on.
+      let ctx: AuthContext | null = null;
+      let authError: unknown = null;
+      try {
+        ctx = await authenticate(app, req);
+      } catch (e) {
+        authError = e;
+      }
+      if (def.rateLimit === "auth" || def.rateLimit === "scan") {
+        if (ctx) {
+          // Signed-in callers are limited per subject (03 §3 "per-token"), never by their address.
+          if (def.rateLimit === "scan") rl(`sub:${ctx.sub}:scan`, limits.scanPerMin, 60_000);
+          else rl(`sub:${ctx.sub}:${def.path}`, limits.authPerMin, 60_000);
+        } else if (def.access.includes("public") && def.rateLimit === "auth") {
+          // Public sign-in endpoints: only failures count against the address.
+          limited(app.rateLimiter.blocked(ipKey, ipLimit, 60_000));
+          chargeIpOnFailure = true;
+        } else {
+          rl(ipKey, ipLimit, 60_000); // anonymous call to a protected endpoint
+        }
+      }
+      if (authError) throw authError;
       if (!allowed(def, ctx)) throw new ContractError(ctx ? "FORBIDDEN" : "UNAUTHENTICATED");
       if (def.mfa && ctx && !app.auth.isMfaFresh(ctx)) throw new ContractError("MFA_REQUIRED");
 
-      if (ctx && def.rateLimit === "scan") rl(`sub:${ctx.sub}:scan`, limits.scanPerMin, 60_000);
       if (ctx && def.rateLimit === "resend") rl(`sub:${ctx.sub}:${def.path}`, limits.resendPerHour, 3_600_000);
 
       const params = parseOrThrow(def.params, req.params ?? {}, "params");
@@ -87,6 +110,9 @@ export function mount<E extends EndpointDef>(express: Express, app: AppContext, 
       }
       res.status(def.status ?? 200).json(out);
     } catch (e) {
+      if (chargeIpOnFailure && !(e instanceof ContractError && e.code === "RATE_LIMITED")) {
+        app.rateLimiter.hit(ipKey, ipLimit, 60_000);
+      }
       next(e);
     }
   });

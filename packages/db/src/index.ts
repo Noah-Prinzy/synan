@@ -24,6 +24,11 @@ export * from "./functions";
 export * from "./auth";
 export * from "./secrets";
 export * from "./crypto/index";
+export * from "./reports";
+export * from "./access-rules";
+export * from "./allowlist";
+export * from "./carriers";
+export type { Page, PageQuery, RangeQuery } from "./sqlrows";
 export { MIGRATIONS_FOLDER, runMigrations } from "./migrate";
 
 /* ------------------------------------------------------------ inferred row types */

@@ -23,7 +23,10 @@ export function authRoutes(x: Express, app: AppContext) {
 
   mount(x, app, endpoints.refresh, async ({ body }) => app.auth.refresh(body.refresh_token));
 
-  mount(x, app, endpoints.emailLink, async ({ body }) => {
+  mount(x, app, endpoints.emailLink, async ({ body, ip }) => {
+    // This endpoint never fails, so the route's "count failures only" rule would never charge it:
+    // every request counts against the address (it is the enumeration surface).
+    app.rateLimiter.hit(`ip:${ip}:${endpoints.emailLink.path}`, app.config.rateLimits.authPerMin, 60_000);
     const retry = app.rateLimiter.hit(`link:${body.email.toLowerCase()}`, 3, 15 * 60_000);
     if (retry === null) await app.auth.requestEmailLink(body.email, body.return_to);
     // Same answer whether the address exists, was limited, or was sent.
@@ -32,12 +35,29 @@ export function authRoutes(x: Express, app: AppContext) {
 
   mount(x, app, endpoints.verify, async ({ body }) => app.auth.verifyEmailLink(body.token));
 
-  mount(x, app, endpoints.mfaVerify, async ({ body, ctx }) => app.auth.mfaVerify(ctx!, body.code));
+  mount(x, app, endpoints.logout, async ({ ctx }) => {
+    await app.auth.logout(ctx!);
+    return { ok: true as const };
+  });
+
+  mount(x, app, endpoints.mfaVerify, async ({ body, ctx }) => {
+    // Per-account limit on wrong codes (03 §3 "per-token"): 5 per 15 minutes, whatever the address.
+    const key = `mfa-fail:${ctx!.sub}`;
+    if (app.rateLimiter.blocked(key, 5, 15 * 60_000) !== null) throw new ContractError("RATE_LIMITED");
+    try {
+      const tokens = await app.auth.mfaVerify(ctx!, body.code);
+      app.rateLimiter.clear(key);
+      return tokens;
+    } catch (e) {
+      if (e instanceof ContractError && e.code === "INVALID_MFA_CODE") app.rateLimiter.hit(key, 5, 15 * 60_000);
+      throw e;
+    }
+  });
 
   mount(x, app, endpoints.wsTicket, async ({ body, ctx }) => {
     // Authorise the channel at mint time; the upgrade re-checks against the stored grant.
     await authoriseChannel(app, ctx!, body.channel, body.event_id ?? null, body.checkpoint_id ?? null);
-    const { ticket, expiresAt } = app.auth.mintWsTicket({
+    const { ticket, expiresAt } = await app.auth.mintWsTicket({
       ctx: ctx!,
       channel: body.channel,
       eventId: body.event_id ?? null,

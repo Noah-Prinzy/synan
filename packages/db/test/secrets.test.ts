@@ -16,9 +16,12 @@ import {
   reindexEmailBlindIndex,
   setMfaSecret,
   updateAttendeeIdentity,
+  findUserByEmail,
+  insertUser,
+  readUserEmail,
 } from "../src/secrets";
 import { seed } from "../src/seed/index";
-import { createTestDb, q, rejects, type TestDb } from "./helpers";
+import { createTestDb, dropEncryptionEnforcement, q, rejects, type TestDb } from "./helpers";
 
 const k1 = randomBytes(32);
 const k2 = randomBytes(32);
@@ -87,7 +90,7 @@ describe("attendee identity helpers", () => {
 
 describe("MFA secrets and signing keys", () => {
   it("are encrypted at rest and bound to their row", async () => {
-    const [u] = await db.insert(s.users).values({ email: "mfa@example.test", role: "admin" }).returning();
+    const u = { id: await insertUser(db, c1, { email: "mfa@example.test", role: "admin" }) };
     await setMfaSecret(db, c1, u!.id, "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP", new Date());
     const [stored] = await db.select().from(s.users).where(eq(s.users.id, u!.id));
     expect(stored!.mfa_secret_enc).toMatch(ENVELOPE_RE);
@@ -107,6 +110,7 @@ describe("MFA secrets and signing keys", () => {
 describe("key rotation", () => {
   it("re-encrypts mixed key versions and legacy plaintext, resumably", async () => {
     const fresh = await createTestDb();
+    await dropEncryptionEnforcement(fresh); // simulate data written before enforcement
     const ids: string[] = [];
     for (let i = 0; i < 7; i++) ids.push(await createAttendee(fresh, c1, { email: `p${i}@example.test`, full_name: `Person ${i}`, profile: { i } }));
     // Two legacy rows written in the clear (what the API writes today).
@@ -114,7 +118,7 @@ describe("key rotation", () => {
     await withVaultScope(fresh, "system", (tx) =>
       tx.insert(s.attendees).values(legacy.map((id, i) => ({ id, email: `legacy${i}@example.test`, full_name: `Legacy ${i}`, profile_jsonb: { company: "Old Co" } }))),
     );
-    const [u] = await fresh.insert(s.users).values({ email: "op@example.test", role: "admin", mfa_secret_enc: "PLAINTOTPSECRET" }).returning();
+    const [u] = await q<{ id: string }>(fresh, "insert into users (email, role, mfa_secret_enc) values ('op@example.test', 'admin', 'PLAINTOTPSECRET') returning id");
     await insertSigningKey(fresh, c1, { purpose: "allowlist", public_key: "{}", private_key: '{"d":"k1-era"}' });
 
     const c2 = await mk({ k1, k2 }, { b1 }, "k2");
@@ -205,11 +209,82 @@ describe("seeded database and prepared enforcement", () => {
 
   it("refuse to switch on while plaintext remains, changing nothing", async () => {
     const fresh = await createTestDb();
+    await dropEncryptionEnforcement(fresh);
     await withVaultScope(fresh, "system", (tx) => tx.insert(s.attendees).values({ email: "legacy@example.test" }));
     await rejects(q(fresh, `select enforce_encrypted_secrets()`), /attendees_email_encrypted/);
     const cons = await q<{ n: number }>(fresh, `select count(*)::int n from pg_constraint where conname like '%_encrypted'`);
     expect(cons[0]!.n).toBe(0);
     await reencryptSecrets({ db: fresh, cipher: c1 });
     await q(fresh, `select enforce_encrypted_secrets()`);
+  });
+});
+
+describe("enforcement is on (migration 0008)", () => {
+  it("has validated constraints in place on a fresh database", async () => {
+    const r = await q<{ conname: string; convalidated: boolean }>(
+      db,
+      "select conname, convalidated from pg_constraint where conname ~ '_(encrypted|format)$' order by 1",
+    );
+    expect(r.map((x) => x.conname)).toEqual([
+      "attendees_email_encrypted", "attendees_email_hash_format", "attendees_full_name_encrypted", "attendees_profile_encrypted",
+      "auth_links_email_hash_format", "auth_links_token_hash_format", "auth_sessions_token_hash_format",
+      "carriers_identifier_format", "credentials_token_hash_format", "credentials_zone_state_format", "invitations_email_hash_format",
+      "invitations_token_hash_format", "signing_keys_private_key_encrypted", "signing_keys_qr_kid_format",
+      "users_email_encrypted", "users_mfa_secret_encrypted", "ws_tickets_ticket_hash_format",
+    ]);
+    expect(r.every((x) => x.convalidated)).toBe(true);
+  });
+
+  it("refuses plaintext through the strict default cipher", async () => {
+    expect(c1.allowLegacyPlaintext).toBe(false);
+    expect(() => c1.decrypt("plain@example.test", { table: "t", column: "c", rowId: "r" })).toThrow(/not encrypted/);
+  });
+});
+
+describe("operator email (users.email)", () => {
+  it("is encrypted with a separate-domain blind index, and found case-insensitively", async () => {
+    const id = await insertUser(db, c1, { email: "Grace.Hopper@Example.test", role: "admin" });
+    const [row] = await db.select().from(s.users).where(eq(s.users.id, id));
+    expect(row!.email).toMatch(ENVELOPE_RE);
+    expect(row!.email_hash).toBe(c1.blindIndex("grace.hopper@example.test", "user"));
+    expect(row!.email_hash).not.toBe(c1.blindIndex("grace.hopper@example.test")); // attendee domain differs
+    expect((await findUserByEmail(db, c1, "grace.hopper@EXAMPLE.test"))!.id).toBe(id);
+    expect(await readUserEmail(db, c1, id)).toBe("Grace.Hopper@Example.test");
+    await rejects(insertUser(db, c1, { email: "GRACE.hopper@example.test", role: "crew" }), /users_email_hash_uq/);
+  });
+
+  it("migrates a database written before enforcement: re-encryption, then enforcement validates", async () => {
+    const fresh = await createTestDb();
+    await dropEncryptionEnforcement(fresh); // as a database migrated only up to 0008 would be
+    await q(fresh, "insert into users (email, role) values ('Legacy.Op@example.test', 'organiser')");
+    await rejects(q(fresh, "select enforce_encrypted_user_email()"), /users_email_encrypted/);
+    expect((await reencryptSecrets({ db: fresh, cipher: c1, includeUserEmail: false }))["users.email"]).toBeUndefined();
+    const summary = await reencryptSecrets({ db: fresh, cipher: c1 }); // users.email is included by default
+    expect(summary["users.email"]!.updated).toBe(1);
+    const [u] = await fresh.select().from(s.users);
+    expect(u!.email).toMatch(ENVELOPE_RE);
+    expect(u!.email_hash).toBe(c1.blindIndex("legacy.op@example.test", "user"));
+    await q(fresh, "select enforce_encrypted_user_email()");
+    await rejects(q(fresh, "insert into users (email, role) values ('plain@example.test', 'crew')"), /users_email_encrypted|users_email_hash_required/);
+    expect((await findUserByEmail(fresh, c1, "LEGACY.OP@example.test"))!.email).toBe("Legacy.Op@example.test");
+  });
+});
+
+describe("operator-email enforcement (migrations 0009–0010)", () => {
+  it("requires an encrypted address and a blind index on every row; uniqueness rests on the blind index", async () => {
+    const cols = await q<{ is_nullable: string }>(db, "select is_nullable from information_schema.columns where table_name = 'users' and column_name = 'email_hash'");
+    expect(cols[0]!.is_nullable).toBe("NO");
+    const idx = await q<{ indexname: string; indexdef: string }>(db, "select indexname, indexdef from pg_indexes where tablename = 'users' and indexname like 'users_email%' order by 1");
+    expect(idx.map((i) => i.indexname)).toEqual(["users_email_hash_uq"]); // users_email_lower_uq is gone
+    expect(idx[0]!.indexdef).not.toMatch(/WHERE/); // not partial
+    const cons = await q<{ conname: string; convalidated: boolean }>(db, "select conname, convalidated from pg_constraint where conname in ('users_email_encrypted','users_email_hash_required') order by 1");
+    expect(cons).toEqual([
+      { conname: "users_email_encrypted", convalidated: true },
+      { conname: "users_email_hash_required", convalidated: true },
+    ]);
+    const id = await insertUser(db, c1, { email: "Linus@Example.test", role: "crew" });
+    await rejects(q(db, "update users set email = 'linus@example.test' where id = $1", [id]), /users_email_encrypted/);
+    await rejects(q(db, "update users set email_hash = 'ABC' where id = $1", [id]), /users_email_hash_required/);
+    await rejects(insertUser(db, c1, { email: "LINUS@example.test ", role: "crew" }), /users_email_hash_uq/);
   });
 });

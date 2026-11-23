@@ -51,7 +51,7 @@ measured limit requires it.
 
 ## 3. Repository layout
 
-```
+```text
 apps/
   attendee/      Attendee Portal            (port 5173)
   admin/         Admin Command              (port 5174)
@@ -77,7 +77,7 @@ and is not a second copy of it. Table and column names here and in the schema ar
 
 ### 4.1 Venue and events (P-03, P-05, P-13)
 
-```
+```text
 organizations(id, name, timezone, support_email)
 venues(id, org_id, name, address, timezone)
 zones(id, venue_id, name, floor, geometry_jsonb)
@@ -100,7 +100,7 @@ occupancy reset (D-10).
 
 ### 4.2 People and entitlement (P-04, P-15, D-02)
 
-```
+```text
 users(id, email, password_hash, role, mfa_enrolled_at, ...)                  -- operators and staff
 staff_assignments(id, user_id, checkpoint_id, shift_start, shift_end)
 
@@ -121,7 +121,7 @@ access_rules(id, event_id, subject_kind tier|role, subject, room_id,
 
 ### 4.3 Credentials (P-01, P-02, P-10, D-05, D-06, D-12)
 
-```
+```text
 credentials(id, registration_id?, staff_user_id?, token_hash,
             state, zone_state, issued_at, revoked_at)
 carriers(id, credential_id, kind qr_portal|qr_email|nfc, identifier, chip_profile?,
@@ -141,7 +141,7 @@ signing_keys(id, purpose qr|allowlist, public_key, private_key_enc, active_from,
 
 ### 4.4 Scans, alerts, audit (P-06, P-12, D-03, D-04)
 
-```
+```text
 ephemeral_ids(event_id, credential_id, ephemeral_id, created_at)             -- in the identity vault
 scans(id, event_id, checkpoint_id, ephemeral_id, carrier_kind, result,
       occurred_at, received_at, clock_offset_ms, idem_key, offline_bool)     -- partitioned per event
@@ -166,7 +166,7 @@ webhook_endpoints(id, org_id, url, secret, events[], active)
 
 ### 4.5 Analytics (P-14)
 
-```
+```text
 occupancy_rollups(event_id, room_id, bucket_start, in_count, out_count, peak)
 gate_rate_rollups(event_id, checkpoint_id, minute_start, scans, admitted, denied, by_tier_jsonb)
 attendance_snapshots(event_id, taken_at, registered, checked_in, on_site, by_tier_jsonb)
@@ -216,8 +216,28 @@ Settled while building the schema, and enforced by the database itself rather th
 Enum values are declared twice, in `packages/contracts` and in the database, and an automated test
 fails if they drift.
 
-**Not yet in the schema:** tables for refresh sessions and sign-in links. Until they exist the API
-holds these in memory ([07 §1.5](07-roadmap.md)).
+**Sign-in state** lives in three tables: `auth_sessions` (one row per refresh token, grouped into a
+family per sign-in; reuse of a rotated token revokes the whole family), `auth_links` (single-use
+attendee sign-in links), and `ws_tickets` (single-use WebSocket tickets). Rotation, redemption, and
+consumption are single atomic database functions. Session context is limited to a shortened user
+agent and an IP prefix.
+
+**Stored secrets are encrypted in the application layer** with AES-256-GCM. Each value is bound to
+its table, column, and row, so it cannot be copied elsewhere. Several key versions can be active at
+once, and a resumable job re-encrypts rows onto a new key while the system runs. This covers
+attendee name, email, and profile; MFA secrets; and signing private keys. The email lookup index
+uses a separate key.
+
+**Three database roles.** `app_api`, the general application role, cannot read identity at all; it
+can only create an attendee, write-only. `app_scan` adds the ephemeral ID mapping. `app_vault` holds
+identity and nothing operational. This contains an SQL-level compromise of the general connection;
+it does not contain a fully compromised server holding all three logins.
+
+**Stored formats.** The credential reference is 128 random bits, 22 base64url characters. Every
+other token or identifier hash is base64url SHA-256, 43 characters; a wristband's UID is stored only
+as such a hash. The email index is 64 hex characters.
+
+The API uses all three on the SQL backend. Status and what remains unverified are in [07 §1.5](07-roadmap.md).
 
 ---
 
@@ -225,12 +245,13 @@ holds these in memory ([07 §1.5](07-roadmap.md)).
 
 Base path `/api/v1`. Every payload is declared in the contract package (§7).
 
-```
+```text
 Auth
   POST  /auth/login                 POST  /auth/refresh
   POST  /auth/email-link            (attendee asks for a sign-in link)
   POST  /auth/verify                (attendee redeems the link)
   POST  /auth/mfa/verify            (operators; required for privileged actions)
+  POST  /auth/logout                (ends the session family)
   POST  /auth/ws-ticket             (single-use ticket for a WebSocket — P-16)
   GET   /auth/signing-keys          (public keys for verifying QR codes and allowlists — D-12)
   GET   /time                       (server time, for the scanner's clock offset — D-14)
@@ -311,7 +332,7 @@ Connection authentication is specified in [03 §3](03-security-privacy.md). Outb
 
 ## 7. Contract package
 
-```
+```text
 packages/contracts/
   src/rest/          Zod schemas per endpoint → inferred TypeScript types
   src/ws/            Discriminated unions per channel event

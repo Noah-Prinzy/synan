@@ -5,7 +5,7 @@ import { hint } from "@synan/mock";
 import { useSession } from "../data/auth";
 import { bindBand, devCodeHint, type BindResult } from "../data/pair";
 import { portal, usePortalVersion } from "../data/mock";
-import { PageShell, Eyebrow, Panel } from "../components/page";
+import { PageHeader, PageShell, Panel } from "../components/page";
 import { buttonClass } from "@synan/ui/components";
 
 type NdefReader = {
@@ -16,7 +16,7 @@ type NdefReader = {
 const nfcSupported = typeof window !== "undefined" && "NDEFReader" in window;
 
 const tabClass = (active: boolean) =>
-  `relative pb-3 text-13 font-medium transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50 ${
+  `relative pb-3 text-13 font-medium transition-colors duration-120 ease-standard motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50 ${
     active ? "text-brand" : "text-muted-foreground hover:text-foreground"
   }`;
 
@@ -81,14 +81,12 @@ export default function PassPair() {
 
   if (state === "success" && result?.ok) {
     return (
-      <PageShell>
-        <div className="mx-auto w-full max-w-[30rem]">
-          <Eyebrow>Bind band</Eyebrow>
-          <h1 className="mt-2 font-display text-40 leading-tight">Band bound</h1>
-          <Panel className="mt-8">
+      <PageShell bleed>
+        <PageHeader label="Bind band" title="Band bound">This band is now you. Tap it at every door inside the venue.</PageHeader>
+        <div className="enter px-4 py-10 sm:px-6 md:px-10">
+          <Panel className="max-w-md">
             <p className="text-13 font-medium text-muted-foreground">Band UID</p>
             <p className="mt-2 font-mono text-17 tracking-wider uppercase">{result.band.uid}</p>
-            <p className="mt-4 text-15 text-muted-foreground">This band is now you.</p>
           </Panel>
           <div className="mt-8">
             <Link to="/pass" className={buttonClass("primary", "md")}>
@@ -101,10 +99,13 @@ export default function PassPair() {
   }
 
   return (
-    <PageShell>
-      <div className="mx-auto w-full max-w-[30rem]">
-        <Eyebrow>Bind band</Eyebrow>
-        <h1 className="mt-2 font-display text-40 leading-tight">Bind your band</h1>
+    <PageShell bleed>
+      <PageHeader label="My pass" title="Bind your band">
+        Link a wristband to your pass. From then on, the band is your key inside the venue.
+      </PageHeader>
+      <div className="grid md:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="enter px-4 py-10 sm:px-6 md:px-10">
+      <div className="max-w-md">
 
         {boundUid ? (
           <Panel className="mt-6">
@@ -152,13 +153,13 @@ export default function PassPair() {
 
             {activeTab === "tap" ? (
               <div className="mt-6 flex flex-col items-center justify-center gap-6 py-10">
-                <div className="flex aspect-square w-full max-w-[240px] items-center justify-center border border-border">
+                <div className="flex aspect-square w-full max-w-60 items-center justify-center border border-border">
                   <span className="text-13 font-medium tracking-wider text-muted-foreground">
                     {state === "listening" ? "Hold the band to the back of the phone" : "Tap band here"}
                   </span>
                 </div>
                 {state === "denied" ? (
-                  <div role="alert" className="w-full max-w-[24rem] text-center">
+                  <div role="alert" className="w-full max-w-sm text-center">
                     <p className="text-15 font-medium text-warning">
                       <span aria-hidden="true" className="mr-2 font-mono">!</span>
                       NFC permission was refused
@@ -184,7 +185,7 @@ export default function PassPair() {
                   Mock build · try {devCodeHint}
                 </p>
 
-                <form onSubmit={handleSubmit} className="mt-6 max-w-[20rem]">
+                <form onSubmit={handleSubmit} className="mt-6 max-w-xs">
                   <label htmlFor="code" className="text-13 font-medium text-muted-foreground">
                     Desk code
                   </label>
@@ -230,6 +231,25 @@ export default function PassPair() {
             )}
           </>
         )}
+      </div>
+      </div>
+      <aside aria-label="How binding works" className="border-t border-border px-4 py-10 sm:px-6 md:border-t-0 md:border-l md:px-10">
+        <h2 className="font-display text-21">How it works</h2>
+        <ol className="mt-4 space-y-4 text-15 text-muted-foreground">
+          <li>
+            <span className="mr-2 font-mono text-foreground">01</span>
+            Collect a wristband at the desk — show the arrival code on your pass.
+          </li>
+          <li>
+            <span className="mr-2 font-mono text-foreground">02</span>
+            Tap the band to an Android phone, or type the six-character code the desk gives you.
+          </li>
+          <li>
+            <span className="mr-2 font-mono text-foreground">03</span>
+            The band is now your key. If you lose it, report it in Account and it stops working at once.
+          </li>
+        </ol>
+      </aside>
       </div>
     </PageShell>
   );

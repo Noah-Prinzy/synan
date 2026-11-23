@@ -10,7 +10,7 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import { ContractError, ERROR_COPY, type ApiError } from "@synan/contracts/errors";
 import { endpoints, type EndpointDef } from "@synan/contracts/rest";
 import { API_BASE_PATH } from "@synan/contracts/common";
-import { loadConfig, type Config } from "./config.js";
+import { loadConfig, validateConfig, type Config } from "./config.js";
 import { AlertService } from "./domain/alerts.js";
 import { AuditService } from "./domain/audit.js";
 import { AuthService } from "./domain/auth-service.js";
@@ -24,13 +24,16 @@ import { systemClock, type Clock } from "./lib/clock.js";
 import { ConsoleMailer, MemoryMailer, type Mailer } from "./lib/mailer.js";
 import { attachWebSockets } from "./realtime/ws-server.js";
 import { TelemetryHub } from "./realtime/telemetry-hub.js";
-import { createPgliteRepos } from "./repo/drizzle.js";
+import { createCipher, devKeyProvider, EnvKeyProvider, type Cipher } from "@synan/db";
+import { createPgliteRepos, createPostgresRepos } from "./repo/drizzle.js";
 import { createMemoryRepos } from "./repo/memory.js";
 import type { Repos } from "./repo/types.js";
 import { authRoutes } from "./routes/auth.js";
 import { credentialRoutes } from "./routes/credentials.js";
 import { eventRoutes } from "./routes/events.js";
 import { scanRoutes } from "./routes/scans.js";
+import { layoutRoutes } from "./routes/layout.js";
+import { eventAdminRoutes } from "./routes/event-admin.js";
 import { seedDev, type SeedResult } from "./seed.js";
 
 export interface AppContext {
@@ -92,14 +95,36 @@ function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunc
   res.status(status).json(body);
 }
 
+const AUTH_CLEANUP_INTERVAL_MS = 10 * 60_000;
+
+/**
+ * The @synan/db field cipher, created once at startup. Real keys from DB_DATA_KEYS /
+ * DB_BLIND_INDEX_KEYS when set (required in production); otherwise the fixed development keys,
+ * which @synan/db refuses when NODE_ENV=production.
+ */
+export async function createAppCipher(env: NodeJS.ProcessEnv = process.env): Promise<Cipher> {
+  return createCipher(env.DB_DATA_KEYS ? EnvKeyProvider.fromEnv(env) : devKeyProvider());
+}
+
+/** The repository the configuration asks for. SQL repositories encrypt; the in-memory one does not. */
+export async function createRepos(config: Config): Promise<Repos> {
+  if (config.repo === "memory") return createMemoryRepos();
+  const cipher = await createAppCipher();
+  if (config.repo === "pglite") return createPgliteRepos({ cipher, dataDir: config.pgliteDataDir ?? undefined });
+  return createPostgresRepos({
+    cipher,
+    url: config.databaseUrl!,
+    vaultUrl: config.databaseVaultUrl ?? undefined,
+    scanUrl: config.databaseScanUrl ?? undefined,
+    requireSeparateRoles: config.production,
+  });
+}
+
 export async function createApp(opts: CreateAppOptions = {}): Promise<RunningApp> {
-  const config: Config = { ...loadConfig(), ...opts.config };
+  const config: Config = validateConfig({ ...loadConfig(), ...opts.config });
   const clock = opts.clock ?? systemClock;
-  const repos =
-    opts.repos ??
-    (config.repo === "pglite"
-      ? await createPgliteRepos({ emailIndexKey: config.emailIndexKey, dataDir: config.pgliteDataDir ?? undefined })
-      : createMemoryRepos());
+  const ownsRepos = !opts.repos;
+  const repos = opts.repos ?? (await createRepos(config));
   const mailer = opts.mailer ?? (config.mailTransport === "memory" ? new MemoryMailer() : new ConsoleMailer());
 
   const keys = new KeyService(repos.signingKeys, clock);
@@ -111,7 +136,7 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<RunningApp
   const alerts = new AlertService(repos.alerts, clock);
   const telemetry = new TelemetryHub(clock, { kAnon: config.kAnon });
   const credentials = new CredentialService(repos, qr, audit, mailer, config, clock);
-  const scans = new ScanService(repos, qr, alerts, audit, telemetry, clock);
+  const scans = new ScanService(repos, qr, alerts, audit, telemetry, clock, { offlineSyncGraceMs: config.offlineSyncGraceS * 1000 });
   const rateLimiter = new RateLimiter(() => clock.now());
 
   const ctx: AppContext = {
@@ -147,6 +172,8 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<RunningApp
   eventRoutes(x, ctx);
   credentialRoutes(x, ctx);
   scanRoutes(x, ctx);
+  layoutRoutes(x, ctx);
+  eventAdminRoutes(x, ctx);
 
   // Every contract endpoint without a real handler is mounted with full auth/RBAC, answering 501.
   const notImplemented: string[] = [];
@@ -162,6 +189,12 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<RunningApp
 
   const server = createServer(x);
   const ws = attachWebSockets(server, ctx);
+
+  // Expired sign-in state is deleted on a schedule (@synan/db cleanupAuthState, every 10 minutes).
+  const cleanupTimer = setInterval(() => {
+    auth.cleanup().catch((e: unknown) => console.error("[auth] cleanup failed:", e instanceof Error ? e.message : String(e)));
+  }, AUTH_CLEANUP_INTERVAL_MS);
+  cleanupTimer.unref();
 
   return {
     ctx,
@@ -179,13 +212,15 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<RunningApp
       });
     },
     async close() {
+      clearInterval(cleanupTimer);
       telemetry.close();
       await ws.close();
       await new Promise<void>((resolve) => {
         server.closeAllConnections?.();
         server.close(() => resolve());
       });
-      await repos.close?.();
+      // Repositories passed in belong to the caller (e.g. a second app over the same database).
+      if (ownsRepos) await repos.close?.();
     },
   };
 }

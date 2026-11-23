@@ -29,7 +29,7 @@ import { fadeIn, scaleIn, transitions, easing } from "@synan/ui/motion";
 
 ## Layout
 
-```
+```text
 src/
   tokens/       Colour, spacing, type scales, motion timings
   styles/       tokens.css, motion.css

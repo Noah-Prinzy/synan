@@ -10,7 +10,7 @@ export function SkipLink() {
   return (
     <a
       href="#content"
-      className="absolute top-0 -left-[9999px] z-50 border border-brand bg-background px-3 py-2 text-15 focus:left-4 focus:top-4"
+      className="absolute top-0 left-[-9999px] z-50 border border-brand bg-background px-3 py-2 text-15 focus:left-4 focus:top-4"
     >
       Skip to content
     </a>
@@ -40,7 +40,7 @@ export function PageShell({ children, bleed = false }: { children: ReactNode; bl
   return (
     <div className="min-h-dvh bg-background text-17 text-foreground">
       <SkipLink />
-      <div className="mx-auto flex min-h-dvh w-full max-w-[1440px] flex-col md:border-x md:border-border">
+      <div className="mx-auto flex min-h-dvh w-full max-w-360 flex-col md:border-x md:border-border">
         <SiteHeader />
         <OfflineStrip />
         <main id="content" key={pathname} className="fade-in flex-1">
@@ -53,6 +53,43 @@ export function PageShell({ children, bleed = false }: { children: ReactNode; bl
       </div>
       <PassBar />
     </div>
+  );
+}
+
+/**
+ * Direction A page opening: a full-width ruled band with the label, the display title
+ * and an optional line, plus optional cells on the right (status, actions).
+ */
+export function PageHeader({
+  label,
+  title,
+  children,
+  aside,
+}: {
+  label: string;
+  title: ReactNode;
+  children?: ReactNode;
+  aside?: ReactNode;
+}) {
+  return (
+    <section className="grid border-b border-border md:grid-cols-[minmax(0,1fr)_auto]">
+      <div className="enter px-4 py-10 sm:px-6 md:px-10 md:py-14">
+        <p className="text-13 font-medium text-muted-foreground">{label}</p>
+        <h1 className="mt-2 font-display text-40 leading-[1.05] md:text-56">{title}</h1>
+        {children ? <div className="mt-4 max-w-2xl text-17 text-muted-foreground">{children}</div> : null}
+      </div>
+      {aside ? <div className="flex items-end border-t border-border px-4 py-6 sm:px-6 md:border-t-0 md:border-l md:px-10">{aside}</div> : null}
+    </section>
+  );
+}
+
+/** A labelled row of the page: the label in a left rail cell, content to the right. */
+export function RuledRow({ label, children, id }: { label: ReactNode; children: ReactNode; id?: string }) {
+  return (
+    <section id={id} className="grid scroll-mt-24 border-b border-border md:grid-cols-[14rem_minmax(0,1fr)]">
+      <h2 className="px-4 pt-8 font-display text-21 sm:px-6 md:border-r md:border-border md:px-10 md:py-8">{label}</h2>
+      <div className="min-w-0 px-4 pt-4 pb-8 sm:px-6 md:px-10 md:py-8">{children}</div>
+    </section>
   );
 }
 

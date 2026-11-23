@@ -71,17 +71,32 @@ export interface RotateResult {
   expires_at: Date | null;
 }
 
+/** New refresh lifetime by holder kind, chosen inside the database (operators/staff vs attendees). */
+export interface RefreshTtl {
+  userSeconds: number;
+  attendeeSeconds: number;
+}
+
 /**
- * Exchanges a refresh token. On `reuse_detected` the whole family has already been revoked
- * (committed with your transaction — do not roll it back).
+ * Exchanges a refresh token. Give either a fixed `expiresAt` or `ttl` (the lifetime is then picked
+ * by the holder kind of the presented token, in the same locked step — no lookup first).
+ * On `reuse_detected` the whole family has already been revoked (committed with your
+ * transaction — do not roll it back).
  */
 export async function rotateSession(
   db: Db,
-  i: SessionContext & { tokenHash: string; newTokenHash: string; expiresAt: Date; now?: Date },
+  i: SessionContext & { tokenHash: string; newTokenHash: string; now?: Date } & (
+      | { expiresAt: Date; ttl?: never }
+      | { ttl: RefreshTtl; expiresAt?: never }
+    ),
 ): Promise<RotateResult> {
   const r = await rows<Record<string, unknown>>(
     db,
-    sql`select * from public.auth_rotate_session(${i.tokenHash}, ${i.newTokenHash}, ${i.expiresAt.toISOString()}::timestamptz,
+    i.ttl
+      ? sql`select * from public.auth_rotate_session_by_kind(${i.tokenHash}, ${i.newTokenHash},
+          make_interval(secs => ${i.ttl.userSeconds}), make_interval(secs => ${i.ttl.attendeeSeconds}),
+          ${i.userAgent ?? null}, ${i.ip ?? null}::inet, ${ts(i.now)})`
+      : sql`select * from public.auth_rotate_session(${i.tokenHash}, ${i.newTokenHash}, ${i.expiresAt!.toISOString()}::timestamptz,
           ${i.userAgent ?? null}, ${i.ip ?? null}::inet, ${ts(i.now)})`,
   );
   const x = r[0]!;

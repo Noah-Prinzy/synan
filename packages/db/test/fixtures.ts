@@ -1,5 +1,7 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { setVaultScope } from "../src/client";
+import { createCipher, devKeyProvider } from "../src/crypto/index";
+import { encryptAttendeeColumns } from "../src/secrets";
 import * as s from "../src/schema/index";
 import type { TestDb } from "./helpers";
 
@@ -79,6 +81,13 @@ export async function miniVenue(db: TestDb, opts: { eventState?: "draft" | "live
   };
 }
 
+/** The fixed development cipher used by every fixture (enforcement is on: no plaintext identity). */
+export const devCipher = await createCipher(devKeyProvider());
+/** Settled formats: credential reference (22 base64url) and hashes (43 base64url) / blind index (64 hex). */
+export const credentialRef = () => randomBytes(16).toString("base64url");
+export const b64Hash = (v: string = randomUUID()) => createHash("sha256").update(v).digest("base64url");
+export const hexIndex = (v: string = randomUUID()) => createHash("sha256").update(v).digest("hex");
+
 /** Creates an attendee + confirmed registration + active credential + ephemeral id. */
 export async function attendeeWithCredential(
   db: TestDb,
@@ -87,14 +96,15 @@ export async function attendeeWithCredential(
 ) {
   return db.transaction(async (tx) => {
     await setVaultScope(tx, "system");
-    const [att] = await tx.insert(s.attendees).values({ full_name: "Test Person" }).returning();
+    const id = randomUUID();
+    const [att] = await tx.insert(s.attendees).values({ id, ...encryptAttendeeColumns(devCipher, id, { full_name: "Test Person" }) }).returning();
     const [reg] = await tx
       .insert(s.registrations)
       .values({ event_id: eventId, attendee_id: att!.id, tier, state: "confirmed" })
       .returning();
     const [cred] = await tx
       .insert(s.credentials)
-      .values({ registration_id: reg!.id, token_hash: randomUUID().replaceAll("-", ""), state: "active" })
+      .values({ registration_id: reg!.id, token_hash: credentialRef(), state: "active" })
       .returning();
     const [eph] = await tx
       .insert(s.ephemeral_ids)

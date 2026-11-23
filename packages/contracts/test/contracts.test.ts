@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { webcrypto } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { BRAND } from "../src/brand.js";
+import { Id } from "../src/common.js";
 import { DENY_RESULTS, ERROR_COPY, SCAN_RESULT_COPY, SCAN_RESULT_TONE } from "../src/copy/index.js";
 import { ErrorCode } from "../src/errors/index.js";
 import * as errorsModule from "../src/errors/index.js";
@@ -21,8 +22,16 @@ import { ClientMessage, TelemetryServerMessage } from "../src/ws/index.js";
 const subtle = webcrypto.subtle;
 
 describe("REST registry", () => {
-  it("covers every endpoint in docs/02 §5 (68) plus POST /auth/email-link and GET /me/registration", () => {
-    expect(Object.keys(endpoints)).toHaveLength(70);
+  it("covers every endpoint in docs/02 §5 (68) plus 9 additive endpoints (email-link, logout, me/registration, credentials/:id/scans, venue update, checkpoint create/update, event state, event admin view)", () => {
+    expect(Object.keys(endpoints)).toHaveLength(77);
+  });
+  it("canonicalises ids to lower case at the boundary", () => {
+    const upper = "3F2504E0-4F89-41D3-9A0C-0305E82C3301";
+    expect(Id.parse(upper)).toBe(upper.toLowerCase());
+    expect(endpoints.postScans.body.parse({ event_id: upper, device_id: "d", scans: [{
+      idem_key: "abcdefghijklmnop", checkpoint_id: upper, presented: { medium: "nfc", uid: "AABBCCDD" },
+      occurred_at: new Date().toISOString(), clock_offset_ms: 0, offline: false,
+    }] }).event_id).toBe(upper.toLowerCase());
   });
   it("has no duplicate method + path", () => {
     const keys = Object.values(endpoints).map((e) => `${e.method} ${e.path}`);

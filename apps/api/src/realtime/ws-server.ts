@@ -71,7 +71,7 @@ export function attachWebSockets(server: Server, app: AppContext) {
         .filter(Boolean);
       const ticketProto = offered.find((p) => p.startsWith(WS_TICKET_PREFIX));
       if (!offered.includes(WS_SUBPROTOCOL) || !ticketProto) return reject(socket, 401, "Unauthorized");
-      const grant = app.auth.consumeWsTicket(ticketProto.slice(WS_TICKET_PREFIX.length));
+      const grant = await app.auth.consumeWsTicket(ticketProto.slice(WS_TICKET_PREFIX.length));
       if (!grant || grant.channel !== path) return reject(socket, 401, "Unauthorized");
 
       let scope: TelemetryScope;

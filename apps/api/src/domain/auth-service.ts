@@ -6,7 +6,9 @@
  *   used refresh token revokes the whole family (theft detection).
  * - Operators/staff: email + password (scrypt). Attendees: email link only, no passwords.
  * - MFA: TOTP step-up; privileged routes require mfa_at within `mfaFreshS`.
- * - WebSocket tickets: single-use, 30 s, bound to principal + channel + scope.
+ * - WebSocket tickets: single-use, 30 s, bound to holder + session family + channel + scope.
+ * - Sessions, links and tickets live in the repository (the database on the SQL backend), stored only
+ *   as base64url SHA-256 hashes, so they survive a restart and work across instances.
  */
 import { randomUUID } from "node:crypto";
 import { jwtVerify, SignJWT, type JWK } from "jose";
@@ -18,7 +20,7 @@ import type { Config } from "../config.js";
 import type { Clock } from "../lib/clock.js";
 import { hashPassword, randomToken, sha256b64url, verifyPassword, verifyTotp } from "../lib/crypto.js";
 import type { Mailer } from "../lib/mailer.js";
-import type { AttendeeRow, AuthSessionRow, Repos, UserRow } from "../repo/types.js";
+import type { AttendeeRow, Repos, UserRow } from "../repo/types.js";
 import { generateEd25519, importPrivate, importPublic, type Key } from "./keys.js";
 import { kindForRole, type AuthContext } from "./principal.js";
 
@@ -30,7 +32,6 @@ export interface WsTicketGrant {
   channel: WsChannel;
   eventId: string | null;
   checkpointId: string | null;
-  expiresAt: number;
 }
 
 export class AuthService {
@@ -38,9 +39,8 @@ export class AuthService {
   private verifyKey!: Key;
   private kid = "";
   private dummyHash = "";
-  private tickets = new Map<string, WsTicketGrant>();
-  /** Last accepted TOTP step per user, to refuse replay of a code within its window. */
-  private lastTotp = new Map<string, { code: string; at: number }>();
+  /** Highest TOTP time-step accepted per user: any code for that step or an earlier one is refused. */
+  private lastTotpStep = new Map<string, number>();
 
   constructor(
     private readonly repos: Repos,
@@ -118,31 +118,37 @@ export class AuthService {
     };
   }
 
-  /** Start a new session (refresh family) or rotate within one. */
-  private async issue(ctx: AuthContext, row: UserRow | AttendeeRow, familyId: string): Promise<TokenPair> {
-    const refresh = randomToken(32);
-    const ttl = ctx.kind === "attendee" ? this.config.attendeeRefreshTtlS : this.config.operatorRefreshTtlS;
-    const session: AuthSessionRow = {
-      id: randomUUID(),
-      principal_kind: ctx.kind === "attendee" ? "attendee" : "user",
-      principal_id: ctx.sub,
-      refresh_hash: sha256b64url(refresh),
-      family_id: familyId,
-      expires_at: new Date(this.now() + ttl * 1000),
-      used_at: null,
-      revoked_at: null,
-      mfa_at: ctx.mfaAt ? new Date(ctx.mfaAt) : null,
-    };
-    await this.repos.auth.insertSession(session);
-    const at = await this.accessToken({ ...ctx, sid: familyId });
+  private refreshTtlMs(kind: AuthContext["kind"]) {
+    return (kind === "attendee" ? this.config.attendeeRefreshTtlS : this.config.operatorRefreshTtlS) * 1000;
+  }
+
+  private async tokens(ctx: AuthContext, row: UserRow | AttendeeRow, refresh: string, refreshExpiresAt: Date): Promise<TokenPair> {
+    const at = await this.accessToken(ctx);
     return {
       token_type: "Bearer",
       access_token: at.token,
       access_expires_at: new Date(at.exp).toISOString(),
       refresh_token: refresh,
-      refresh_expires_at: session.expires_at.toISOString(),
-      principal: this.principalOf({ ...ctx, sid: familyId }, row),
+      refresh_expires_at: refreshExpiresAt.toISOString(),
+      principal: this.principalOf(ctx, row),
     };
+  }
+
+  /** Start a new refresh-token family (login, email-link sign-in, MFA step-up). Stored only as a hash. */
+  private async startFamily(ctx: Omit<AuthContext, "sid">, row: UserRow | AttendeeRow): Promise<TokenPair> {
+    const familyId = randomUUID();
+    const refresh = randomToken(32);
+    const now = new Date(this.now());
+    const expiresAt = new Date(now.getTime() + this.refreshTtlMs(ctx.kind));
+    await this.repos.auth.startSession({
+      holder: ctx.kind === "attendee" ? { attendeeId: ctx.sub } : { userId: ctx.sub },
+      familyId,
+      tokenHash: sha256b64url(refresh),
+      expiresAt,
+      mfaAt: ctx.mfaAt ? new Date(ctx.mfaAt) : null,
+      now,
+    });
+    return this.tokens({ ...ctx, sid: familyId }, row, refresh, expiresAt);
   }
 
   /* ------------------------------------------------------------------ flows */
@@ -152,28 +158,48 @@ export class AuthService {
     // Always run the hash, so an unknown email costs the same time as a wrong password.
     const ok = await verifyPassword(password, user?.password_hash ?? this.dummyHash);
     if (!user || !ok) throw new ContractError("INVALID_CREDENTIALS");
-    const family = randomUUID();
-    return this.issue({ sub: user.id, kind: kindForRole(user.role), role: user.role, mfaAt: null, sid: family }, user, family);
+    return this.startFamily({ sub: user.id, kind: kindForRole(user.role), role: user.role, mfaAt: null }, user);
   }
 
+  /**
+   * Exchange a refresh token, strictly single-use (one atomic call on the SQL backend).
+   *
+   * Known behaviour, kept as built: two near-simultaneous refreshes of one token from the same client
+   * (two tabs, a retried request) are indistinguishable from theft — the second is reuse and ends the
+   * whole session. A grace window, if wanted, belongs in the rotate operation itself (the SQL function
+   * auth_rotate_session in @synan/db, and its in-memory mirror): when the presented row was rotated
+   * less than N seconds ago and its child has not itself been used, return the child instead of
+   * revoking. It must not be emulated here, outside the row lock.
+   */
   async refresh(refreshToken: string): Promise<TokenPair> {
-    const now = this.now();
-    const s = await this.repos.auth.sessionByRefreshHash(sha256b64url(refreshToken));
-    if (!s || s.revoked_at || s.expires_at.getTime() <= now) throw new ContractError("UNAUTHENTICATED");
-    if (!(await this.repos.auth.markSessionUsed(s.id, new Date(now)))) {
-      // Reuse of a rotated refresh token: assume theft, kill the family.
-      await this.repos.auth.revokeFamily(s.family_id, new Date(now));
-      throw new ContractError("UNAUTHENTICATED", "Refresh token reuse detected; session revoked.");
-    }
-    const mfaAt = s.mfa_at?.getTime() ?? null;
-    if (s.principal_kind === "user") {
-      const user = await this.repos.users.byId(s.principal_id);
+    const now = new Date(this.now());
+    const next = randomToken(32);
+    // Operators and attendees have different refresh lifetimes; the store picks one by the token's
+    // holder inside the same locked exchange, so there is no separate lookup first.
+    const r = await this.repos.auth.rotateSession({
+      tokenHash: sha256b64url(refreshToken),
+      newTokenHash: sha256b64url(next),
+      ttl: { userSeconds: this.config.operatorRefreshTtlS, attendeeSeconds: this.config.attendeeRefreshTtlS },
+      now,
+    });
+    if (r.status === "reuse_detected") throw new ContractError("UNAUTHENTICATED", "Refresh token reuse detected; session revoked.");
+    if (r.status !== "rotated" || !r.family_id || !r.expires_at) throw new ContractError("UNAUTHENTICATED");
+    const expiresAt = r.expires_at;
+    const mfaAt = r.mfa_at?.getTime() ?? null;
+    if (r.user_id) {
+      const user = await this.repos.users.byId(r.user_id);
       if (!user) throw new ContractError("UNAUTHENTICATED");
-      return this.issue({ sub: user.id, kind: kindForRole(user.role), role: user.role, mfaAt, sid: s.family_id }, user, s.family_id);
+      const ctx: AuthContext = { sub: user.id, kind: kindForRole(user.role), role: user.role, mfaAt, sid: r.family_id };
+      return this.tokens(ctx, user, next, expiresAt);
     }
-    const att = await this.repos.attendees.byId(s.principal_id);
+    const att = r.attendee_id ? await this.repos.attendees.byId(r.attendee_id) : null;
     if (!att) throw new ContractError("UNAUTHENTICATED");
-    return this.issue({ sub: att.id, kind: "attendee", role: null, mfaAt: null, sid: s.family_id }, att, s.family_id);
+    return this.tokens({ sub: att.id, kind: "attendee", role: null, mfaAt: null, sid: r.family_id }, att, next, expiresAt);
+  }
+
+  /** Ends the caller's session family: its refresh tokens and any tickets minted under it stop working. */
+  async logout(ctx: AuthContext): Promise<void> {
+    await this.repos.auth.revokeFamily(ctx.sid, "logout", new Date(this.now()));
   }
 
   /** Always resolves; never reveals whether the address is known. */
@@ -181,30 +207,35 @@ export class AuthService {
     const att = await this.repos.attendees.byEmail(email);
     if (!att || !att.email) return;
     const token = randomToken(32);
-    await this.repos.auth.insertLink({
-      token_hash: sha256b64url(token),
-      attendee_id: att.id,
-      expires_at: new Date(this.now() + this.config.emailLinkTtlS * 1000),
-      used_at: null,
+    const now = new Date(this.now());
+    await this.repos.auth.createLink({
+      tokenHash: sha256b64url(token),
+      attendeeId: att.id,
+      expiresAt: new Date(now.getTime() + this.config.emailLinkTtlS * 1000),
+      now,
     });
     // Token in the fragment: never sent to a server in a request line, never in Referer.
     const qs = returnTo ? `&return_to=${encodeURIComponent(returnTo)}` : "";
     const link = `${this.config.attendeeAppOrigin}/auth/verify#token=${token}${qs}`;
-    await this.mailer.send({
-      to: att.email,
-      tag: "auth.link",
-      subject: API_BRAND.mail.signInSubject,
-      text: `${API_BRAND.mail.signInIntro}\n\n${link}\n\nThis link works once and expires in ${Math.round(this.config.emailLinkTtlS / 60)} minutes. If you did not ask for it, ignore this email.`,
-    });
+    // Not awaited: a slow or failing mail provider must not make a known address answer differently
+    // (slower, or 500) from an unknown one. Delivery failures are logged, never surfaced.
+    void this.mailer
+      .send({
+        to: att.email,
+        tag: "auth.link",
+        subject: API_BRAND.mail.signInSubject,
+        text: `${API_BRAND.mail.signInIntro}\n\n${link}\n\nThis link works once and expires in ${Math.round(this.config.emailLinkTtlS / 60)} minutes. If you did not ask for it, ignore this email.`,
+      })
+      .catch((e: unknown) => console.error("[mail] auth.link delivery failed:", e instanceof Error ? e.message : String(e)));
   }
 
   async verifyEmailLink(token: string): Promise<TokenPair> {
-    const link = await this.repos.auth.consumeLink(sha256b64url(token), new Date(this.now()));
-    if (!link) throw new ContractError("LINK_EXPIRED");
-    const att = await this.repos.attendees.byId(link.attendee_id);
+    const r = await this.repos.auth.redeemLink(sha256b64url(token), new Date(this.now()));
+    if (r.status === "invalid") throw new ContractError("LINK_INVALID");
+    if (r.status !== "redeemed" || !r.attendee_id) throw new ContractError("LINK_EXPIRED");
+    const att = await this.repos.attendees.byId(r.attendee_id);
     if (!att) throw new ContractError("LINK_INVALID");
-    const family = randomUUID();
-    return this.issue({ sub: att.id, kind: "attendee", role: null, mfaAt: null, sid: family }, att, family);
+    return this.startFamily({ sub: att.id, kind: "attendee", role: null, mfaAt: null }, att);
   }
 
   async mfaVerify(ctx: AuthContext, code: string): Promise<TokenPair> {
@@ -213,17 +244,17 @@ export class AuthService {
     if (!user) throw new ContractError("UNAUTHENTICATED");
     if (!user.mfa_secret || !user.mfa_enrolled_at) throw new ContractError("MFA_NOT_ENROLLED");
     const now = this.now();
-    if (!verifyTotp(user.mfa_secret, code, now)) throw new ContractError("INVALID_MFA_CODE");
-    // A code is valid for up to 90 s (±1 step); refuse the same code twice inside that window.
-    const last = this.lastTotp.get(user.id);
-    if (last && last.code === code && now - last.at < 90_000) {
+    const step = verifyTotp(user.mfa_secret, code, now);
+    if (step === null) throw new ContractError("INVALID_MFA_CODE");
+    // Replay guard by time-step (in process for now): once a step is used, it and every earlier step
+    // are spent, so an observed code cannot be reused even after a newer code has been accepted.
+    if (step <= (this.lastTotpStep.get(user.id) ?? -Infinity)) {
       throw new ContractError("INVALID_MFA_CODE", "That code was already used.");
     }
-    this.lastTotp.set(user.id, { code, at: now });
+    this.lastTotpStep.set(user.id, step);
     // Revoke the current family and start a stepped-up one, so the old refresh token cannot mint mfa tokens.
-    await this.repos.auth.revokeFamily(ctx.sid, new Date(now));
-    const family = randomUUID();
-    return this.issue({ sub: user.id, kind: ctx.kind, role: user.role, mfaAt: now, sid: family }, user, family);
+    await this.repos.auth.revokeFamily(ctx.sid, "mfa_step_up", new Date(now));
+    return this.startFamily({ sub: user.id, kind: ctx.kind, role: user.role, mfaAt: now }, user);
   }
 
   isMfaFresh(ctx: AuthContext): boolean {
@@ -232,25 +263,45 @@ export class AuthService {
 
   /* -------------------------------------------------------------- ws tickets */
 
-  mintWsTicket(grant: Omit<WsTicketGrant, "expiresAt">): { ticket: string; expiresAt: number } {
-    this.sweepTickets();
+  /** Single-use, 30 s; stored only as a hash, bound to the holder, the session family, channel and scope. */
+  async mintWsTicket(grant: { ctx: AuthContext; channel: WsChannel; eventId: string | null; checkpointId: string | null }): Promise<{ ticket: string; expiresAt: number }> {
     const ticket = randomToken(32);
-    const expiresAt = this.now() + this.config.wsTicketTtlS * 1000;
-    this.tickets.set(sha256b64url(ticket), { ...grant, expiresAt });
+    const now = new Date(this.now());
+    const expiresAt = now.getTime() + this.config.wsTicketTtlS * 1000;
+    await this.repos.auth.mintTicket({
+      ticketHash: sha256b64url(ticket),
+      holder: grant.ctx.kind === "attendee" ? { attendeeId: grant.ctx.sub } : { userId: grant.ctx.sub },
+      sessionFamilyId: grant.ctx.sid,
+      channel: grant.channel,
+      eventId: grant.eventId,
+      checkpointId: grant.checkpointId,
+      expiresAt: new Date(expiresAt),
+      now,
+    });
     return { ticket, expiresAt };
   }
 
-  /** Single use: the ticket is deleted on first presentation, valid or not. */
-  consumeWsTicket(ticket: string): WsTicketGrant | null {
-    const key = sha256b64url(ticket);
-    const g = this.tickets.get(key);
-    this.tickets.delete(key);
-    if (!g || g.expiresAt <= this.now()) return null;
-    return g;
+  /**
+   * Single use: consumed on first presentation, valid or not. Only `valid` admits (expired, already
+   * used, unknown, or minted under a since-revoked session all refuse). The ticket stores the holder,
+   * not the role, so the role is re-read now — a role changed since minting is the one that counts.
+   */
+  async consumeWsTicket(ticket: string): Promise<WsTicketGrant | null> {
+    const r = await this.repos.auth.consumeTicket(sha256b64url(ticket), new Date(this.now()));
+    if (r.status !== "valid" || !r.channel) return null;
+    let ctx: AuthContext;
+    if (r.user_id) {
+      const user = await this.repos.users.byId(r.user_id);
+      if (!user) return null;
+      ctx = { sub: user.id, kind: kindForRole(user.role), role: user.role, mfaAt: null, sid: r.session_family_id ?? "" };
+    } else if (r.attendee_id) {
+      ctx = { sub: r.attendee_id, kind: "attendee", role: null, mfaAt: null, sid: r.session_family_id ?? "" };
+    } else return null;
+    return { ctx, channel: r.channel, eventId: r.event_id, checkpointId: r.checkpoint_id };
   }
 
-  private sweepTickets() {
-    const now = this.now();
-    for (const [k, g] of this.tickets) if (g.expiresAt <= now) this.tickets.delete(k);
+  /** Scheduled: delete expired sign-in state. */
+  async cleanup() {
+    return this.repos.auth.cleanup(new Date(this.now()));
   }
 }

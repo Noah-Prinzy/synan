@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 114 48" width="1824" height="768">
+  <title>Synan — horizontal, dark</title>
+  <rect width="114" height="48" fill="#0A0A0A"/>
+  <g transform="translate(8 8) scale(1)">
+    <path d="M0 0H12A6.65 6.65 0 0 0 12 13.3A4.05 4.05 0 0 1 12 21.4H0Z" fill="#FAFAFA"/>
+    <path d="M24 2.6H12A4.05 4.05 0 0 0 12 10.7A6.65 6.65 0 0 1 12 24H24Z" fill="#8AB4FF"/>
+    <path d="M27.4 7h4v9.9h-4Z" fill="#FAFAFA"/>
+    <path d="M42.4 16.9A7.5 7.5 0 0 1 27.4 16.9L31.4 16.9A3.5 3.5 0 0 0 38.4 16.9Z" fill="#FAFAFA"/>
+    <path d="M38.4 7h4v19h-4Z" fill="#FAFAFA"/>
+    <path d="M42.4 26A5.6 5.6 0 0 1 36.8 31.6L36.8 27.6A1.5999999999999996 1.5999999999999996 0 0 0 38.4 26Z" fill="#FAFAFA"/>
+    <path d="M30 27.6h6.8v4h-6.8Z" fill="#FAFAFA"/>
+    <path d="M45.2 7h4v17h-4Z" fill="#FAFAFA"/>
+    <path d="M45.491 12.033A7.5 7.5 0 0 1 60.2 14.1L56.2 14.1A3.5 3.5 0 0 0 49.336 13.135Z" fill="#FAFAFA"/>
+    <path d="M56.2 14.1h4v9.9h-4Z" fill="#FAFAFA"/>
+    <path d="M79.358 19.678A8.9 8.9 0 1 1 79.358 11.322L75.826 13.2A4.9 4.9 0 1 0 75.826 17.8Z" fill="#FAFAFA"/>
+    <path d="M76.4 7h4v17h-4Z" fill="#FAFAFA"/>
+    <path d="M83 7h4v17h-4Z" fill="#FAFAFA"/>
+    <path d="M83.291 12.033A7.5 7.5 0 0 1 98 14.1L94 14.1A3.5 3.5 0 0 0 87.136 13.135Z" fill="#FAFAFA"/>
+    <path d="M94 14.1h4v9.9h-4Z" fill="#FAFAFA"/>
+  </g>
+</svg>
