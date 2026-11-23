@@ -7,10 +7,13 @@
  * for anything where data at rest matters.
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { entryHash, GENESIS_HASH, verifyChain } from "../domain/audit.js";
+import { ALERT_RETENTION_MONTHS, AUDIT_RETENTION_MONTHS, entryHash, GENESIS_HASH, monthsBefore, verifyChain } from "../domain/audit.js";
 import { inProcessDeskCodes, inProcessUserInvites } from "./pending.js";
 import { memoryReports } from "./memory-reports.js";
-import { memoryReportSchedules, type MemSchedule } from "./memory-delivery.js";
+import { memoryExportedFiles, memoryReportSchedules, type MemSchedule } from "./memory-delivery.js";
+import { memoryEmailOutbox, memoryTransaction, type MemEmail } from "./memory-outbox.js";
+import { memoryGateHealth, memoryHandOver, memoryHandoverSummary } from "./memory-gates.js";
+import { eraseMemoryNotifications, memoryNotifications, type MemNotification } from "./memory-notifications.js";
 import { evaluateAccess } from "../domain/decision.js";
 import type { AttendeeTier } from "@synan/contracts/enums";
 import type {
@@ -32,6 +35,7 @@ import type {
   WebhookEndpointRow,
   DeviceRow,
   DevicesRepo,
+  ExportedFileRow,
   ClaimedDeliveryRow,
   DataRequestRowT,
   DataRequestsRepo,
@@ -73,6 +77,13 @@ export class MemoryTables {
   purgedEvents = new Map<string, Date>();
   dataRequests = new Map<string, DataRequestRowT>();
   reportSchedules = new Map<string, MemSchedule>();
+  emails = new Map<string, MemEmail>();
+  notifications = new Map<string, MemNotification>();
+  exportedFiles = new Map<string, ExportedFileRow>();
+  /** checkpoint id → last heartbeat (mirrors checkpoints.last_heartbeat_at / last_clock_offset_ms). */
+  checkpointHealth = new Map<string, { at: Date; clockOffsetMs: number | null }>();
+  /** `${notification}|${attendee}` → read_at */
+  notificationReads = new Map<string, Date>();
   deliveries = new Map<string, MemDelivery>();
   accessRules = new Map<string, AccessRuleRow>();
   staffAssignments = new Map<string, StaffAssignmentRow>();
@@ -85,6 +96,8 @@ export class MemoryTables {
   adjustments: OccupancyAdjustmentRow[] = [];
   alerts = new Map<string, BreachAlertRow>();
   audit: AuditRow[] = [];
+  /** Mirrors audit_chain_head: next id, last written hash, and the hash a retention prune ended on. */
+  auditHead = { nextId: 1, lastHash: GENESIS_HASH, prunedAnchor: GENESIS_HASH };
   gateRates = new Map<string, GateRateRollupRow>();
   /** token hash → session (mirrors public.auth_sessions). */
   authSessions = new Map<string, MemSession>();
@@ -176,14 +189,20 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
   const liveNfc = (h: string) => [...t.carriers.values()].find((c) => c.kind === "nfc" && c.identifier === h && c.state !== "retired");
   // Synchronous between read of the head and push, so the chain cannot fork in-process.
   const auditAppend = (entry: Pick<AuditRow, "actor_id" | "action" | "target" | "meta_jsonb" | "at">): AuditRow => {
-    const prev = t.audit[t.audit.length - 1]?.hash ?? GENESIS_HASH;
-    const row: AuditRow = { id: String(t.audit.length + 1), ...clone(entry), prev_hash: prev, hash: "" };
+    const prev = t.auditHead.lastHash;
+    const row: AuditRow = { id: String(t.auditHead.nextId++), ...clone(entry), prev_hash: prev, hash: "" };
     row.hash = entryHash(prev, row);
     t.audit.push(row);
+    t.auditHead.lastHash = row.hash;
     return clone(row);
   };
-  return {
+  let self!: Repos & { tables: MemoryTables };
+  self = {
     kind: "memory",
+    emailOutbox: memoryEmailOutbox(t.emails),
+    notifications: memoryNotifications(t),
+    exportedFiles: memoryExportedFiles(t, auditAppend),
+    transaction: memoryTransaction(() => self, t.emails),
     deskCodes: inProcessDeskCodes((h) => [...t.carriers.values()].find((c) => c.kind === "nfc" && c.identifier === h && c.state !== "retired")),
     userInvites: inProcessUserInvites(),
     webhookDeliveries: memoryWebhookDeliveries(t),
@@ -540,6 +559,12 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
         const a = t.staffAssignments.get(id);
         if (a && !a.handed_over_at) a.handed_over_at = at;
       },
+      async handOver(id, i) {
+        return memoryHandOver(t, auditAppend, id, i);
+      },
+      async handoverSummary(id) {
+        return memoryHandoverSummary(t, id);
+      },
     },
     credentials: {
       async byId(id) {
@@ -804,6 +829,25 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
           .slice(0, limit)
           .map(clone);
       },
+      async prune({ olderThanMonths, now }) {
+        // Mirrors public.alerts_prune (@synan/db 0022). Memory webhook deliveries carry no alert link, so none are held back or removed.
+        if (!Number.isInteger(olderThanMonths) || olderThanMonths < ALERT_RETENTION_MONTHS) throw new Error(`breach alerts are kept at least 12 months (got ${olderThanMonths})`);
+        const cutoff = monthsBefore(now, olderThanMonths);
+        let n = 0;
+        for (const [id, a] of t.alerts) {
+          if (a.occurred_at < cutoff) {
+            t.alerts.delete(id);
+            n++;
+          }
+        }
+        if (n > 0) {
+          auditAppend({
+            actor_id: null, action: "retention.alerts_pruned", target: "breach_alerts", at: now,
+            meta_jsonb: { deleted: n, webhook_deliveries: 0, occurred_before: cutoff.toISOString(), months: olderThanMonths },
+          });
+        }
+        return n;
+      },
     },
     audit: {
       async append(entry) {
@@ -813,7 +857,17 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
         return t.audit.map(clone);
       },
       async verify() {
-        return verifyChain(t.audit);
+        return verifyChain(t.audit, t.auditHead.prunedAnchor, t.auditHead.lastHash);
+      },
+      async prune(now) {
+        // As public.audit_prune(): the oldest contiguous run before the first entry still inside retention.
+        const cutoff = monthsBefore(now, AUDIT_RETENTION_MONTHS).getTime();
+        const keepFrom = t.audit.findIndex((r) => r.at.getTime() >= cutoff);
+        const n = keepFrom === -1 ? t.audit.length : keepFrom;
+        if (n === 0) return 0;
+        t.auditHead.prunedAnchor = t.audit[n - 1]!.hash;
+        t.audit.splice(0, n);
+        return n;
       },
     },
     rollups: {
@@ -932,6 +986,7 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       },
     },
   };
+  return self;
 }
 
 /** Mirrors @synan/db allowlist_rooms + allowlist_credentials (migration 0012). */
@@ -1024,12 +1079,27 @@ function memoryDevices(t: MemoryTables): DevicesRepo {
       const d = [...t.devices.values()].find((x) => x.token_hash === h && x.state === "active");
       return d ? pub(d) : null;
     },
-    async heartbeat({ deviceId, clockOffsetMs, queueDepth, now }) {
+    async heartbeat({ deviceId, checkpointId, clockOffsetMs, queueDepth, now }) {
       const d = t.devices.get(deviceId);
       if (!d) return "unknown_device";
-      if (d.state !== "active") return "not_active";
+      if (d.state !== "active" && d.state !== "maintenance") return "not_active";
       Object.assign(d, { last_heartbeat_at: now, last_clock_offset_ms: clockOffsetMs, last_queue_depth: queueDepth });
+      const cp = checkpointId ?? d.checkpoint_id;
+      if (cp) t.checkpointHealth.set(cp, { at: now, clockOffsetMs });
       return "ok";
+    },
+    async ensureScanner(i) {
+      let d = [...t.devices.values()].find((x) => x.hardware_id === i.hardwareId);
+      if (!d) {
+        const r = await this.register({ venueId: i.venueId, kind: "scanner", label: i.label, hardwareId: i.hardwareId, checkpointId: i.checkpointId });
+        if (r === "duplicate") throw new Error("unreachable");
+        return r.id;
+      }
+      if (d.checkpoint_id !== i.checkpointId) d.checkpoint_id = i.checkpointId;
+      return d.id;
+    },
+    async gateHealth(venueId, { eventId, now }) {
+      return memoryGateHealth(t, venueId, eventId, now);
     },
   };
 }
@@ -1137,6 +1207,7 @@ function memoryDataRequests(t: MemoryTables, audit: (e: Pick<AuditRow, "actor_id
     async erase(request, actorId, now) {
       const a = t.attendees.get(request.attendee_id);
       if (a) Object.assign(a, { email: null, full_name: null, profile_jsonb: {} });
+      eraseMemoryNotifications(t, request.attendee_id);
       audit({ actor_id: actorId, action: "attendee.erase", target: `attendee:${request.attendee_id}`, meta_jsonb: {}, at: now });
       await this.finish(request.id, { state: "completed", actorId, now });
     },

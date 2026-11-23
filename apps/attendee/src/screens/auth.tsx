@@ -1,9 +1,10 @@
-import { BRAND, Wordmark, pageTitle } from "@synan/ui/brand";
+import { BRAND, pageTitle } from "@synan/ui/brand";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { linkProblem, verifyToken, useSession, getSession, signOut } from "../data/auth";
 import { PageShell, Eyebrow, Panel } from "../components/page";
-import { buttonClass } from "@synan/ui/components";
+import { ActionButton, buttonClass } from "@synan/ui/components";
+import { fieldClass } from "../components/form-styles";
 import { ERROR_COPY } from "@synan/contracts/copy";
 
 /** Only same-origin paths may be a post-sign-in destination (no open redirect). */
@@ -19,10 +20,8 @@ function AuthLayout({ children }: { children: ReactNode }) {
   return (
     <PageShell bleed>
       <div className="grid md:min-h-160 md:grid-cols-2">
-        <div className="relative hidden flex-col justify-between overflow-hidden border-r border-border p-10 md:flex">
-          <span className="relative text-56">
-            <Wordmark />
-          </span>
+        {/* The header already carries the logo; this cell carries the promise, level with the form. */}
+        <div className="relative hidden flex-col justify-center overflow-hidden border-r border-border p-10 md:flex">
           <p className="relative max-w-sm font-display text-28 leading-tight">
             Your pass, your agenda and the venue&apos;s updates — for every event you attend.
           </p>
@@ -61,7 +60,11 @@ function SignInScreen() {
     setError(null);
 
     if (!email.trim()) {
-      setError("Enter your email");
+      setError("Enter the email you registered with.");
+      return;
+    }
+    if (!/^[^s@]+@[^s@]+.[^s@]+$/.test(email.trim())) {
+      setError("That email doesn't look complete. Check for a missing @ or dot.");
       return;
     }
 
@@ -80,8 +83,9 @@ function SignInScreen() {
           <Eyebrow>Sign in</Eyebrow>
           <h1 className="mt-2 font-display text-40 leading-tight">Check your email</h1>
           <p className="mt-4 text-17 leading-relaxed text-muted-foreground">
-            We sent a sign-in link to {email.trim()}. It should arrive within a minute.
+            We sent a sign-in link to {email.trim()}. It should arrive within a minute. Open it on this device to go straight to your pass.
           </p>
+          {import.meta.env.DEV ? (
           <Panel className="mt-8">
             <p className="text-13 font-medium text-muted-foreground">
               Mock build · the link in the email
@@ -95,14 +99,24 @@ function SignInScreen() {
               </Link>
             </p>
           </Panel>
-          <div className="mt-8">
-            <Link
-              to={`/sign-in?email=${encodeURIComponent(email)}`}
-              className={buttonClass("secondary", "md")}
+          ) : null}
+          <div className="mt-8 flex flex-wrap items-center gap-3">
+            <ActionButton
+              doneLabel="Sent again"
+              action={() => new Promise((resolve) => setTimeout(resolve, 500))}
+              className="min-h-12 px-5 text-15"
             >
-              Resend link
-            </Link>
+              Send the link again
+            </ActionButton>
+            <button
+              type="button"
+              onClick={() => setState("idle")}
+              className="inline-flex min-h-11 items-center px-2 text-15 text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            >
+              Use a different email
+            </button>
           </div>
+          <p className="mt-6 text-15 text-muted-foreground">Not there after a minute? Check your spam folder. Each link works once.</p>
         </div>
       </AuthLayout>
     );
@@ -111,9 +125,6 @@ function SignInScreen() {
   return (
     <AuthLayout>
       <div>
-        <p className="mb-10 text-40 md:hidden">
-          <Wordmark />
-        </p>
         <Eyebrow>Sign in</Eyebrow>
         <h1 className="mt-2 font-display text-40 leading-tight">Sign in to {BRAND.name}</h1>
         <p className="mt-4 text-17 leading-relaxed text-muted-foreground">
@@ -125,23 +136,37 @@ function SignInScreen() {
           </label>
           <input
             id="email"
+            name="email"
             type="email"
+            inputMode="email"
+            autoComplete="email"
+            autoCapitalize="none"
+            spellCheck={false}
+            enterKeyHint="send"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="mt-2 min-h-12 w-full border border-input bg-background px-3 py-2.5 text-17 placeholder:text-muted-foreground focus:border-brand"
+            onChange={(e) => {
+              setEmail(e.target.value);
+              setError(null);
+            }}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? "email-error" : undefined}
+            className={`mt-2 ${fieldClass}`}
             placeholder="you@example.com"
-            disabled={state === "submitting"}
+            readOnly={state === "submitting"}
             autoFocus
           />
           {error && (
-            <p className="mt-1.5 text-15 text-destructive">{error}</p>
+            <p id="email-error" className="mt-2 text-15 text-destructive">
+              <span aria-hidden="true" className="mr-1.5 font-mono">✕</span>
+              {error}
+            </p>
           )}
           <button
             type="submit"
             className={buttonClass("primary", "md", "mt-6 w-full")}
             disabled={state === "submitting"}
           >
-            {state === "submitting" ? "Sending..." : "Email me a link"}
+            {state === "submitting" ? "Sending your link…" : "Email me a link"}
           </button>
         </form>
       </div>

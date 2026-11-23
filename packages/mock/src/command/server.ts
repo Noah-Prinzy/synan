@@ -26,6 +26,7 @@ import type {
 import { buildVenue, type VenueKey, type VenueLayout } from "./venues";
 import { CLOSED_EVENT, ReportJobs, closedSeedDownloads, summaryFor, type ExportFormat, type ReportRow } from "./summary";
 import type { PostEventSummary, ReportKind } from "../types";
+import { createConfigureMock, type ConfigureApi } from "./configure";
 
 /* -------------------------------------------------------------------- types */
 
@@ -64,7 +65,8 @@ export interface SummarySeries {
   open_alerts: number[];
 }
 
-export type LiveSummary = EventLiveSummary & { series: SummarySeries };
+/** The contract now carries its own `series` (per-minute scan throughput); the admin KPI strip needs the per-figure series below, so it replaces it here until contracts carries both. */
+export type LiveSummary = Omit<EventLiveSummary, "series"> & { series: SummarySeries };
 
 export interface CommandApi {
   /** Server time, epoch ms. */
@@ -97,10 +99,14 @@ export interface CommandMockOptions {
   latencyMs?: number;
   /** The first layout load fails (the D1 error state). */
   failFirstLoad?: boolean;
+  /** First-run world for the configure screens: no organisation, no venues (D0). */
+  freshOrganization?: boolean;
 }
 
 export interface CommandMock {
   api: CommandApi;
+  /** The configure side: first run, venues, events, the wizard and the event workspace. */
+  configure: ConfigureApi;
   /** The live socket for one event, or null when the event is not live. */
   realtimeFor(eventId: string): (RealtimeClient & { readonly mock: MockRealtime }) | null;
   /** Server-side handle for dev tools: scenarios, link control, ambient traffic. */
@@ -475,7 +481,11 @@ export function createCommandMock(options: CommandMockOptions): CommandMock {
     now: () => clock.now(),
     async dashboard() {
       await delay(latency);
-      const live = events.filter((event) => event.state === "live").map((event) => need(event.id));
+      // An event made live from the configure screens has no simulated floor; it counts as quiet.
+      const live = events
+        .filter((event) => event.state === "live")
+        .map((event) => serverFor(event.id))
+        .filter((server): server is EventServer => server !== null);
       return {
         live_events: live.length,
         on_site: live.reduce((sum, server) => sum + server.summary().on_site, 0),
@@ -574,8 +584,28 @@ export function createCommandMock(options: CommandMockOptions): CommandMock {
     },
   };
 
+  const configure = createConfigureMock({
+    clock,
+    latencyMs: latency,
+    events,
+    orgId: idFor("org:synan-demo"),
+    operator: { id: operator.id, name: operator.name },
+    venueSize: options.venueSize ?? "standard",
+    liveCounts: (eventId) => {
+      const event = events.find((e) => e.id === eventId);
+      if (!event || event.state !== "live") return null;
+      const server = serverFor(eventId);
+      if (!server) return null;
+      const summary = server.summary();
+      return { registered: summary.registered, checked_in: summary.checked_in };
+    },
+    fresh: options.freshOrganization ?? false,
+    failOnce: options.failFirstLoad ?? false,
+  });
+
   return {
     api,
+    configure,
     serverFor,
     realtimeFor(eventId) {
       const server = serverFor(eventId);

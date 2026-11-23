@@ -25,7 +25,7 @@ export async function signAllowlist(app: AppContext, payload: AllowlistPayload) 
 }
 
 export function allowlistRoutes(x: Express, app: AppContext) {
-  mount(x, app, endpoints.allowlist, async ({ params, query, ctx }) => {
+  mount(x, app, endpoints.allowlist, async ({ params, query, ctx, ip }) => {
     const e = await app.repos.events.byId(params.id);
     if (!e) throw new ContractError("NOT_FOUND");
     const now = app.clock.now();
@@ -35,7 +35,11 @@ export function allowlistRoutes(x: Express, app: AppContext) {
     let shiftEnd: Date | null = null;
     if (ctx!.kind === "device") {
       // A fixed reader: its own checkpoint only, for the event's window (it has no shift).
-      if (!ctx!.checkpointId || (checkpointId && checkpointId !== ctx!.checkpointId)) throw new ContractError("CHECKPOINT_NOT_ASSIGNED");
+      if (!ctx!.checkpointId || (checkpointId && checkpointId !== ctx!.checkpointId)) {
+        // A gate device asking for another gate's list (03 §8.2, assignment check).
+        await app.scannerTrust.refused({ reason: "not_assigned", channel: "GET /events/:id/allowlist", ip, deviceId: ctx!.sub, checkpointId, eventId: e.id });
+        throw new ContractError("CHECKPOINT_NOT_ASSIGNED");
+      }
       const cp = await app.repos.venues.checkpoint(ctx!.checkpointId);
       if (!cp || cp.venue_id !== e.venue_id) throw new ContractError("NOT_FOUND");
       checkpointId = cp.id;

@@ -65,7 +65,11 @@ export type ScanOutcome = z.infer<typeof ScanOutcome>;
  */
 export const ScanRejection = z.object({
   idem_key: z.string(),
-  /** CHECKPOINT_NOT_ASSIGNED, OUTSIDE_SHIFT, NOT_FOUND (checkpoint), VALIDATION_FAILED, IDEMPOTENCY_CONFLICT. */
+  /**
+   * CHECKPOINT_NOT_ASSIGNED, OUTSIDE_SHIFT, NOT_FOUND (checkpoint), VALIDATION_FAILED, IDEMPOTENCY_CONFLICT,
+   * or RATE_LIMITED (the checkpoint's per-minute scan limit, 03 §4): not applied and not stored — keep
+   * the item queued and resend it later with the same idem_key.
+   */
   code: ErrorCode,
   message: z.string(),
 });

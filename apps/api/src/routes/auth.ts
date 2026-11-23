@@ -54,9 +54,17 @@ export function authRoutes(x: Express, app: AppContext) {
     }
   });
 
-  mount(x, app, endpoints.wsTicket, async ({ body, ctx }) => {
+  mount(x, app, endpoints.wsTicket, async ({ body, ctx, ip }) => {
     // Authorise the channel at mint time; the upgrade re-checks against the stored grant.
-    await authoriseChannel(app, ctx!, body.channel, body.event_id ?? null, body.checkpoint_id ?? null);
+    try {
+      await authoriseChannel(app, ctx!, body.channel, body.event_id ?? null, body.checkpoint_id ?? null);
+    } catch (e) {
+      // A scanner stream asked for a gate its user is not staffing now (03 §8.2).
+      if (body.channel === "/stream/scans" && e instanceof ContractError && e.code === "CHECKPOINT_NOT_ASSIGNED") {
+        await app.scannerTrust.refused({ reason: "not_assigned", channel: "POST /auth/ws-ticket /stream/scans", ip, userId: ctx!.sub, checkpointId: body.checkpoint_id ?? null, eventId: body.event_id ?? null });
+      }
+      throw e;
+    }
     const { ticket, expiresAt } = await app.auth.mintWsTicket({
       ctx: ctx!,
       channel: body.channel,

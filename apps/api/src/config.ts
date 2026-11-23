@@ -1,5 +1,6 @@
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { EMAIL_CLAIM_LEASE_SECONDS } from "@synan/db";
 
 /**
  * Runtime configuration from the environment. See `.env.example`.
@@ -57,7 +58,18 @@ export interface Config {
   trustProxy: false | number | string[];
   /** Dev-only: log emails to the console. */
   mailTransport: "console" | "memory";
+  /** A transport call that takes longer counts as a failed attempt (it is retried). At most 60 s (half the claim lease). */
+  mailSendTimeoutMs: number;
   rateLimits: { authPerMin: number; scanPerMin: number; resendPerHour: number };
+  /**
+   * Per-checkpoint scan limit (03 §4), in scans per minute of the time each scan is judged at (online:
+   * receipt; offline: its corrected time), so a gate's legitimate offline backlog never trips it.
+   * Default 3,000/min = 50/s at one checkpoint, above the whole venue's design peak of 40/s (02 §9)
+   * and ~6× an eight-lane entrance at one scan per lane-second. Refused items come back RATE_LIMITED.
+   */
+  checkpointScansPerMin: number;
+  /** POST /me/credential/resend: emails of an attendee's own pass, per attendee per hour (strict; it mails a live credential). */
+  selfResendPerHour: number;
   /** Validate every response against its contract (on outside production). */
   /** Absolute origin of this API, for signed report download links. */
   publicApiOrigin: string;
@@ -122,7 +134,12 @@ export function validateConfig(c: Config): Config {
   range("RATE_AUTH_PER_MIN", c.rateLimits.authPerMin, 1, 1_000_000);
   range("RATE_SCAN_PER_MIN", c.rateLimits.scanPerMin, 1, 10_000_000);
   range("RATE_RESEND_PER_HOUR", c.rateLimits.resendPerHour, 1, 1_000_000);
+  range("RATE_CHECKPOINT_SCANS_PER_MIN", c.checkpointScansPerMin, 60, 1_000_000);
+  range("RATE_SELF_RESEND_PER_HOUR", c.selfResendPerHour, 1, 100);
   range("REPORT_LINK_TTL_S", c.reportLinkTtlS, 30, 3600);
+  // At most half the outbox claim lease (@synan/db EMAIL_CLAIM_LEASE_SECONDS = 120 s): a send still in
+  // flight when its lease runs out can be claimed and sent again by another worker.
+  range("MAIL_SEND_TIMEOUT_MS", c.mailSendTimeoutMs, 50, (EMAIL_CLAIM_LEASE_SECONDS * 1000) / 2);
   range("REPORT_EMAIL_LINK_TTL_S", c.reportEmailLinkTtlS, 300, 72 * 3600);
   range("EXPORT_RETENTION_DAYS", c.exportRetentionDays, 1, 365);
   if (c.trustProxy === (true as unknown)) throw new ConfigError("trustProxy must never be true");
@@ -173,11 +190,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: readonly 
     seed: env.SEED === "dev" || argv.includes("--seed=dev") ? "dev" : "none",
     trustProxy: parseTrustProxy(env.TRUST_PROXY),
     mailTransport: env.MAIL_TRANSPORT === "memory" ? "memory" : "console",
+    mailSendTimeoutMs: int(env, "MAIL_SEND_TIMEOUT_MS", 30_000),
     rateLimits: {
       authPerMin: int(env, "RATE_AUTH_PER_MIN", 10),
       scanPerMin: int(env, "RATE_SCAN_PER_MIN", 600),
       resendPerHour: int(env, "RATE_RESEND_PER_HOUR", 5),
     },
+    checkpointScansPerMin: int(env, "RATE_CHECKPOINT_SCANS_PER_MIN", 3000),
+    selfResendPerHour: int(env, "RATE_SELF_RESEND_PER_HOUR", 3),
     publicApiOrigin: env.API_PUBLIC_ORIGIN ?? "http://127.0.0.1:5180",
     reportStorageDir: env.REPORT_STORAGE_DIR ?? join(tmpdir(), "synan-reports"),
     reportLinkTtlS: int(env, "REPORT_LINK_TTL_S", 600),

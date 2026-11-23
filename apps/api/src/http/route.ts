@@ -42,16 +42,34 @@ export function allowed(def: EndpointDef, ctx: AuthContext | null): boolean {
   return ctx.role !== null && def.access.includes(ctx.role);
 }
 
-export async function authenticate(app: AppContext, req: Request): Promise<AuthContext | null> {
+/**
+ * The bearer's principal, or null without one. On an endpoint scanners use (`scanner`), a refused
+ * token is reported as a rogue scanner connection (03 §8.2) — except an expired one, which is the
+ * normal cue to refresh.
+ */
+export async function authenticate(app: AppContext, req: Request, scanner?: { channel: string }): Promise<AuthContext | null> {
+  const ip = req.ip ?? req.socket.remoteAddress ?? "unknown";
   const h = req.headers.authorization;
   if (!h) return null;
   const m = /^Bearer ([A-Za-z0-9._-]+)$/.exec(h);
-  if (!m) throw new ContractError("UNAUTHENTICATED");
-  const ctx = await app.auth.verifyAccess(m[1]!);
+  let ctx: AuthContext;
+  try {
+    if (!m) throw new ContractError("UNAUTHENTICATED");
+    ctx = await app.auth.verifyAccess(m[1]!);
+  } catch (e) {
+    if (scanner && !(e instanceof ContractError && e.code === "TOKEN_EXPIRED")) {
+      await app.scannerTrust.refused({ reason: "invalid_access_token", channel: scanner.channel, ip });
+    }
+    throw e;
+  }
   if (ctx.kind === "device") {
     // Retiring a device or moving it takes effect on its next request, not when its token expires.
     const d = await app.repos.devices.byId(ctx.sub);
-    if (!d || d.state !== "active" || d.checkpoint_id !== (ctx.checkpointId ?? null) || d.token_version !== (ctx.tokenVersion ?? null)) {
+    const reason = !d || d.state !== "active" ? "device_not_active"
+      : d.checkpoint_id !== (ctx.checkpointId ?? null) ? "device_moved"
+      : d.token_version !== (ctx.tokenVersion ?? null) ? "device_token_rotated" : null;
+    if (reason) {
+      await app.scannerTrust.refused({ reason, channel: scanner?.channel ?? `${req.method} ${req.path}`, ip, deviceId: ctx.sub, checkpointId: ctx.checkpointId ?? null, venueId: d?.venue_id ?? null });
       throw new ContractError("UNAUTHENTICATED"); // retired, moved, or its token rotated since this access token was minted
     }
   }
@@ -82,7 +100,8 @@ export function mount<E extends EndpointDef>(express: Express, app: AppContext, 
       let ctx: AuthContext | null = null;
       let authError: unknown = null;
       try {
-        ctx = await authenticate(app, req);
+        // Endpoints a gate device may call are scanner endpoints: a refused token there is a rogue connection.
+        ctx = await authenticate(app, req, def.access.includes("device") ? { channel: `${def.method} ${def.path}` } : undefined);
       } catch (e) {
         authError = e;
       }

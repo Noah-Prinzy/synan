@@ -12,7 +12,7 @@ import { mount } from "../http/route.js";
 import { JOB } from "../jobs.js";
 import { loadSummary, toSummaryDto } from "../domain/post-event.js";
 import { CONTENT_TYPE } from "../domain/report-export.js";
-import type { ReportRow } from "../repo/types.js";
+import type { ReportRow, ReportScheduleRow } from "../repo/types.js";
 
 const invalid = (path: string, message: string) => new ContractError("VALIDATION_FAILED", message, [{ path, message }]);
 const offsetOf = (cursor: string | undefined) => {
@@ -71,6 +71,77 @@ export function reportRoutes(x: Express, app: AppContext) {
     return dto(row);
   });
 
+  /* ---- scheduled reports (01 §10) ---- */
+  const scheduleDto = (s: ReportScheduleRow) => ({
+    id: s.id, event_id: s.event_id, format: s.format, kind: s.kind, include_identity: s.include_identity, recipients: s.recipients,
+    cadence: s.cadence, next_run_at: s.next_run_at?.toISOString() ?? null, last_run_at: s.last_run_at?.toISOString() ?? null,
+    state: s.state, failures: s.failures, created_by: s.created_by, created_at: s.created_at.toISOString(),
+  });
+  const scheduleOr404 = async (eventId: string, scheduleId: string) => {
+    const s = (await app.repos.reportSchedules.list(eventId)).find((r) => r.id === scheduleId);
+    if (!s) throw new ContractError("NOT_FOUND");
+    return s;
+  };
+
+  mount(x, app, endpoints.listReportSchedules, async ({ params }) => {
+    const e = await eventOr404(params.id);
+    return { items: (await app.repos.reportSchedules.list(e.id)).map(scheduleDto) };
+  });
+
+  mount(x, app, endpoints.createReportSchedule, async ({ params, body, ctx }) => {
+    const e = await eventOr404(params.id);
+    if (e.state === "archived") throw new ContractError("CONFLICT", "An archived event cannot have report schedules.");
+    if (body.format === "csv" && !body.kind) throw invalid("body.kind", "a CSV is one report: name its kind");
+    if (body.format !== "csv" && body.kind) throw invalid("body.kind", "only a CSV names a report kind");
+    if (body.include_attendees && body.format !== "xlsx") throw invalid("body.include_attendees", "only the workbook carries the attendee sheet");
+    const now = app.clock.now();
+    let firstRunAt: Date | null = null;
+    if (body.cadence === "on_close") {
+      if (body.first_run_at) throw invalid("body.first_run_at", "an on_close schedule runs when the event closes");
+    } else {
+      // Server time is the authority: a time in the past means "now"; at most a year ahead.
+      const t = body.first_run_at ? Date.parse(body.first_run_at) : now;
+      if (t > now + 366 * 86_400_000) throw invalid("body.first_run_at", "at most a year ahead");
+      firstRunAt = new Date(Math.max(t, now));
+    }
+    const recipients = [...new Set(body.recipients.map((r) => r.trim().toLowerCase()))];
+    if (body.include_attendees) {
+      const eligible = new Set(await app.reportSchedules.eligibleRecipients({ include_identity: true, recipients }));
+      const issues = recipients.flatMap((r, i) => (eligible.has(r) ? [] : [{ path: `body.recipients.${i}`, message: "the attendee sheet goes only to operator accounts" }]));
+      if (issues.length) throw new ContractError("VALIDATION_FAILED", issues[0]!.message, issues);
+    }
+    const id = await app.repos.reportSchedules.create({
+      eventId: e.id, format: body.format, kind: body.format === "csv" ? body.kind! : null, includeIdentity: body.include_attendees, recipients,
+      cadence: body.cadence, firstRunAt, createdBy: ctx!.sub, now: new Date(now),
+    });
+    // Recipients are personal data: the audit records how many, not who.
+    await app.audit.append({
+      actorId: ctx!.sub, action: "report_schedule.create", target: `event:${e.id}`,
+      meta: { schedule_id: id, cadence: body.cadence, format: body.format, kind: body.kind ?? null, include_identity: body.include_attendees, recipients: recipients.length },
+    });
+    if (body.cadence === "on_close" && e.closed_at) app.jobs.kick(JOB.scheduledReport);
+    return scheduleDto(await scheduleOr404(e.id, id));
+  });
+
+  mount(x, app, endpoints.setReportScheduleState, async ({ params, body, ctx }) => {
+    const e = await eventOr404(params.id);
+    const s = await scheduleOr404(e.id, params.scheduleId);
+    if (body.state === "active" && s.include_identity && !app.auth.isMfaFresh(ctx!)) throw new ContractError("MFA_REQUIRED");
+    if (!(await app.repos.reportSchedules.setState(s.id, body.state, new Date(app.clock.now())))) {
+      throw new ContractError("CONFLICT", "This schedule has finished and cannot be paused or resumed.");
+    }
+    await app.audit.append({ actorId: ctx!.sub, action: body.state === "active" ? "report_schedule.resume" : "report_schedule.pause", target: `event:${e.id}`, meta: { schedule_id: s.id, from: s.state } });
+    return scheduleDto(await scheduleOr404(e.id, s.id));
+  });
+
+  mount(x, app, endpoints.deleteReportSchedule, async ({ params, ctx }) => {
+    const e = await eventOr404(params.id);
+    const s = await scheduleOr404(e.id, params.scheduleId);
+    if (!(await app.repos.reportSchedules.delete(s.id))) throw new ContractError("NOT_FOUND");
+    await app.audit.append({ actorId: ctx!.sub, action: "report_schedule.delete", target: `event:${e.id}`, meta: { schedule_id: s.id, cadence: s.cadence } });
+    return { ok: true as const };
+  });
+
   mount(x, app, endpoints.postEventSummary, async ({ params }) => {
     const e = await eventOr404(params.id);
     const s = toSummaryDto(await loadSummary(app, e.id));
@@ -83,12 +154,18 @@ export function reportRoutes(x: Express, app: AppContext) {
       const { key, exp, sig } = req.query as Record<string, string | undefined>;
       const ok = key && exp && sig ? app.reportExports.verify(req.params.id, key, exp, sig) : null;
       if (!ok) return void res.status(403).json({ error: { code: "FORBIDDEN", message: "This download link is invalid or has expired." } });
-      const data = await app.reportExports.read(ok);
-      if (!data) return void res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found." } });
+      const stream = await app.reportExports.open(ok);
+      if (!stream) return void res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found." } });
       const ext = (ok.split(".").pop() ?? "csv") as keyof typeof CONTENT_TYPE;
       res.setHeader("Content-Type", CONTENT_TYPE[ext] ?? "application/octet-stream");
       res.setHeader("Content-Disposition", `attachment; filename="report-${req.params.id}.${ext}"`);
-      res.status(200).send(data);
+      res.status(200);
+      // Decrypted as it is sent (constant memory). A file that fails authentication aborts the response.
+      stream.on("error", (e: Error) => {
+        console.error(`[reports] download of report:${req.params.id} failed: ${e.message.slice(0, 120)}`);
+        res.destroy();
+      });
+      stream.pipe(res);
     } catch (e) {
       next(e);
     }

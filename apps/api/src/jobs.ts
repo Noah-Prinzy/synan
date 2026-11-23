@@ -6,11 +6,12 @@
  */
 import { JOB_QUEUES } from "@synan/db";
 import type { AppContext } from "./app.js";
+import { ALERT_RETENTION_MONTHS, AUDIT_RETENTION_MONTHS } from "./domain/audit.js";
 import { processDataExports } from "./routes/me.js";
 
+const DAY_MS = 24 * 3600_000;
+
 export const JOB = JOB_QUEUES;
-/** Not yet in @synan/db JOB_QUEUES (requested). */
-export const EXPORT_RETENTION_JOB = "exports.retention";
 
 export function registerJobs(app: AppContext) {
   const now = () => new Date(app.clock.now());
@@ -45,7 +46,37 @@ export function registerJobs(app: AppContext) {
   app.jobs.register({ name: JOB.invitationExpiry, everyMs: 60 * 60_000, run: () => app.repos.maintenance.expireInvitations(now()) });
   app.jobs.register({ name: JOB.webhookDelivery, everyMs: 5_000, run: () => app.webhooks.drain() });
   app.jobs.register({ name: JOB.reportExport, everyMs: 30_000, run: () => app.reportExports.drain() });
+  // Email (D-17): one queued item by outbox id, or a sweep of everything due (retries included).
+  app.jobs.register({ name: JOB.email, everyMs: 30_000, run: (data) => app.mail.run(data) });
+  // Scheduled reports (01 §10): due schedules, and on_close ones once their event has closed (kicked at close).
+  app.jobs.register({ name: JOB.scheduledReport, everyMs: 60_000, run: () => app.reportSchedules.run() });
   app.jobs.register({ name: JOB.dataRequest, everyMs: 60_000, run: () => processDataExports(app) });
-  // Stored export files past the retention period (default 7 days) are deleted; each deletion is audited.
-  app.jobs.register({ name: EXPORT_RETENTION_JOB, everyMs: 6 * 3600_000, run: () => app.reportExports.deleteExpired() });
+  // Exported files past retention (default 7 days): objects deleted, then marked (audited); then sent
+  // email, expired notifications and finished schedules are removed (@synan/db delivery.cleanup).
+  app.jobs.register({
+    name: JOB.deliveryCleanup, everyMs: 60 * 60_000,
+    run: async () => {
+      await app.reportExports.deleteExpired();
+      await app.repos.exportedFiles.cleanupDelivery(now());
+    },
+  });
+  // Retention (03 §6, D-03), daily on one queue (the maintenance process schedules `audit.prune`
+  // at 03:30): audit entries and breach alerts older than 12 months. The audit log keeps verifying
+  // after a prune (the store records the hash the pruned run ended on). Each prune that removed
+  // something is audited: `retention.audit_pruned` here, `retention.alerts_pruned` by the store.
+  // The two are independent: one failing does not skip the other.
+  app.jobs.register({
+    name: JOB.auditPrune, everyMs: DAY_MS,
+    run: async () => {
+      const results = await Promise.allSettled([
+        (async () => {
+          const n = await app.repos.audit.prune(now());
+          if (n > 0) await app.audit.append({ actorId: null, action: "retention.audit_pruned", target: "audit_log", meta: { deleted: n, months: AUDIT_RETENTION_MONTHS } });
+        })(),
+        app.repos.alerts.prune({ olderThanMonths: ALERT_RETENTION_MONTHS, now: now() }),
+      ]);
+      const failed = results.find((r) => r.status === "rejected");
+      if (failed) throw (failed as PromiseRejectedResult).reason;
+    },
+  });
 }

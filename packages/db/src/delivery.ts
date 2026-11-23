@@ -175,20 +175,51 @@ export async function enqueueEmail(db: DbOrTx, cipher: Cipher, i: { template: st
   return id;
 }
 
-/** Claims an email for sending, decrypted; null when already sent, in flight, or out of attempts. */
+/**
+ * How long a claim holds an email (seconds). A `sending` row claimed longer ago than this was
+ * abandoned (worker crash) and is claimed again; keep the mail provider's timeout well below it.
+ */
+export const EMAIL_CLAIM_LEASE_SECONDS = 120;
+
+const leaseInterval = (seconds: number | undefined) => sql`make_interval(secs => ${seconds ?? EMAIL_CLAIM_LEASE_SECONDS}::double precision)`;
+
+/**
+ * Claims an email for sending, decrypted; null when already sent, in flight under a live lease, or
+ * out of attempts. Also reclaims a `sending` row whose claim is older than `leaseSeconds` (default
+ * EMAIL_CLAIM_LEASE_SECONDS); every claim, reclaims included, counts one attempt. Atomic: of
+ * concurrent claimers exactly one gets the row.
+ */
 export async function claimEmail(
   db: DbOrTx,
   cipher: Cipher,
   id: string,
-  opts: { maxAttempts?: number; now?: Date } = {},
+  opts: { maxAttempts?: number; leaseSeconds?: number; now?: Date } = {},
 ): Promise<{ id: string; template: string; to: string; content: EmailContent; attempts: number } | null> {
-  const r = await rows(db, sql`select * from public.email_claim(${id}::uuid, ${opts.maxAttempts ?? 5}::integer, ${tsOrNow(opts.now)})`);
+  const r = await rows(
+    db,
+    sql`select * from public.email_claim(${id}::uuid, ${opts.maxAttempts ?? 5}::integer, ${tsOrNow(opts.now)}, ${leaseInterval(opts.leaseSeconds)})`,
+  );
   const x = r[0];
   if (!x) return null;
   return {
     id, template: String(x.template), to: cipher.decrypt(String(x.to_enc), toCtx(id)),
     content: JSON.parse(cipher.decrypt(String(x.content_enc), contentCtx(id))) as EmailContent, attempts: num(x.attempts),
   };
+}
+
+/**
+ * Ids of emails to claim, oldest first: queued, failed with attempts left, and `sending` ones whose
+ * claim lease has run out. Reads no address or content.
+ */
+export async function emailsDue(
+  db: DbOrTx,
+  opts: { maxAttempts?: number; limit?: number; leaseSeconds?: number; now?: Date } = {},
+): Promise<string[]> {
+  const r = await rows<{ id: string }>(
+    db,
+    sql`select id from public.email_due(${opts.maxAttempts ?? 5}::integer, ${opts.limit ?? 100}::integer, ${leaseInterval(opts.leaseSeconds)}, ${tsOrNow(opts.now)}) as id`,
+  );
+  return r.map((x) => String(x.id));
 }
 
 export async function finishEmail(db: DbOrTx, id: string, i: { ok: boolean; error?: string | null; providerId?: string | null; now?: Date }): Promise<"sent" | "failed" | null> {
@@ -268,7 +299,10 @@ export async function markNotificationsRead(db: DbOrTx, attendeeId: string, ids:
 
 /* ------------------------------------------------------------------ cleanup */
 
-/** Deletes sent/failed email after 7 days, expired notifications, finished schedules after 30 days. */
+/**
+ * Deletes sent/failed email after 7 days, expired notifications, finished schedules after 30 days.
+ * Email left `sending` for over a day (abandoned, e.g. out of attempts) is first marked failed.
+ */
 export async function cleanupDelivery(db: DbOrTx, now?: Date): Promise<{ emails: number; notifications: number; schedules: number }> {
   const x = (await rows(db, sql`select * from public.delivery_cleanup(${tsOrNow(now)})`))[0]!;
   return { emails: num(x.emails), notifications: num(x.notifications), schedules: num(x.schedules) };

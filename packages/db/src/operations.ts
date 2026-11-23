@@ -6,6 +6,7 @@ import { randomBytes } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { hashToken } from "./auth";
 import { devices } from "./schema/operations2";
+import type { CheckpointPosition } from "./schema/venue";
 import { date, json, num, numOrNull, rows, tsOrNow, type DbOrTx } from "./sqlrows";
 
 /* ---------------------------------------------------------------------- staff */
@@ -187,6 +188,8 @@ export interface GateHealthRow {
   last_scan_at: Date | null;
   scans_last_15m: number;
   staff_on_duty: number;
+  /** checkpoints.position_jsonb: where the gate sits on the venue grid; null when not placed. */
+  position: CheckpointPosition | null;
 }
 /** Gate health for a venue (06 D12), faults first. Pass the event for last-scan and throughput figures. */
 export async function gateHealth(db: DbOrTx, venueId: string, opts: { eventId?: string | null; now?: Date } = {}): Promise<GateHealthRow[]> {
@@ -196,6 +199,7 @@ export async function gateHealth(db: DbOrTx, venueId: string, opts: { eventId?: 
     last_heartbeat_at: date(x.last_heartbeat_at), heartbeat_age_s: numOrNull(x.heartbeat_age_s), clock_offset_ms: numOrNull(x.clock_offset_ms),
     clock_fault: Boolean(x.clock_fault), queue_depth: numOrNull(x.queue_depth), last_scan_at: date(x.last_scan_at),
     scans_last_15m: num(x.scans_last_15m), staff_on_duty: num(x.staff_on_duty),
+    position: x.position == null ? null : json<CheckpointPosition>(x.position),
   }));
 }
 

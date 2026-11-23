@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { lockPortraitOnPhones, registerServiceWorker } from "../../../packages/ui/src/components/mobile";
+import { lockPortraitOnPhones, registerServiceWorker } from "@synan/ui/mobile";
 import App from "./App";
 import "./index.css";
 

@@ -13,6 +13,12 @@ export * from './layout';
 // Re-export form components
 export * from './form';
 
+// Class-name joiner, for apps composing on top of these components
+export { cn, type ClassValue } from '../lib/cn';
+
+// Overlays: dialog
+export * from './overlay';
+
 // Shell: frame, top bar, navigation rail, status bar
 export * from './shell';
 

@@ -8,7 +8,8 @@ import { API_BRAND } from "../brand.js";
 import type { Config } from "../config.js";
 import type { Clock } from "../lib/clock.js";
 import { randomToken, sha256b64url } from "../lib/crypto.js";
-import type { Mailer } from "../lib/mailer.js";
+import type { MailService } from "./mail.js";
+import { NOTE, type NotificationService } from "./notifications.js";
 import type { CarrierRow, CredentialRow, RegistrationRow, Repos } from "../repo/types.js";
 import type { AuditService } from "./audit.js";
 import { evaluateAccess } from "./decision.js";
@@ -46,9 +47,10 @@ export class CredentialService {
     private readonly repos: Repos,
     private readonly qr: QrService,
     private readonly audit: AuditService,
-    private readonly mailer: Mailer,
+    private readonly mail: MailService,
     private readonly config: Config,
     private readonly clock: Clock,
+    private readonly notes: NotificationService,
   ) {}
 
   /** Issue a credential for a registration. The secret is generated, hashed, and discarded. */
@@ -76,6 +78,7 @@ export class CredentialService {
       bound_at: row.issued_at,
       redeemed_at: null,
     });
+    await this.notes.forRegistration(registrationId, NOTE.passIssued);
     return row;
   }
 
@@ -141,31 +144,38 @@ export class CredentialService {
     const event = reg ? await this.repos.events.byId(reg.event_id) : null;
     const attendee = reg ? await this.repos.attendees.byId(reg.attendee_id) : null;
     if (!reg || !event) throw new ContractError("NOT_FOUND");
-    for (const c of await this.repos.carriers.forCredential(cred.id)) {
-      if (c.kind === "qr_email" && c.state !== "retired") await this.repos.carriers.update(c.id, { state: "retired" });
-    }
     const cid = randomToken(16);
     const now = this.clock.now();
     const carrierId = randomUUID();
-    await this.repos.carriers.insert({
-      id: carrierId,
-      credential_id: cred.id,
-      kind: "qr_email",
-      identifier: sha256b64url(cid), // the code id is only ever in the signed email; we keep its hash (43 chars)
-      chip_profile: null,
-      state: "active",
-      bound_at: new Date(now),
-      redeemed_at: null,
-    });
     const code = await this.qr.emailCode(cred.token_hash, cid, now, event.ends_at.getTime() + 24 * 3600 * 1000);
-    if (attendee?.email) {
-      await this.mailer.send({
-        to: attendee.email,
-        tag: "pass.email_qr",
-        subject: API_BRAND.mail.passSubject(event.title),
-        text: `Show this code at the entrance to collect your wristband. It works once.\n\nQR: ${code}\n\nYour pass in the app keeps working after this code is used.`,
+    // The new code, the retirement of the old ones and the email are one unit of work: the email
+    // exists only if the carrier does, and the carrier only with its email queued.
+    await this.repos.transaction(async (s) => {
+      for (const c of await s.repos.carriers.forCredential(cred.id)) {
+        if (c.kind === "qr_email" && c.state !== "retired") await s.repos.carriers.update(c.id, { state: "retired" });
+      }
+      await s.repos.carriers.insert({
+        id: carrierId,
+        credential_id: cred.id,
+        kind: "qr_email",
+        identifier: sha256b64url(cid), // the code id is only ever in the signed email; we keep its hash (43 chars)
+        chip_profile: null,
+        state: "active",
+        bound_at: new Date(now),
+        redeemed_at: null,
       });
-    }
+      if (attendee?.email) {
+        await this.mail.send(
+          {
+            to: attendee.email,
+            tag: "pass.email_qr",
+            subject: API_BRAND.mail.passSubject(event.title),
+            text: `Show this code at the entrance to collect your wristband. It works once.\n\nQR: ${code}\n\nYour pass in the app keeps working after this code is used.`,
+          },
+          s,
+        );
+      }
+    });
     return { code, carrierId };
   }
 
@@ -216,6 +226,9 @@ export class CredentialService {
     await this.audit.append({ actorId: actor.sub, action, target: `credential:${cred.id}`, meta: { from: cred.state, to: state, ...meta } });
     const reg = cred.registration_id ? await this.repos.registrations.byId(cred.registration_id) : null;
     if (reg) this.events.emit("state", { event_id: reg.event_id, registration_id: reg.id, attendee_id: reg.attendee_id, state });
+    if (state === "revoked") await this.notes.forRegistration(cred.registration_id, NOTE.passRevoked);
+    else if (state === "suspended_review") await this.notes.forRegistration(cred.registration_id, NOTE.passReview);
+    else if (state === "active" && cred.state === "suspended_review") await this.notes.forRegistration(cred.registration_id, NOTE.passCleared);
     return updated;
   }
 

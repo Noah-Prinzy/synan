@@ -143,12 +143,25 @@ describe("slice 8 · reports", () => {
     expect(text(after.pdf)).toEqual(text(before.pdf));
     expect(after.pdf).toContain("Individual scan records for this event were deleted");
     // Encrypted at rest: no stored object is a readable workbook, PDF or CSV.
-    for (const obj of storage.objects.values()) expect(obj.toString("utf8").startsWith("ev1.")).toBe(true);
-    // Retention: files older than the period are deleted, and the deletion is audited.
+    // Per-file keys in framed AES-GCM (@synan/db EVF1), each file registered with the key that wrapped it.
+    for (const obj of storage.objects.values()) expect(obj.subarray(0, 4).toString("ascii")).toBe("EVF1");
+    const registered = new Map((await Promise.all((await h.app.ctx.repos.reports.list({ eventId: h.seed.eventId, offset: 0, limit: 100 })).map((r) => h.app.ctx.repos.exportedFiles.list({ reportId: r.id })))).flat().map((f) => [f.object_key, f]));
+    for (const key of storage.objects.keys()) expect(registered.get(key)?.key_id).toBeTruthy();
+    expect([...registered.values()].some((f) => f.contains_identity)).toBe(true);
+    expect((await h.app.ctx.repos.audit.all()).map((a) => a.action)).toContain("export.create");
+    // Retention: a file whose deletion fails stays due; the rest are deleted, then marked and audited.
+    const failing = [...storage.objects.keys()][0]!;
+    const realDelete = storage.delete.bind(storage);
+    storage.delete = async (k: string) => (k === failing ? Promise.reject(new Error("store unavailable")) : realDelete(k));
     h.clock.advance(8 * 86_400_000);
-    await h.app.ctx.jobs.runNow("exports.retention");
+    await h.app.ctx.jobs.runNow("delivery.cleanup");
+    expect([...storage.objects.keys()]).toEqual([failing]);
+    expect((await h.app.ctx.repos.exportedFiles.due(new Date(h.clock.now()), 10)).map((f) => f.object_key)).toEqual([failing]);
+    storage.delete = realDelete;
+    await h.app.ctx.jobs.runNow("delivery.cleanup");
     expect(storage.objects.size).toBe(0);
-    expect((await h.app.ctx.repos.audit.all()).map((a) => a.action)).toContain("report.file_delete");
+    expect(await h.app.ctx.repos.exportedFiles.due(new Date(h.clock.now()), 10)).toEqual([]);
+    expect((await h.app.ctx.repos.audit.all()).map((a) => a.action)).toContain("export.delete");
 
     // Sheets, typed cells, totals, and the formula-injection guard.
     expect(Object.keys(before.wb)).toEqual(["Summary", "Attendance", "Arrivals", "On site", "Dwell", "Flow", "Peak occupancy", "Alerts", "Alert log", "Gate throughput", "Attendees"]);

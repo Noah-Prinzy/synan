@@ -2,8 +2,11 @@
  * Adoption of @synan/db (encryption, sign-in state in the database, formats). Always runs on the SQL
  * backend (PGlite) and inspects stored rows directly.
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { sql } from "drizzle-orm";
+
+// Every block here runs on PGlite, also in the memory run: give it the SQL run's time limits.
+vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
 import { ENVELOPE_RE, schema } from "@synan/db";
 import type { PortalCodeBatch, TokenPair, WsTicket } from "@synan/contracts/rest";
 import { createApp, createAppCipher } from "../src/app.js";
@@ -290,6 +293,7 @@ describe("Step C: sessions, links, tickets and keys survive a restart (a second 
       };
       const op = (await call<TokenPair>(base1, "POST", "/auth/login", { email: seed.emails.organiser, password: seed.password })).body;
       await call(base1, "POST", "/auth/email-link", { email: devEmail("vip") });
+      await app1.ctx.mail.drain();
       const linkToken = /#token=([A-Za-z0-9_-]+)/.exec(mailer.last("auth.link")!.text)![1]!;
       const ticket = (await call<WsTicket>(base1, "POST", "/auth/ws-ticket", { channel: "/stream/telemetry", event_id: seed.eventId }, op.access_token)).body.ticket;
       await app1.close(); // the repository (database) stays open: it belongs to the caller

@@ -58,14 +58,28 @@ export function deviceRoutes(x: Express, app: AppContext) {
     return deviceDto((await app.repos.devices.byId(d.id))!);
   });
 
-  mount(x, app, endpoints.deviceToken, async ({ body }) => app.auth.deviceToken(body.device_token));
+  mount(x, app, endpoints.deviceToken, async ({ body, ip }) => {
+    try {
+      return await app.auth.deviceToken(body.device_token);
+    } catch (e) {
+      // Rogue scanner connection (03 §8.2): alerted once per address per window; the token is never recorded.
+      if (e instanceof ContractError && e.code === "INVALID_CREDENTIALS") {
+        await app.scannerTrust.refused({ reason: "unknown_device_token", channel: `${endpoints.deviceToken.method} ${endpoints.deviceToken.path}`, ip });
+      }
+      throw e;
+    }
+  });
 
-  mount(x, app, endpoints.deviceHeartbeat, async ({ body, ctx }) => {
+  mount(x, app, endpoints.deviceHeartbeat, async ({ body, ctx, ip }) => {
     const now = app.clock.now();
-    const r = await app.repos.devices.heartbeat({ deviceId: ctx!.sub, clockOffsetMs: body.clock_offset_ms, queueDepth: body.queue_depth, appVersion: body.app_version ?? null, now: new Date(now) });
-    if (r !== "ok") throw new ContractError("UNAUTHENTICATED");
-    if (ctx!.checkpointId) {
-      app.scans.gates.set(ctx!.checkpointId, { checkpointId: ctx!.checkpointId, lastSeenAt: now, clockOffsetMs: body.clock_offset_ms, deviceId: `device:${ctx!.sub}`, queueDepth: body.queue_depth });
+    // Device and checkpoint gate-health fields in one step (the token's checkpoint, never one the body names).
+    const r = await app.repos.devices.heartbeat({
+      deviceId: ctx!.sub, checkpointId: ctx!.checkpointId ?? null, clockOffsetMs: body.clock_offset_ms, queueDepth: body.queue_depth,
+      appVersion: body.app_version ?? null, now: new Date(now),
+    });
+    if (r !== "ok") {
+      await app.scannerTrust.refused({ reason: "device_not_active", channel: `${endpoints.deviceHeartbeat.method} ${endpoints.deviceHeartbeat.path}`, ip, deviceId: ctx!.sub, checkpointId: ctx!.checkpointId ?? null });
+      throw new ContractError("UNAUTHENTICATED");
     }
     return { server_time: new Date(now).toISOString() };
   });

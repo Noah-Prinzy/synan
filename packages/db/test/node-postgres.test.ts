@@ -1,11 +1,10 @@
 /**
  * Exercises the production code path — node-postgres over TCP via createDb() and runMigrations() —
- * against PGlite exposed on a local socket (@electric-sql/pglite-socket). PGlite is a single
- * session behind the socket, so the pool is limited to one connection here.
+ * against PGlite served on the wire protocol (./pg-wire). PGlite is a single session, so
+ * connections are served one at a time and the pool is limited to one connection here.
  */
 import { PGlite } from "@electric-sql/pglite";
 import { btree_gist } from "@electric-sql/pglite/contrib/btree_gist";
-import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
 import { count, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDb, runMigrations, withVaultScope, type Db } from "../src/index";
@@ -13,38 +12,34 @@ import { auditVerify, roomOccupancy } from "../src/functions";
 import * as s from "../src/schema/index";
 import { seed } from "../src/seed/index";
 import { JOURNAL_ENTRIES } from "./helpers";
+import { servePgWire, type PgWireServer } from "./pg-wire";
 
 let pglite: PGlite;
-let server: PGLiteSocketServer;
+let server: PgWireServer;
 let db: Db;
 let url: string;
 
 beforeAll(async () => {
   pglite = new PGlite({ extensions: { btree_gist } });
-  const port = 55_000 + Math.floor(Math.random() * 5_000);
-  server = new PGLiteSocketServer({ db: pglite, port, host: "127.0.0.1", maxConnections: 1 });
-  await server.start();
-  url = `postgres://postgres:postgres@127.0.0.1:${port}/postgres`;
-}, 60_000);
+  server = await servePgWire(pglite); // waits for PGlite to boot
+  url = server.url;
+});
 
 afterAll(async () => {
   await db?.$client.end();
-  await server?.stop();
+  await server?.close();
   await pglite?.close();
 });
 
 describe("node-postgres path (createDb / runMigrations)", () => {
   it("runMigrations applies every migration, and is idempotent", async () => {
     await runMigrations(url, { jobs: false }); // pg-boss needs a second connection; jobs.test.ts covers it on PGlite
-    // pglite-socket serves one connection at a time; give it a moment to release the closed one.
-    await new Promise((r) => setTimeout(r, 500));
-    await runMigrations(url, { jobs: false }); // pg-boss needs a second connection; jobs.test.ts covers it on PGlite
+    await runMigrations(url, { jobs: false });
     const r = await pglite.query<{ n: number }>(`select count(*)::int n from drizzle.__drizzle_migrations`);
     expect(r.rows[0]!.n).toBe(JOURNAL_ENTRIES);
   });
 
   it("createDb returns a typed client that can seed and query", async () => {
-    await new Promise((r) => setTimeout(r, 500));
     db = createDb(url, { max: 1 });
     const summary = await seed(db);
     expect(summary.counts["pii_vault.attendees"]).toBe(1400);

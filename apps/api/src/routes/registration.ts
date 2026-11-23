@@ -168,15 +168,18 @@ export function registrationRoutes(x: Express, app: AppContext) {
       seen.add(emailHash);
       const token = randomToken(32);
       const row = { id: randomUUID(), event_id: e.id, email_hash: emailHash, token_hash: sha256b64url(token), state: "sent" as const, expires_at: new Date(expires), redeemed_at: null, created_at: new Date(t) };
-      if ((await app.repos.invitations.insert(row)) === "duplicate") {
+      // Token in the fragment: never in a request line or a Referer.
+      const link = `${app.config.attendeeAppOrigin}/invite#token=${token}`;
+      // The invitation and its email are one unit of work (per item: one refusal never undoes the others).
+      const inserted = await app.repos.transaction(async (s) => {
+        if ((await s.repos.invitations.insert(row)) === "duplicate") return false;
+        await app.mail.send({ to: email, tag: "invitation", subject: API_BRAND.mail.passSubject(e.title), text: `You are invited to ${e.title}.\n\nReply here (the link works once):\n${link}` }, s);
+        return true;
+      });
+      if (!inserted) {
         rejected.push({ index, code: "CONFLICT", message: "This address already has an open invitation to this event." });
         continue;
       }
-      // Token in the fragment: never in a request line or a Referer.
-      const link = `${app.config.attendeeAppOrigin}/invite#token=${token}`;
-      void app.mailer
-        .send({ to: email, tag: "invitation", subject: API_BRAND.mail.passSubject(e.title), text: `You are invited to ${e.title}.\n\nReply here (the link works once):\n${link}` })
-        .catch((err: unknown) => console.error("[mail] invitation delivery failed:", err instanceof Error ? err.message : String(err)));
       items.push({ id: row.id, event_id: row.event_id, state: row.state, expires_at: row.expires_at.toISOString(), redeemed_at: null });
     }
     // No addresses in the audit log: counts only.

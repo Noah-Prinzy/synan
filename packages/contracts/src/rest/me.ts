@@ -9,6 +9,12 @@ import { StaffAssignment } from "./staff.js";
 
 export const MeCredentialQuery = z.object({ event_id: Id.optional() });
 
+/** POST /me/credential/resend: which event's pass to email. */
+export const ResendMyCredential = z.object({ event_id: Id });
+export type ResendMyCredential = z.infer<typeof ResendMyCredential>;
+/** The same answer whether or not an email was sent. */
+export const ResendMyCredentialAccepted = z.object({ accepted: z.literal(true) });
+
 export const MyCredential = z.object({
   event_id: Id,
   registration_id: Id,
@@ -80,6 +86,23 @@ export const Notification = z.object({
 });
 export type Notification = z.infer<typeof Notification>;
 
+/** Mark notifications read. Ids that are not the caller's (or not visible any more) answer `read: false`, like unknown ones. */
+export const MarkNotificationsRead = z.object({ ids: z.array(Id).min(1).max(200) });
+export const MarkNotificationsReadResult = z.object({ items: z.array(z.object({ id: Id, read: z.boolean() })) });
+
+/**
+ * An operator announcement to an event's confirmed attendees, optionally one tier. Shown in
+ * /me/notifications until 7 days after the event ends. Keep it generic: no locations of people,
+ * no names.
+ */
+export const BroadcastNotification = z.object({
+  title: z.string().trim().min(1).max(120),
+  body: z.string().trim().min(1).max(1000),
+  tier: AttendeeTier.optional(),
+  kind: z.enum(["event", "session", "security"]).default("event"),
+});
+export const BroadcastNotificationResult = z.object({ id: Id, event_id: Id, tier: AttendeeTier.nullable(), created_at: IsoDateTime });
+
 export const DataRequestAccepted = z.object({ request_id: Id, state: z.enum(["queued"]) });
 
 const STAFF_SELF: readonly Access[] = ["security_staff", "speaker", "crew"];
@@ -88,10 +111,24 @@ export const meEndpoints = {
   myCredential: endpoint({ method: "GET", path: "/me/credential", access: ATTENDEE, query: MeCredentialQuery, response: MyCredential }),
   bindMyCredential: endpoint({ method: "POST", path: "/me/credential/bind", access: ATTENDEE, rateLimit: "auth", body: SelfBindRequest, response: MyCredential }),
   myCodes: endpoint({ method: "GET", path: "/me/credential/codes", access: ATTENDEE, query: MeCredentialQuery, response: PortalCodeBatch }),
+  /**
+   * Addition: "Email me a copy" on the pass screen — a fresh single-use emailed QR of the attendee's
+   * own credential for that event, to the address on file (the previous emailed copy stops working).
+   * Always 202 `{ accepted: true }`, whether or not anything was sent (no registration, unusable
+   * credential, no address, per-attendee hourly limit). Sent through the email outbox; audited without the address.
+   */
+  resendMyCredential: endpoint({ method: "POST", path: "/me/credential/resend", access: ATTENDEE, body: ResendMyCredential, response: ResendMyCredentialAccepted, status: 202 }),
   /** Not in 02 §5: the attendee's own registration for one event. Proposed addition. */
   myRegistration: endpoint({ method: "GET", path: "/me/registration", access: ATTENDEE, query: MyRegistrationQuery, response: MyRegistrationResponse }),
   mySessions: endpoint({ method: "GET", path: "/me/sessions", access: ATTENDEE, response: z.object({ items: z.array(EventSession) }) }),
   myNotifications: endpoint({ method: "GET", path: "/me/notifications", access: ATTENDEE, response: z.object({ items: z.array(Notification) }) }),
+  /** Addition: per-item results (a foreign id answers like an unknown one). */
+  markNotificationsRead: endpoint({ method: "POST", path: "/me/notifications/read", access: ATTENDEE, body: MarkNotificationsRead, response: MarkNotificationsReadResult }),
+  /** Addition: operator broadcast to an event (or one tier of it); audited. */
+  broadcastNotification: endpoint({
+    method: "POST", path: "/events/:id/notifications", access: ["admin", "organiser"], audited: true,
+    params: z.object({ id: Id }), body: BroadcastNotification, response: BroadcastNotificationResult, status: 201,
+  }),
   myAssignments: endpoint({ method: "GET", path: "/me/assignments", access: STAFF_SELF, response: z.object({ items: z.array(StaffAssignment) }) }),
   dataExport: endpoint({ method: "POST", path: "/me/data-export", access: ATTENDEE, rateLimit: "resend", response: DataRequestAccepted, status: 202 }),
   dataErasure: endpoint({ method: "POST", path: "/me/data-erasure", access: ATTENDEE, rateLimit: "resend", body: z.object({ confirm: z.literal(true) }), response: DataRequestAccepted, status: 202 }),

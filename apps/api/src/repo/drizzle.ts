@@ -15,7 +15,9 @@ import { and, asc, desc, eq, gt, gte, ilike, inArray, isNull, lt, ne, notInArray
 import {
   access_rules,
   attendees,
+  alertsPrune,
   audit_log,
+  auditPrune,
   auditVerify,
   breach_alerts,
   carriers,
@@ -85,6 +87,10 @@ import {
   rotateDeviceTokenVersioned,
   authenticateDevice,
   recordHeartbeat,
+  gateHealth,
+  handOverShift,
+  shiftHandoverSummary,
+  type HandoverSummary as DbHandoverSummary,
   allowlistEntries,
   bindCarrier,
   rebindCarrier,
@@ -112,7 +118,9 @@ import {
   type Cipher,
 } from "@synan/db";
 import { WEBHOOK_MAX_ATTEMPTS } from "./types.js";
-import { drizzleReportSchedules } from "./drizzle-delivery.js";
+import { drizzleExportedFiles, drizzleReportSchedules } from "./drizzle-delivery.js";
+import { drizzleEmailOutbox } from "./drizzle-outbox.js";
+import { drizzleNotifications } from "./drizzle-notifications.js";
 import { toCells } from "./memory-reports.js";
 import type { AttendeeTier, CredentialState } from "@synan/contracts/enums";
 import type {
@@ -125,6 +133,7 @@ import type {
   EventRow,
   GateRateRollupRow,
   Repos,
+  TxScope,
   RoomRow,
   ScanRow,
   UserRow,
@@ -133,7 +142,12 @@ import type {
 } from "./types.js";
 
 type Json = Record<string, unknown>;
-const one = <T>(rows: T[]): T | null => rows[0] ?? null;
+const toHandover = (s: DbHandoverSummary) => ({
+  assignment_id: s.assignment_id, checkpoint_id: s.checkpoint_id, user_id: s.user_id, period_start: s.period_start, period_end: s.period_end,
+  scans: s.scans, let_through: s.let_through, refused: s.refused, duplicates: s.duplicates, offline: s.offline, late_synced: s.late_synced,
+  by_result: s.by_result, first_scan_at: s.first_scan_at, last_scan_at: s.last_scan_at,
+});
+const one =<T>(rows: T[]): T | null => rows[0] ?? null;
 
 /** The SQLSTATE of a driver error (node-postgres and PGlite; drizzle may wrap it in `cause`). */
 export function pgCode(e: unknown): string | undefined {
@@ -203,6 +217,7 @@ const toCheckpoint = (r: typeof checkpoints.$inferSelect): CheckpointRow => ({
   perimeter_bool: r.perimeter_bool,
   hardware_id: r.hardware_id,
   label: r.label,
+  position_jsonb: r.position_jsonb ?? null,
 });
 const toEvent = (r: typeof events.$inferSelect): EventRow => ({
   id: r.id,
@@ -314,9 +329,26 @@ export interface DrizzleReposOptions {
 
 export type DrizzleRepos = Repos & { conn: DrizzleConnections; cipher: Cipher };
 
-export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposOptions): DrizzleRepos {
+export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposOptions, outer?: TxScope): DrizzleRepos {
   const { db, vault, scan } = conn;
   const { cipher } = opts;
+  /**
+   * One transaction on the operational connection. Inside it every repository writes through the
+   * transaction (on PGlite the vault and scan roles are the same connection, so they join it too);
+   * nested calls join the outer unit; afterCommit hooks run once it has committed.
+   */
+  const transaction = async <T>(fn: (scope: TxScope) => Promise<T>): Promise<T> => {
+    if (outer) return fn(outer);
+    const hooks: (() => void)[] = [];
+    const out = await db.transaction(async (raw) => {
+      const tx = raw as unknown as AnyDb;
+      const scope: TxScope = { repos: null as unknown as Repos, handle: tx, afterCommit: (f) => void hooks.push(f) };
+      scope.repos = createDrizzleRepos({ db: tx, vault: vault === db ? tx : vault, scan: scan === db ? tx : scan }, { cipher }, scope);
+      return fn(scope);
+    });
+    for (const f of hooks) f();
+    return out as T;
+  };
   /** A users row whose `email` is already decrypted (decryptUserRow / findUserByEmail). Decrypts the MFA secret. */
   const fromDecrypted = (r: typeof users.$inferSelect): UserRow => ({
     id: r.id,
@@ -387,6 +419,10 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       },
     },
     reportSchedules: drizzleReportSchedules(db, cipher),
+    emailOutbox: drizzleEmailOutbox(db, cipher),
+    notifications: drizzleNotifications(db),
+    exportedFiles: drizzleExportedFiles(db),
+    transaction,
     dataRequests: {
       async open(attendeeId, kind, now) {
         return openDataRequest(db, attendeeId, kind, now);
@@ -496,7 +532,29 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
         return d ? toDevice(d) : null;
       },
       async heartbeat(i) {
-        return recordHeartbeat(db, { deviceId: i.deviceId, clockOffsetMs: i.clockOffsetMs, queueDepth: i.queueDepth, appVersion: i.appVersion, now: i.now });
+        return recordHeartbeat(db, { deviceId: i.deviceId, checkpointId: i.checkpointId ?? null, clockOffsetMs: i.clockOffsetMs, queueDepth: i.queueDepth, appVersion: i.appVersion, now: i.now });
+      },
+      async ensureScanner(i) {
+        const find = async () => one(await db.select({ id: devices.id, checkpoint_id: devices.checkpoint_id }).from(devices).where(eq(devices.hardware_id, i.hardwareId)).limit(1));
+        let d = await find();
+        if (!d) {
+          try {
+            const r = await registerDevice(db, { venueId: i.venueId, kind: "scanner", label: i.label, hardwareId: i.hardwareId, checkpointId: i.checkpointId, issueToken: false });
+            return r.id;
+          } catch (e) {
+            if (pgCode(e) !== "23505") throw e;
+            d = await find(); // registered concurrently
+          }
+        }
+        if (d!.checkpoint_id !== i.checkpointId) await db.update(devices).set({ checkpoint_id: i.checkpointId }).where(eq(devices.id, d!.id));
+        return d!.id;
+      },
+      async gateHealth(venueId, { eventId, now }) {
+        return (await gateHealth(db, venueId, { eventId, now })).map((g) => ({
+          checkpoint_id: g.checkpoint_id, label: g.label, perimeter: g.perimeter, link_state: g.link_state, last_heartbeat_at: g.last_heartbeat_at,
+          heartbeat_age_s: g.heartbeat_age_s, clock_offset_ms: g.clock_offset_ms, clock_fault: g.clock_fault, queue_depth: g.queue_depth,
+          last_scan_at: g.last_scan_at, scans_last_15m: g.scans_last_15m, staff_on_duty: g.staff_on_duty, position: g.position ?? null,
+        }));
       },
     },
     close: opts.close,
@@ -826,6 +884,21 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       async markHandedOver(id, at) {
         await db.update(staff_assignments).set({ handed_over_at: at }).where(and(eq(staff_assignments.id, id), isNull(staff_assignments.handed_over_at)));
       },
+      async handOver(id, { actorId, now }) {
+        const a = one(await db.select({ h: staff_assignments.handed_over_at }).from(staff_assignments).where(eq(staff_assignments.id, id)).limit(1));
+        if (!a) return null;
+        if (a.h) return "already_handed_over";
+        try {
+          return toHandover(await handOverShift(db, id, { actorId, now }));
+        } catch (e) {
+          if (pgCode(e) === "P0002") return "already_handed_over"; // handed over concurrently
+          throw e;
+        }
+      },
+      async handoverSummary(id) {
+        const s = await shiftHandoverSummary(db, id);
+        return s ? toHandover(s) : null;
+      },
     },
 
     credentials: {
@@ -1049,6 +1122,11 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
             .orderBy(desc(breach_alerts.occurred_at), desc(breach_alerts.created_at)).limit(limit)
         ).map(toAlert);
       },
+      async prune({ olderThanMonths, now }) {
+        // public.alerts_prune (0022): refuses under 12 months, skips alerts with webhook deliveries
+        // still pending, deletes their finished deliveries, writes `retention.alerts_pruned`.
+        return alertsPrune(db, { olderThanMonths, now });
+      },
     },
 
     audit: {
@@ -1065,6 +1143,10 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
         const ids = (await db.select({ id: audit_log.id }).from(audit_log).orderBy(asc(audit_log.id))).map((r) => r.id);
         const first = problems.find((p) => p.entry_id !== null);
         return first ? Math.max(0, ids.indexOf(first.entry_id!)) : 0;
+      },
+      async prune() {
+        // public.audit_prune(): entries carry database time, so the database's clock decides what is 12 months old.
+        return auditPrune(db);
       },
     },
 

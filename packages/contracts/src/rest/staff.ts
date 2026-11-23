@@ -42,11 +42,24 @@ export const HandoverSummary = z.object({
   shift_start: IsoDateTime,
   shift_end: IsoDateTime,
   handed_over_at: IsoDateTime,
+  /** Let through: admitted + already_inside (= `let_through`). */
   admitted: z.number().int(),
   refused: z.number().int(),
-  /** Scans decided offline and synced during the shift. */
+  /** Scans decided offline on the device and synced (= `offline`). */
   queued: z.number().int(),
   by_result: z.record(z.string(), z.number().int()),
+  /* ---- additive: the full summary ---- */
+  /** All scans recorded by this person at this gate in the period (implied exits excluded). */
+  scans: z.number().int().optional(),
+  let_through: z.number().int().optional(),
+  duplicates: z.number().int().optional(),
+  offline: z.number().int().optional(),
+  /** Received after the period ended: they were still queued on the device at handover. */
+  late_synced: z.number().int().optional(),
+  /** The counted period: shift start to handover (or shift end). */
+  period_end: IsoDateTime.optional(),
+  first_scan_at: IsoDateTime.nullable().optional(),
+  last_scan_at: IsoDateTime.nullable().optional(),
 });
 export type HandoverSummary = z.infer<typeof HandoverSummary>;
 

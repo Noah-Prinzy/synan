@@ -245,31 +245,31 @@ type Profile = { fields: ProfileField[] };
 
 const defaultProfile: Profile = {
   fields: [
-    { key: "organization", label: "Organisation", type: "text", required: false, placeholder: "Where you work" },
-    { key: "role", label: "Role", type: "select", required: true, options: ["Founder", "Operator", "Engineer", "Policy", "Student", "Other"] },
+    { key: "organization", label: "Organisation", type: "text", required: false, placeholder: "Where you work", hint: "Printed on your badge under your name. Leave it blank to show your name only." },
+    { key: "role", label: "What best describes your work?", type: "select", required: true, options: ["Founder or executive", "Engineer or developer", "Designer or product", "Research or academia", "Government or public sector", "Student", "Something else"], hint: "Helps the organisers plan sessions and seating. Not shown to other attendees." },
   ],
 };
 
 const profiles: Record<string, Profile> = {
   "nexus-summit-2026": {
     fields: [
-      { key: "organization", label: "Organisation", type: "text", required: true, placeholder: "Where you work" },
-      { key: "role", label: "Role", type: "select", required: true, options: ["Founder", "Operator", "Engineer", "Policy", "Student", "Other"] },
-      { key: "tracks", label: "Tracks you plan to attend", type: "multiselect", required: false, options: ["Infrastructure", "Policy", "Product", "Research"], hint: "Pick any that apply. You can change this at the desk." },
-      { key: "meal", label: "Meal preference", type: "select", required: true, options: ["No preference", "Vegetarian", "Vegan", "Halal"] },
+      { key: "organization", label: "Organisation", type: "text", required: true, placeholder: "Where you work", hint: "Printed on your badge under your name." },
+      { key: "role", label: "What best describes your work?", type: "select", required: true, options: ["Founder or executive", "Engineer or developer", "Designer or product", "Research or academia", "Government or public sector", "Student", "Something else"], hint: "Helps the organisers plan sessions and seating. Not shown to other attendees." },
+      { key: "tracks", label: "Tracks you plan to attend", type: "multiselect", required: false, options: ["Infrastructure", "Policy", "Product", "Research"], hint: "Pick any that apply, so we can plan room sizes. You can change this at the desk." },
+      { key: "meal", label: "Meal preference", type: "select", required: true, options: ["No preference", "Vegetarian", "Vegan", "Halal"], hint: "So catering can plan. Lunch is served on both days." },
     ],
   },
   "security-operations-forum": {
     fields: [
-      { key: "organization", label: "Organisation", type: "text", required: true, placeholder: "Agency or company" },
-      { key: "role", label: "Function", type: "select", required: true, options: ["Security lead", "Event operations", "Venue staff", "Other"] },
-      { key: "topics", label: "Topics of interest", type: "multiselect", required: false, options: ["Threat assessment", "Access control", "Incident response"] },
+      { key: "organization", label: "Organisation", type: "text", required: true, placeholder: "Agency or company", hint: "Printed on your badge under your name." },
+      { key: "role", label: "Your role", type: "select", required: true, options: ["Security lead", "Event operations", "Venue staff", "Something else"], hint: "Helps us group the workshops." },
+      { key: "topics", label: "Topics of interest", type: "multiselect", required: false, options: ["Threat assessment", "Access control", "Incident response"], hint: "Pick any that apply." },
     ],
   },
   "design-week-kampala": {
     fields: [
-      { key: "role", label: "You are", type: "select", required: true, options: ["Designer", "Student", "Studio", "Press", "Other"] },
-      { key: "days", label: "Days you plan to attend", type: "multiselect", required: true, options: ["Wed 25 Nov", "Thu 26 Nov", "Fri 27 Nov"] },
+      { key: "role", label: "You are coming as", type: "select", required: true, options: ["A designer", "A student", "A studio or team", "Press", "Something else"], hint: "Studios and press get a separate desk at the entrance." },
+      { key: "days", label: "Days you plan to attend", type: "multiselect", required: true, options: ["Wed 25 Nov", "Thu 26 Nov", "Fri 27 Nov"], hint: "Pick every day you expect to come, so we can plan numbers." },
     ],
   },
 };

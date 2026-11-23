@@ -9,7 +9,7 @@ import { portal } from "./mock";
 
 export type ProfileField =
   | { kind: "text"; id: string; label: string; required: boolean; placeholder?: string; hint?: string }
-  | { kind: "select"; id: string; label: string; required: boolean; options: string[] }
+  | { kind: "select"; id: string; label: string; required: boolean; options: string[]; hint?: string }
   | { kind: "multi"; id: string; label: string; required: boolean; options: string[]; hint?: string };
 
 export type RegistrationDraft = {
@@ -33,7 +33,7 @@ function toField(field: ContractProfileField): ProfileField {
   const hint = field.hint ?? undefined;
   const placeholder = field.placeholder ?? undefined;
   const base = { id: field.key, label: field.label, required: field.required };
-  if (field.type === "select") return { ...base, kind: "select", options: field.options ?? [] };
+  if (field.type === "select") return { ...base, kind: "select", options: field.options ?? [], hint };
   if (field.type === "multiselect") return { ...base, kind: "multi", options: field.options ?? [], hint };
   // text, email, phone, date and checkbox all render as text until the form grows those kinds.
   return { ...base, kind: "text", placeholder, hint };
@@ -56,10 +56,11 @@ export function validateIdentity(
   draft: RegistrationDraft,
 ): Partial<Record<"name" | "email" | "phone", string>> {
   const errors: Partial<Record<"name" | "email" | "phone", string>> = {};
-  if (draft.name.trim().length < 2) errors.name = "Enter your full name";
-  if (!emailPattern.test(draft.email.trim())) errors.email = "Enter a valid email address";
+  if (draft.name.trim().length < 2) errors.name = "Enter your name as it should appear on your pass.";
+  if (draft.email.trim() === "") errors.email = "Enter your email. We send your pass there.";
+  else if (!emailPattern.test(draft.email.trim())) errors.email = "That email doesn't look complete. Check for a missing @ or dot.";
   if (draft.phone.trim() !== "" && !phonePattern.test(draft.phone.trim())) {
-    errors.phone = "Enter a valid phone number, or leave it blank";
+    errors.phone = "That number looks too short. Include the country code, or leave it blank.";
   }
   return errors;
 }
@@ -73,10 +74,12 @@ export function validateProfile(
     if (!field.required) continue;
     const value = answers[field.id];
     if (field.kind === "multi") {
-      if (!Array.isArray(value) || value.length === 0) errors[field.id] = "Select at least one";
+      if (!Array.isArray(value) || value.length === 0) errors[field.id] = "Pick at least one.";
       continue;
     }
-    if (typeof value !== "string" || value.trim() === "") errors[field.id] = "Required";
+    if (typeof value !== "string" || value.trim() === "") {
+      errors[field.id] = field.kind === "select" ? "Choose one to continue." : "Fill this in to continue.";
+    }
   }
   return errors;
 }

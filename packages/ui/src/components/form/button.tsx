@@ -2,7 +2,8 @@ import type { ButtonHTMLAttributes } from "react";
 import { cn } from "../../lib/cn";
 
 export type ButtonVariant = "primary" | "secondary" | "quiet" | "danger";
-export type ButtonSize = "sm" | "md";
+/** `compact` is the Admin Command size: 32px on a mouse, 44px under a coarse pointer. */
+export type ButtonSize = "compact" | "sm" | "md";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -23,6 +24,7 @@ const variants: Record<ButtonVariant, string> = {
 };
 
 const sizes: Record<ButtonSize, string> = {
+  compact: "h-8 px-3 text-13 whitespace-nowrap pointer-coarse:h-11 pointer-coarse:px-4",
   sm: "min-h-11 px-4 text-13",
   md: "min-h-12 px-5 text-15",
 };

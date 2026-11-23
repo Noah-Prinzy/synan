@@ -15,6 +15,27 @@ import { unlockAudio } from "./data/feedback";
  * reaches the viewfinder in one tap.
  */
 export default function App() {
+  // Large text (an accessibility setting, or Chrome on Android zooming the page with the
+  // system font size) leaves a narrow, tall screen: the scan screen then gives the verdict
+  // more room and drops secondary labels (data-text-large on <html>).
+  useEffect(() => {
+    const html = document.documentElement;
+    const check = () => {
+      const rem = parseFloat(getComputedStyle(html).fontSize) || 16;
+      const large = rem >= 20 || window.innerWidth < 340;
+      if (large) html.dataset.textLarge = "";
+      else delete html.dataset.textLarge;
+    };
+    check();
+    window.addEventListener("resize", check);
+    const observer = new MutationObserver(check);
+    observer.observe(html, { attributes: true, attributeFilter: ["style"] });
+    return () => {
+      window.removeEventListener("resize", check);
+      observer.disconnect();
+    };
+  }, []);
+
   useEffect(() => {
     // Development: ?offline=1 behaves as if the network were down; ?offline=0 restores.
     const flag = new URLSearchParams(window.location.search).get("offline");
@@ -61,14 +82,14 @@ function LinkState() {
   const waiting = scans.filter((scan) => !scan.synced).length;
   if (online && waiting === 0) {
     return (
-      <span className="flex items-center gap-1.5">
+      <span className="flex flex-wrap items-center gap-x-1.5">
         <span aria-hidden="true" className="size-1.5 bg-success" />
         Online
       </span>
     );
   }
   return (
-    <span className={`flex items-center gap-1.5 ${online ? "" : "text-warning"}`}>
+    <span className={`flex flex-wrap items-center gap-x-1.5 ${online ? "" : "text-warning"}`}>
       <span aria-hidden="true" className={`size-1.5 ${online ? "bg-foreground" : "bg-warning"}`} />
       {online ? "Sending" : "Offline"}
       {waiting > 0 ? (
@@ -92,14 +113,14 @@ function Shell({ children }: { children: ReactNode }) {
     // accidental text selection under a thumb. Inner lists scroll on their own.
     <div className="scanner-root fixed inset-0 flex flex-col bg-background text-foreground">
       <header className="flex shrink-0 items-stretch border-b border-border pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
-        <span className="flex items-center px-4 text-17" aria-label={`${BRAND.name} ${BRAND.surface.scanner}`}>
+        <span className="flex items-center px-4 text-17 [[data-text-large]_&]:hidden" aria-label={`${BRAND.name} ${BRAND.surface.scanner}`}>
           <Wordmark small />
         </span>
         {gate ? (
           <Link
             to="/pair"
             aria-label={`Gate: ${gate.label}. Change gate`}
-            className="flex min-h-14 min-w-0 flex-1 flex-col justify-center border-l border-border px-4 py-1.5"
+            className="flex min-h-14 min-w-0 flex-1 flex-col justify-center border-l border-border px-4 py-1.5 landscape:min-h-12 landscape:py-1 [[data-text-large]_&]:border-l-0"
           >
             <span className="truncate text-15 font-medium leading-tight">{gate.label}</span>
             <span className="mt-0.5 text-13 leading-tight text-muted-foreground" aria-live="polite">
@@ -123,7 +144,7 @@ function Shell({ children }: { children: ReactNode }) {
             to={tab.to}
             end={tab.end}
             className={({ isActive }) =>
-              `pressable relative flex min-h-14 items-center justify-center gap-1.5 border-l border-border text-15 first:border-l-0 landscape:min-h-12 ${
+              `pressable relative flex min-h-14 min-w-0 flex-wrap items-center justify-center gap-x-1.5 border-l border-border px-1 text-center text-15 leading-tight first:border-l-0 landscape:min-h-12 ${
                 isActive ? "text-foreground" : "text-muted-foreground"
               }`
             }

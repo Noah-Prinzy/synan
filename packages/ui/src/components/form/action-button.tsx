@@ -68,6 +68,8 @@ export interface ActionButtonProps {
   /** Stay in the done state (the action cannot be repeated). */
   keepDone?: boolean;
   variant?: "primary" | "quiet" | "plain";
+  /** `compact` matches Button size="compact" and the form controls (32px; 44px on touch). */
+  size?: "inline" | "compact";
   className?: string;
   disabled?: boolean;
   type?: "button" | "submit";
@@ -88,6 +90,7 @@ export function ActionButton({
   reward = false,
   keepDone = false,
   variant = "quiet",
+  size = "inline",
   className,
   disabled,
   type = "button",
@@ -96,13 +99,15 @@ export function ActionButton({
   const [phase, setPhase] = useState<Phase>("idle");
   const timer = useRef<number | null>(null);
   const alive = useRef(true);
-  useEffect(
-    () => () => {
+  // Set on every mount, not only at first render: StrictMode (development) mounts, unmounts and
+  // mounts again, and a flag set only once would stay false and freeze the button in "working".
+  useEffect(() => {
+    alive.current = true;
+    return () => {
       alive.current = false;
       if (timer.current !== null) window.clearTimeout(timer.current);
-    },
-    [],
-  );
+    };
+  }, []);
 
   const run = async () => {
     if (phase === "working" || (keepDone && phase === "done")) return;
@@ -128,7 +133,8 @@ export function ActionButton({
       aria-busy={phase === "working" || undefined}
       aria-label={rest["aria-label"]}
       className={cn(
-        "pressable relative inline-grid place-items-center overflow-visible px-3 text-12 font-medium transition-colors duration-120 ease-standard disabled:opacity-40 motion-reduce:transition-none",
+        "pressable relative inline-grid place-items-center overflow-visible px-3 font-medium whitespace-nowrap transition-colors duration-120 ease-standard disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none",
+        size === "compact" ? "h-8 text-13 pointer-coarse:h-11 pointer-coarse:px-4" : "text-12",
         variants[variant],
         className,
       )}

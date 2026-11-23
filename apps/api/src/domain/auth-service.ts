@@ -19,7 +19,7 @@ import { API_BRAND } from "../brand.js";
 import type { Config } from "../config.js";
 import type { Clock } from "../lib/clock.js";
 import { hashPassword, randomToken, sha256b64url, verifyPassword, verifyTotp } from "../lib/crypto.js";
-import type { Mailer } from "../lib/mailer.js";
+import type { MailService } from "./mail.js";
 import type { AttendeeRow, Repos, UserRow } from "../repo/types.js";
 import { generateEd25519, importPrivate, importPublic, type Key } from "./keys.js";
 import { kindForRole, type AuthContext } from "./principal.js";
@@ -45,7 +45,7 @@ export class AuthService {
   constructor(
     private readonly repos: Repos,
     private readonly config: Config,
-    private readonly mailer: Mailer,
+    private readonly mail: MailService,
     private readonly clock: Clock,
   ) {}
 
@@ -203,31 +203,37 @@ export class AuthService {
     await this.repos.auth.revokeFamily(ctx.sid, "logout", new Date(this.now()));
   }
 
-  /** Always resolves; never reveals whether the address is known. */
+  /**
+   * Always resolves at once; never reveals whether the address is known. The lookup, the link and
+   * its outbox email are written off the request path in one unit of work, so neither a slow
+   * database lookup nor the mail provider makes a known address answer differently (slower, or 500)
+   * from an unknown one. Failures are logged without the address.
+   */
   async requestEmailLink(email: string, returnTo?: string): Promise<void> {
+    this.mail.background("auth.link", () => this.issueEmailLink(email, returnTo));
+  }
+
+  private async issueEmailLink(email: string, returnTo?: string): Promise<void> {
     const att = await this.repos.attendees.byEmail(email);
     if (!att || !att.email) return;
+    const to = att.email;
     const token = randomToken(32);
     const now = new Date(this.now());
-    await this.repos.auth.createLink({
-      tokenHash: sha256b64url(token),
-      attendeeId: att.id,
-      expiresAt: new Date(now.getTime() + this.config.emailLinkTtlS * 1000),
-      now,
-    });
     // Token in the fragment: never sent to a server in a request line, never in Referer.
     const qs = returnTo ? `&return_to=${encodeURIComponent(returnTo)}` : "";
     const link = `${this.config.attendeeAppOrigin}/auth/verify#token=${token}${qs}`;
-    // Not awaited: a slow or failing mail provider must not make a known address answer differently
-    // (slower, or 500) from an unknown one. Delivery failures are logged, never surfaced.
-    void this.mailer
-      .send({
-        to: att.email,
-        tag: "auth.link",
-        subject: API_BRAND.mail.signInSubject,
-        text: `${API_BRAND.mail.signInIntro}\n\n${link}\n\nThis link works once and expires in ${Math.round(this.config.emailLinkTtlS / 60)} minutes. If you did not ask for it, ignore this email.`,
-      })
-      .catch((e: unknown) => console.error("[mail] auth.link delivery failed:", e instanceof Error ? e.message : String(e)));
+    await this.repos.transaction(async (s) => {
+      await s.repos.auth.createLink({ tokenHash: sha256b64url(token), attendeeId: att.id, expiresAt: new Date(now.getTime() + this.config.emailLinkTtlS * 1000), now });
+      await this.mail.send(
+        {
+          to,
+          tag: "auth.link",
+          subject: API_BRAND.mail.signInSubject,
+          text: `${API_BRAND.mail.signInIntro}\n\n${link}\n\nThis link works once and expires in ${Math.round(this.config.emailLinkTtlS / 60)} minutes. If you did not ask for it, ignore this email.`,
+        },
+        s,
+      );
+    });
   }
 
   async verifyEmailLink(token: string): Promise<TokenPair> {

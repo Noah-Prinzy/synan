@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { SCAN_RESULT_COPY } from "@synan/contracts/copy";
 import { QR_PREFIX_EMAIL, QR_PREFIX_PORTAL } from "@synan/contracts/qr";
-import { useWakeLock } from "../../../../packages/ui/src/components/mobile";
+import { useWakeLock } from "@synan/ui/mobile";
 import { gateById, type Gate } from "../data/mock";
 import { decide, normaliseUid, useScanner, type Presented, type Scan as ScanRecord } from "../data/store";
 import { announce } from "../data/feedback";
@@ -138,7 +138,7 @@ export default function Scan() {
   return (
     <div className="flex min-h-0 flex-1 flex-col landscape:flex-row">
       {/* Input: camera (perimeter) or tap target (interior). Top ~55% in portrait. */}
-      <div className="relative flex min-h-0 basis-[55%] flex-col border-b border-border [@media(max-height:700px)_and_(orientation:portrait)]:basis-[46%] landscape:basis-1/2 landscape:border-r landscape:border-b-0">
+      <div className="relative flex min-h-0 basis-[55%] flex-col border-b border-border [@media(max-height:700px)_and_(orientation:portrait)]:basis-[46%] [[data-text-large]_&]:basis-[30%] landscape:basis-1/2 landscape:border-r landscape:border-b-0">
         {gate.perimeter ? (
           <Viewfinder camera={camera} />
         ) : (
@@ -158,7 +158,7 @@ export default function Scan() {
             className="pressable flex min-h-16 items-center justify-center gap-3 border border-transparent px-3 landscape:min-h-14"
           >
             <span className="font-mono text-21" aria-hidden="true">123</span>
-            <span className="text-15">Type a number</span>
+            <span className="text-15 [[data-text-large]_&]:sr-only">Type a number</span>
           </button>
           <button
             type="button"
@@ -171,7 +171,7 @@ export default function Scan() {
               <span aria-hidden="true" className={`size-1.5 ${nfc.status === "on" ? "bg-success" : "bg-muted-foreground"}`} />
               Wristbands
             </span>
-            <span className="text-13 text-muted-foreground">{nfcLabel[nfc.status]}</span>
+            <span className="text-13 text-muted-foreground [[data-text-large]_&]:sr-only">{nfcLabel[nfc.status]}</span>
           </button>
         </div>
       </div>

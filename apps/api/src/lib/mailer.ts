@@ -9,6 +9,11 @@ export interface MailMessage {
   text: string;
   /** Tag for tests and provider analytics, e.g. `auth.link`. */
   tag: string;
+  /**
+   * Stable per outbox email (its id), the same on every attempt. A provider transport passes it as
+   * the provider's idempotency key / Message-ID so a retry after a reclaimed claim is not delivered twice.
+   */
+  idempotencyKey?: string;
 }
 
 export interface Mailer {

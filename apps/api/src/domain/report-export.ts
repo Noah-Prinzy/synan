@@ -13,7 +13,7 @@ import type { Cipher } from "@synan/db";
 import type { AppContext } from "../app.js";
 import type { Config } from "../config.js";
 import type { Clock } from "../lib/clock.js";
-import type { ObjectStorage } from "../lib/storage.js";
+import type { EncryptedStorage } from "../lib/storage.js";
 import { REPORT_SECTION_NAMES, type ReportCell, type ReportRow, type Repos } from "../repo/types.js";
 import { buildSummaryPdf, buildWorkbook } from "./workbook.js";
 
@@ -38,7 +38,7 @@ export class ReportExporter {
 
   constructor(
     private readonly repos: Repos,
-    private readonly storage: ObjectStorage,
+    private readonly storage: EncryptedStorage,
     private readonly config: Config,
     private readonly clock: Clock,
     cipher: Cipher,
@@ -68,8 +68,9 @@ export class ReportExporter {
     return want.length === got.length && timingSafeEqual(want, got) ? key : null;
   }
 
-  async read(key: string) {
-    return this.storage.get(key);
+  /** The decrypted file as a stream (constant memory), or null when gone. */
+  async open(key: string) {
+    return this.storage.openRead(key);
   }
 
   /** Run every queued export once. Concurrent calls share one run. */
@@ -118,7 +119,13 @@ export class ReportExporter {
       try {
         const data = job.format === "xlsx" ? await buildWorkbook(this.app!, job) : job.format === "pdf" ? await buildSummaryPdf(this.app!, job) : await this.csv(job);
         const key = `reports/${job.event_id}/${job.id}.${job.format}`;
-        await this.storage.put(key, data, CONTENT_TYPE[job.format]);
+        const stored = await this.storage.put(key, data, CONTENT_TYPE[job.format]);
+        // Registered before it is offered, so retention always finds it (a file with identity is audited here).
+        await this.repos.exportedFiles.record({
+          reportId: job.id, dataRequestId: null, objectKey: key, contentType: CONTENT_TYPE[job.format], sizeBytes: stored.sizeBytes,
+          containsIdentity: job.include_identity, keyId: stored.keyId, retentionDays: this.config.exportRetentionDays, actorId: job.requested_by,
+          now: new Date(this.clock.now()),
+        });
         await this.repos.reports.complete(job.id, key, new Date(this.clock.now()));
       } catch (e) {
         await this.repos.reports.fail(job.id, e instanceof Error ? e.message : "export failed", new Date(this.clock.now()));
@@ -126,32 +133,28 @@ export class ReportExporter {
     }
   }
 
-  /** Retention: delete stored export files (reports and data exports) older than the retention period. Audited. */
+  /**
+   * Retention (03 §6) from the register of exported files: each due object is deleted first, then
+   * marked deleted (audited `export.delete` in the same step). An object whose deletion fails stays
+   * due and is retried on the next run. Returns how many were deleted.
+   */
   async deleteExpired(): Promise<number> {
-    const cutoff = this.clock.now() - this.config.exportRetentionDays * 86_400_000;
     let n = 0;
-    for (let offset = 0; ; offset += 500) {
-      const rows = await this.repos.reports.list({ offset, limit: 500 });
-      for (const r of rows) {
-        if (r.state !== "ready" || !r.object_key || !r.completed_at || r.completed_at.getTime() > cutoff) continue;
-        if (!(await this.storage.get(r.object_key))) continue;
-        await this.storage.delete(r.object_key);
-        await this.app!.audit.append({ actorId: null, action: "report.file_delete", target: `report:${r.id}`, meta: { format: r.format, reason: "retention" } });
-        n++;
+    for (;;) {
+      const now = new Date(this.clock.now());
+      const due = await this.repos.exportedFiles.due(now, 100);
+      if (!due.length) return n;
+      const done: string[] = [];
+      for (const f of due) {
+        try {
+          await this.storage.delete(f.object_key);
+          done.push(f.id);
+        } catch (e) {
+          console.error(`[exports] retention could not delete exported_file:${f.id}: ${e instanceof Error ? e.message.slice(0, 120) : "error"}`);
+        }
       }
-      if (rows.length < 500) break;
+      n += await this.repos.exportedFiles.markDeleted(done, { actorId: null, now });
+      if (done.length < due.length) return n; // the failures stay due; try again on the next run
     }
-    for (let offset = 0; ; offset += 500) {
-      const rows = await this.repos.dataRequests.list({ state: "completed", kind: "export", offset, limit: 500 });
-      for (const r of rows) {
-        if (!r.object_key || !r.completed_at || r.completed_at.getTime() > cutoff) continue;
-        if (!(await this.storage.get(r.object_key))) continue;
-        await this.storage.delete(r.object_key);
-        await this.app!.audit.append({ actorId: null, action: "data_export.file_delete", target: `data_request:${r.id}`, meta: { reason: "retention" } });
-        n++;
-      }
-      if (rows.length < 500) break;
-    }
-    return n;
   }
 }

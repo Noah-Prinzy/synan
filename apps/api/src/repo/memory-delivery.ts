@@ -4,7 +4,7 @@
  */
 import { randomUUID } from "node:crypto";
 import type { MemoryTables } from "./memory.js";
-import type { ReportScheduleRow, ReportSchedulesRepo } from "./types.js";
+import type { AuditRow, ExportedFilesRepo, ReportScheduleRow, ReportSchedulesRepo } from "./types.js";
 
 export interface MemSchedule extends ReportScheduleRow {
   lease_until: Date | null;
@@ -26,6 +26,83 @@ export function addMonthUTC(d: Date): Date {
   out.setUTCDate(1);
   out.setUTCFullYear(y + Math.floor(m / 12), m % 12, Math.min(d.getUTCDate(), last));
   return out;
+}
+
+type Audit = (e: Pick<AuditRow, "actor_id" | "action" | "target" | "meta_jsonb" | "at">) => unknown;
+
+/** Mirrors exported_file_record / exported_files_due / exported_files_mark_deleted and delivery_cleanup. */
+export function memoryExportedFiles(t: MemoryTables, audit: Audit): ExportedFilesRepo {
+  const f = t.exportedFiles;
+  return {
+    async record(i) {
+      if ([...f.values()].some((x) => x.object_key === i.objectKey)) throw new Error("exported_files_object_key_uq");
+      if ((i.reportId === null) === (i.dataRequestId === null)) throw new Error("exported_files_owner");
+      const id = randomUUID();
+      const expires = new Date(i.now.getTime() + i.retentionDays * 86_400_000);
+      f.set(id, {
+        id, report_id: i.reportId, data_request_id: i.dataRequestId, object_key: i.objectKey, content_type: i.contentType, size_bytes: i.sizeBytes,
+        contains_identity: i.containsIdentity, key_id: i.keyId, created_at: i.now, expires_at: expires, deleted_at: null,
+      });
+      if (i.containsIdentity) {
+        audit({ actor_id: i.actorId, action: "export.create", target: `exported_file:${id}`, meta_jsonb: { report_id: i.reportId, data_request_id: i.dataRequestId, expires_at: expires.toISOString() }, at: i.now });
+      }
+      return id;
+    },
+    async due(now, limit) {
+      return [...f.values()].filter((x) => !x.deleted_at && x.expires_at <= now).sort((a, b) => a.expires_at.getTime() - b.expires_at.getTime()).slice(0, limit).map(clone);
+    },
+    async markDeleted(ids, { actorId, now }) {
+      let n = 0;
+      for (const id of new Set(ids)) {
+        const x = f.get(id);
+        if (!x || x.deleted_at) continue;
+        x.deleted_at = now;
+        audit({
+          actor_id: actorId, action: "export.delete", target: `exported_file:${id}`,
+          meta_jsonb: { contains_identity: x.contains_identity, report_id: x.report_id, data_request_id: x.data_request_id, expired_at: x.expires_at.toISOString() }, at: now,
+        });
+        n++;
+      }
+      return n;
+    },
+    async list(q) {
+      return [...f.values()]
+        .filter((x) => (!q.reportId || x.report_id === q.reportId) && (!q.dataRequestId || x.data_request_id === q.dataRequestId))
+        .sort((a, b) => b.created_at.getTime() - a.created_at.getTime())
+        .map(clone);
+    },
+    async cleanupDelivery(now) {
+      const at = now.getTime();
+      let emails = 0, notifications = 0, schedules = 0;
+      // As delivery_cleanup (0022): a row abandoned in `sending` for a day is failed, so it reaches the 7-day deletion.
+      for (const e of t.emails.values()) {
+        if (e.state === "sending" && (e.claimed_at ?? e.created_at).getTime() < at - 86_400_000) {
+          e.state = "failed";
+          e.last_error = "abandoned: claim lease expired";
+        }
+      }
+      for (const [id, e] of t.emails) {
+        if ((e.state === "sent" && e.sent_at && e.sent_at.getTime() < at - 7 * 86_400_000) || (e.state === "failed" && e.created_at.getTime() < at - 7 * 86_400_000)) {
+          t.emails.delete(id);
+          emails++;
+        }
+      }
+      for (const [id, n] of t.notifications) {
+        if (n.expires_at.getTime() <= at) {
+          t.notifications.delete(id);
+          for (const k of [...t.notificationReads.keys()]) if (k.startsWith(`${id}|`)) t.notificationReads.delete(k);
+          notifications++;
+        }
+      }
+      for (const [id, s] of t.reportSchedules) {
+        if ((s.state === "done" || s.state === "failed") && s.updated_at.getTime() < at - 30 * 86_400_000) {
+          t.reportSchedules.delete(id);
+          schedules++;
+        }
+      }
+      return { emails, notifications, schedules };
+    },
+  };
 }
 
 export function memoryReportSchedules(t: MemoryTables): ReportSchedulesRepo {

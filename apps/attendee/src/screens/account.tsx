@@ -6,7 +6,9 @@ import { getPass, reportLostBand, tierLabel } from "../data/pass";
 import { usePortalVersion, useResource } from "../data/mock";
 import { PageHeader, PageShell, RuledRow } from "../components/page";
 import { ErrorState, OfflineState, SkeletonCells } from "../components/states";
-import { buttonClass } from "@synan/ui/components";
+import { ActionButton, Badge, buttonClass } from "@synan/ui/components";
+import { updateName } from "../data/auth";
+import { fieldClass } from "../components/form-styles";
 
 const label = "text-13 font-medium text-muted-foreground";
 
@@ -92,9 +94,9 @@ export default function Account() {
       ) : (
         <AccountRows
           email={session.email}
-          name={session.name}
+          name={session.name.includes("@") || !session.name.includes(" ") ? getPass().holder : session.name}
           onLost={() => setConfirmLost(true)}
-          onExport={() => setRequested("We'll email you a copy of your data.")}
+          onExport={() => setRequested("We'll email you a copy of your data, usually within a day.")}
           onErase={() => setConfirmErase(true)}
           requested={requested}
           onSignOut={() => {
@@ -146,24 +148,18 @@ function AccountRows({
   return (
     <>
       <RuledRow label="Profile">
-        <dl className="grid gap-5 sm:grid-cols-2">
-          <div>
-            <dt className={label}>Name</dt>
-            <dd className="mt-1 text-17">{name}</dd>
-          </div>
-          <div>
-            <dt className={label}>Email</dt>
-            <dd className="mt-1 text-17 break-all">{email}</dd>
-          </div>
-        </dl>
-        <p className="mt-5 text-15 text-muted-foreground">Editing your profile arrives with the real account service.</p>
+        <ProfileBlock name={name} email={email} />
       </RuledRow>
 
       <RuledRow label="Pass and wristband">
         <dl className="grid gap-5 sm:grid-cols-3">
           <div>
             <dt className={label}>Pass</dt>
-            <dd className="mt-1 text-17 font-medium">{pass.state}</dd>
+            <dd className="mt-1.5">
+              <Badge tone={pass.state === "READY" ? "success" : pass.state === "UNDER REVIEW" ? "warning" : pass.state === "REVOKED" ? "destructive" : "neutral"} dot>
+                {pass.state}
+              </Badge>
+            </dd>
           </div>
           <div>
             <dt className={label}>Tier</dt>
@@ -178,8 +174,8 @@ function AccountRows({
                   Bound <span className="font-mono text-15 text-muted-foreground">{pass.band.hint}</span>
                 </span>
               ) : (
-                <Link to="/pass/pair" className="underline underline-offset-4">
-                  Not bound — bind one
+                <Link to="/pass/pair" className="-my-3 inline-flex min-h-11 items-center underline underline-offset-4 hover:text-brand">
+                  Not bound yet — bind one
                 </Link>
               )}
             </dd>
@@ -204,9 +200,18 @@ function AccountRows({
           ends; only counts without your identity are kept.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
-          <button type="button" onClick={onExport} className={buttonClass("secondary", "sm")}>
+          <ActionButton
+            keepDone
+            doneLabel="Requested"
+            failedLabel="Try again"
+            action={async () => {
+              await new Promise((resolve) => setTimeout(resolve, 500));
+              onExport();
+            }}
+            className="min-h-11 px-4 text-13"
+          >
             Export my data
-          </button>
+          </ActionButton>
           <button type="button" onClick={onErase} className={buttonClass("danger", "sm")}>
             Delete my data
           </button>
@@ -222,6 +227,106 @@ function AccountRows({
           Sign out
         </button>
       </RuledRow>
+    </>
+  );
+}
+
+/** Name is editable (PATCH /users/:id/profile); the email is the sign-in, so it is not. */
+function ProfileBlock({ name, email }: { name: string; email: string }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  return (
+    <>
+      <dl className="grid gap-5 sm:grid-cols-2">
+        <div>
+          <dt className={label}>{editing ? <label htmlFor="profile-name">Name on your pass</label> : "Name on your pass"}</dt>
+          <dd className="mt-1 text-17">
+            {editing ? (
+              <>
+                <input
+                  id="profile-name"
+                  type="text"
+                  autoComplete="name"
+                  autoCapitalize="words"
+                  enterKeyHint="done"
+                  value={draft}
+                  onChange={(changeEvent) => {
+                    setDraft(changeEvent.target.value);
+                    setError(null);
+                  }}
+                  aria-invalid={error ? true : undefined}
+                  aria-describedby={error ? "profile-name-error" : undefined}
+                  className={`${fieldClass} max-w-sm`}
+                />
+                {error ? (
+                  <p id="profile-name-error" className="mt-2 text-15 text-destructive">
+                    <span aria-hidden="true" className="mr-1.5 font-mono">✕</span>
+                    {error}
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <span className="inline-flex items-center gap-2">
+                {name}
+                {saved ? <span className="text-13 text-muted-foreground">Saved</span> : null}
+              </span>
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt className={label}>Email</dt>
+          <dd className="mt-1 text-17 break-all">{email}</dd>
+        </div>
+      </dl>
+      <div className="mt-5 flex flex-wrap items-center gap-3">
+        {editing ? (
+          <>
+            <ActionButton
+              variant="primary"
+              doneLabel="Saved"
+              action={async () => {
+                if (draft.trim().length < 2) {
+                  setError("Enter your name as it should appear on your pass.");
+                  throw new Error("invalid");
+                }
+                await updateName(draft);
+                setSaved(true);
+                window.setTimeout(() => setEditing(false), 700);
+              }}
+              failedLabel={error ? "Check the name" : "Couldn't save. Try again"}
+              className="min-h-11 px-4 text-13"
+            >
+              Save name
+            </ActionButton>
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(false);
+                setDraft(name);
+                setError(null);
+              }}
+              className={buttonClass("quiet", "sm")}
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(name);
+              setSaved(false);
+              setEditing(true);
+            }}
+            className={buttonClass("secondary", "sm")}
+          >
+            Edit name
+          </button>
+        )}
+        <p className="text-15 text-muted-foreground">Your email is how you sign in, so it can't be changed here.</p>
+      </div>
     </>
   );
 }

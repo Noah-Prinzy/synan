@@ -17,6 +17,7 @@
  *      registerServiceWorker in ./index.ts), so hot reload is untouched.
  */
 import { BRAND, surfaceName, type Surface } from "../../brand/name";
+import { lockupDrawing, pathOf } from "../../brand/fit";
 
 export interface PwaOptions {
   surface: Surface;
@@ -29,6 +30,20 @@ export interface PwaOptions {
   /** "any" leaves rotation to the device. */
   orientation?: "any" | "portrait";
   shortcuts?: { name: string; path: string }[];
+}
+
+/**
+ * The small wordmark as static SVG markup, for a page frame drawn in index.html before any
+ * script runs (same drawing and size as <Wordmark small />). index.html writes
+ * <!--brand-wordmark--> where it goes.
+ */
+export function wordmarkSvg(): string {
+  const drawing = lockupDrawing(true);
+  const width = (1.1 * drawing.width) / drawing.height;
+  const paths = drawing.parts
+    .map((part) => `<path d="${pathOf(part.shape)}" fill="${part.role === "accent" ? "var(--brand)" : "currentColor"}"/>`)
+    .join("");
+  return `<svg viewBox="0 0 ${drawing.width} ${drawing.height}" aria-hidden="true" class="inline-block shrink-0 align-middle" style="height:1.1em;width:${width.toFixed(3)}em">${paths}</svg>`;
 }
 
 /* Icons live in packages/ui/src/brand/public (each app's publicDir). */
@@ -162,10 +177,11 @@ export function pwa(options: PwaOptions) {
   const manifestPath = options.base + "manifest.webmanifest";
   return {
     name: "synan-pwa",
-    transformIndexHtml() {
-      return [
-        { tag: "link", attrs: { rel: "manifest", href: manifestPath }, injectTo: "head" as const },
-      ];
+    transformIndexHtml(html: string) {
+      return {
+        html: html.replace("<!--brand-wordmark-->", wordmarkSvg()),
+        tags: [{ tag: "link", attrs: { rel: "manifest", href: manifestPath }, injectTo: "head" as const }],
+      };
     },
     configureServer(server: DevServer) {
       server.middlewares.use((req, res, next) => {

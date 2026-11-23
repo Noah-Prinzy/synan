@@ -2,16 +2,18 @@ import { pageTitle } from "@synan/ui/brand";
 import { useEffect } from "react";
 import { getNotifications, markAllRead, type Notification } from "../data/notifications";
 import { useResource, usePortalVersion } from "../data/mock";
+import { getPass } from "../data/pass";
 import { PageHeader, PageShell } from "../components/page";
 import { ErrorState, OfflineState, SkeletonCells, StateBlock } from "../components/states";
 
-function formatDate(iso: string): string {
+/** In the event's own time zone, like every time on the portal. */
+function formatDate(iso: string, timeZone: string): string {
   return new Intl.DateTimeFormat("en-GB", {
     day: "numeric",
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "Africa/Kampala",
+    timeZone,
   }).format(new Date(iso));
 }
 
@@ -24,13 +26,13 @@ const kindLabel: Record<Notification["kind"], { glyph: string; label: string }> 
   security: { glyph: "!", label: "Safety" },
 };
 
-function NotificationRow({ notification, index }: { notification: Notification; index: number }) {
+function NotificationRow({ notification, index, timeZone }: { notification: Notification; index: number; timeZone: string }) {
   const unread = !notification.read;
   const kind = kindLabel[notification.kind];
   return (
     <li
-      className={`enter grid gap-2 border-b border-border px-4 py-5 sm:px-6 md:grid-cols-[14rem_minmax(0,1fr)] md:gap-0 md:px-0 md:py-0 ${
-        unread ? "border-l-2 border-l-foreground" : ""
+      className={`enter relative grid gap-2 border-b border-border px-4 py-5 sm:px-6 md:grid-cols-[14rem_minmax(0,1fr)] md:gap-0 md:px-0 md:py-0 ${
+        unread ? "before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-foreground" : ""
       }`}
       style={{ ["--i" as string]: index }}
     >
@@ -42,7 +44,7 @@ function NotificationRow({ notification, index }: { notification: Notification; 
           {kind.label}
         </p>
         <p className="mt-1 font-mono text-13 text-muted-foreground">
-          <time dateTime={notification.at}>{formatDate(notification.at)}</time>
+          <time dateTime={notification.at}>{formatDate(notification.at, timeZone)}</time>
         </p>
       </div>
       <div className="min-w-0 md:px-10 md:py-6">
@@ -67,6 +69,7 @@ export default function Notifications() {
   const notifications = useResource("notifications", getNotifications);
   const list = notifications.status === "ready" ? getNotifications() : [];
   const unread = list.filter((item) => !item.read).length;
+  const timeZone = getPass().event.timezone;
 
   return (
     <PageShell bleed>
@@ -101,7 +104,7 @@ export default function Notifications() {
       ) : (
         <ul>
           {list.map((notification, index) => (
-            <NotificationRow key={notification.id} notification={notification} index={index} />
+            <NotificationRow key={notification.id} notification={notification} index={index} timeZone={timeZone} />
           ))}
         </ul>
       )}

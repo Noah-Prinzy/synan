@@ -316,7 +316,9 @@ Venues lose connectivity. A gate that cannot decide stops the queue, so the scan
 - **Allowlisted credentials fail open with an alert** when the allowlist is more than 15 minutes
   stale (O-05). The queue must not stop.
 - Admin Command shows each gate's link state and queue depth. "Offline 4m, 182 queued" is a designed
-  state, not an error.
+  state, not an error. A gate is **offline** when it has never been heard from or has been silent
+  for 60 seconds, **degraded** when its link is up but a device still holds unsynced scans or its
+  clock is more than 2 minutes out, and **online** otherwise. Staff phones count as gate devices.
 
 **What offline gates cannot know (D-13).** Gates that are offline cannot see each other. Until they
 sync, three things can happen that an online system would have stopped:
@@ -384,6 +386,12 @@ went. It shows the headline figures (registered, checked in, no-shows, peak on s
 that reached capacity, alerts raised and how fast they were handled), attendance by tier, the
 occupancy curve over the event, the busiest rooms and gates, and the downloads above. It is the
 landing page of a closed event and stays available indefinitely.
+
+**Scheduled reports.** An operator can schedule an export for an event: daily, weekly, monthly, or
+once when the event closes. Each recipient is emailed a signed link; the email names no event and
+contains no data. The emailed link lasts 24 hours (O-25); a link requested in the console lasts 10
+minutes. A schedule that includes attendee identity may only go to admin or organiser accounts, and
+that is checked again at every run. A schedule that fails three times in a row stops until resumed.
 
 Reports and the summary are built from aggregates, so they remain available after raw scan data is
 purged.

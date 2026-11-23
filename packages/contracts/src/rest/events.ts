@@ -106,7 +106,22 @@ export const UpdateEvent = z.object({
 /** Not in 02 §5: the rest of the guarded lifecycle (publish has its own endpoint). */
 export const EventTransition = z.object({ state: z.enum(["live", "closed", "archived"]) });
 
+/** One minute of gate throughput across the event (the per-gate, per-minute rollups summed; D-16). */
+export const SummaryMinute = z.object({
+  /** Start of the minute (server time). */
+  at: IsoDateTime,
+  scans: z.number().int().min(0),
+  /** Let through: admitted + already_inside. */
+  admitted: z.number().int().min(0),
+  denied: z.number().int().min(0),
+});
+export type SummaryMinute = z.infer<typeof SummaryMinute>;
+/** `series_minutes`: how many whole minutes of `series`, ending with the last complete minute (default 60, 0 = none). */
+export const EventSummaryQuery = z.object({ series_minutes: z.coerce.number().int().min(0).max(240).default(60) });
+
 export const EventLiveSummary = z.object({
+  /** Additive: per-minute throughput, oldest first, zero-filled. */
+  series: z.array(SummaryMinute).optional(),
   event_id: Id,
   registered: z.number().int(),
   checked_in: z.number().int(),
@@ -209,7 +224,7 @@ export const eventEndpoints = {
   transitionEvent: endpoint({ method: "POST", path: "/events/:id/state", access: OPERATORS, audited: true, params: IdParam, body: EventTransition, response: EventAdmin }),
   /** The operator's full view of one event (drafts and unlisted included). */
   getEventAdmin: endpoint({ method: "GET", path: "/events/:id/admin", access: OPERATORS, params: IdParam, response: EventAdmin }),
-  eventSummary: endpoint({ method: "GET", path: "/events/:id/summary", access: OPERATORS, params: IdParam, response: EventLiveSummary }),
+  eventSummary: endpoint({ method: "GET", path: "/events/:id/summary", access: OPERATORS, params: IdParam, query: EventSummaryQuery, response: EventLiveSummary }),
   eventSessions: endpoint({ method: "GET", path: "/events/:id/sessions", access: PUBLIC, params: IdParam, response: z.object({ items: z.array(EventSession) }) }),
   profileSchema: endpoint({ method: "GET", path: "/events/:slug/profile-schema", access: PUBLIC, params: SlugParam, response: ProfileSchema }),
   getAccessRules: endpoint({ method: "GET", path: "/events/:id/access-rules", access: OPERATORS, params: IdParam, response: AccessRuleSet }),

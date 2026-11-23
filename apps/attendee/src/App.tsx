@@ -14,6 +14,8 @@ const PassPair = lazy(() => import("./screens/pass-pair"));
 const Agenda = lazy(() => import("./screens/agenda"));
 const Notifications = lazy(() => import("./screens/notifications"));
 const Account = lazy(() => import("./screens/account"));
+/** Development only: every control in every state (never in a production build). */
+const DevControls = import.meta.env.DEV ? lazy(() => import("./screens/dev-controls")) : null;
 
 /** RouteFallback: a quiet ground while a route's chunk loads; no spinner for short waits. */
 function RouteFallback() {
@@ -43,6 +45,7 @@ export default function App() {
         <Route path="/account" element={<Gate><Account /></Gate>} />
         <Route path="/sign-in" element={<Auth />} />
         <Route path="/verify" element={<Auth />} />
+        {DevControls ? <Route path="/dev/controls" element={<DevControls />} /> : null}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>

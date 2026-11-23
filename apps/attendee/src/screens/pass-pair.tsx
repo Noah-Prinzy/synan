@@ -7,6 +7,7 @@ import { bindBand, devCodeHint, type BindResult } from "../data/pair";
 import { portal, usePortalVersion } from "../data/mock";
 import { PageHeader, PageShell, Panel } from "../components/page";
 import { buttonClass, RewardMoment } from "@synan/ui/components";
+import { fieldClass } from "../components/form-styles";
 
 type NdefReader = {
   scan: (options?: { signal?: AbortSignal }) => Promise<void>;
@@ -15,9 +16,10 @@ type NdefReader = {
 
 const nfcSupported = typeof window !== "undefined" && "NDEFReader" in window;
 
+/** Active tab: foreground text and the accent rule beneath (blue is the rule, never the text). */
 const tabClass = (active: boolean) =>
-  `relative pb-3 text-13 font-medium transition-colors duration-120 ease-standard motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50 ${
-    active ? "text-brand" : "text-muted-foreground hover:text-foreground"
+  `relative flex min-h-11 items-center text-15 font-medium transition-colors duration-120 ease-standard motion-reduce:transition-none ${
+    active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
   }`;
 
 export default function PassPair() {
@@ -32,6 +34,7 @@ export default function PassPair() {
   const [code, setCode] = useState("");
   const [state, setState] = useState<"idle" | "loading" | "listening" | "success" | "error" | "denied">("idle");
   const [result, setResult] = useState<BindResult | null>(null);
+  const [emptyError, setEmptyError] = useState(false);
 
   function finish(outcome: BindResult) {
     setResult(outcome);
@@ -40,7 +43,12 @@ export default function PassPair() {
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!code.trim() || state === "loading") return;
+    if (state === "loading") return;
+    if (code.trim().length !== 6) {
+      setEmptyError(true);
+      document.getElementById("code")?.focus();
+      return;
+    }
     setState("loading");
     await new Promise((resolve) => setTimeout(resolve, 400));
     finish(bindBand(code));
@@ -106,9 +114,10 @@ export default function PassPair() {
       <PageHeader label="My pass" title="Bind your band">
         Link a wristband to your pass. From then on, the band is your key inside the venue.
       </PageHeader>
-      <div className="grid md:grid-cols-[minmax(0,1fr)_22rem]">
-      <div className="enter px-4 py-10 sm:px-6 md:px-10">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_24rem]">
+      <div className="enter px-4 py-10 sm:px-6 md:px-10 lg:py-12">
       <div className="max-w-md">
+        {!boundUid ? <h2 className="font-display text-28 leading-tight">{activeTab === "tap" ? "Tap your band" : "Enter the desk code"}</h2> : null}
 
         {boundUid ? (
           <Panel className="mt-6">
@@ -122,7 +131,8 @@ export default function PassPair() {
           </Panel>
         ) : (
           <>
-            <div className="mt-8 border-b border-border">
+            {nfcSupported ? (
+            <div className="mt-6 border-b border-border">
               <div role="tablist" aria-label="Binding method" className="flex gap-6">
                 <button
                   type="button"
@@ -148,10 +158,6 @@ export default function PassPair() {
               </div>
             </div>
 
-            {!nfcSupported ? (
-              <p className="mt-4 text-13 text-muted-foreground">
-                NFC is not available on this device — use the code from the desk.
-              </p>
             ) : null}
 
             {activeTab === "tap" ? (
@@ -183,12 +189,18 @@ export default function PassPair() {
               </div>
             ) : (
               <div className="mt-6">
-                <p className="text-15 text-muted-foreground">Enter the 6-character code the desk gave you.</p>
-                <p className="mt-1 text-13 font-medium tracking-wider text-muted-foreground">
-                  Mock build · try {devCodeHint}
+                <p className="max-w-[46ch] text-15 text-muted-foreground">
+                  {nfcSupported
+                    ? "Enter the 6-character code the desk gave you."
+                    : "This device can't read wristbands, so use the 6-character code the desk gives you with your band."}
                 </p>
+                {import.meta.env.DEV ? (
+                  <p className="mt-1 text-13 text-muted-foreground">
+                    Mock build: try <span className="font-mono">{devCodeHint}</span>
+                  </p>
+                ) : null}
 
-                <form onSubmit={handleSubmit} className="mt-6 max-w-xs">
+                <form noValidate onSubmit={handleSubmit} className="mt-6 max-w-sm">
                   <label htmlFor="code" className="text-13 font-medium text-muted-foreground">
                     Desk code
                   </label>
@@ -197,17 +209,30 @@ export default function PassPair() {
                     type="text"
                     inputMode="text"
                     autoComplete="one-time-code"
+                    autoCapitalize="characters"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    enterKeyHint="go"
                     value={code}
-                    onChange={(event) => setCode(event.target.value.toUpperCase())}
+                    onChange={(event) => {
+                      setCode(event.target.value.toUpperCase());
+                      setEmptyError(false);
+                    }}
                     maxLength={6}
-                    aria-invalid={state === "error" ? true : undefined}
-                    aria-describedby={state === "error" ? "code-error" : undefined}
-                    className="mt-2 w-full border border-input bg-background px-3 py-2.5 font-mono text-17 tracking-wider uppercase focus:border-brand"
-                    placeholder="K4M2PZ"
+                    aria-invalid={state === "error" || emptyError ? true : undefined}
+                    aria-describedby={state === "error" || emptyError ? "code-error" : undefined}
+                    className={`mt-2 ${fieldClass} font-mono tracking-wider uppercase placeholder:font-sans placeholder:tracking-normal placeholder:normal-case`}
+                    placeholder="6 letters and numbers"
                     disabled={state === "loading"}
                   />
 
-                  {state === "error" && result && !result.ok ? (
+                  {emptyError ? (
+                    <p id="code-error" role="alert" className="mt-3 text-15 text-destructive">
+                      <span aria-hidden="true" className="mr-1.5 font-mono">✕</span>
+                      Enter all 6 characters of the code from the desk.
+                    </p>
+                  ) : null}
+                  {state === "error" && result && !result.ok && !emptyError ? (
                     <div id="code-error" role="alert" className="mt-4">
                       {result.reason === "already_bound" ? (
                         <p className="text-15 text-destructive">
@@ -225,7 +250,7 @@ export default function PassPair() {
                   <button
                     type="submit"
                     className={buttonClass("primary", "md", "mt-6 w-full")}
-                    disabled={!code.trim() || state === "loading"}
+                    aria-busy={state === "loading" || undefined}
                   >
                     {state === "loading" ? "Checking…" : "Bind band"}
                   </button>
@@ -236,7 +261,7 @@ export default function PassPair() {
         )}
       </div>
       </div>
-      <aside aria-label="How binding works" className="border-t border-border px-4 py-10 sm:px-6 md:border-t-0 md:border-l md:px-10">
+      <aside aria-label="How binding works" className="border-t border-border px-4 py-10 sm:px-6 md:px-10 lg:border-t-0 lg:border-l lg:py-12">
         <h2 className="font-display text-21">How it works</h2>
         <ol className="mt-4 space-y-4 text-15 text-muted-foreground">
           <li>

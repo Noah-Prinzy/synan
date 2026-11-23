@@ -122,6 +122,11 @@ export const email_outbox = pgTable(
     provider_id: text("provider_id"),
     created_at: tstz("created_at").notNull().defaultNow(),
     sent_at: tstz("sent_at"),
+    /**
+     * When the current `sending` claim was taken. A `sending` row whose claim is older than the
+     * lease (default 120 s, email_claim) was abandoned by a crashed worker and may be claimed again.
+     */
+    claimed_at: tstz("claimed_at"),
   },
   (t) => [
     index("email_outbox_state_idx").on(t.state, t.created_at),

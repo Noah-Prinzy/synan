@@ -44,7 +44,7 @@ function ColumnGuides() {
 function Cell({ label, children, index }: { label: string; children: React.ReactNode; index: number }) {
   return (
     <div
-      className="enter flex min-h-28 flex-col justify-between gap-3 border-b border-border px-4 py-5 sm:px-6 md:border-b-0 md:px-8 odd:border-r md:not-last:border-r"
+      className="enter flex min-h-28 flex-col gap-3 border-b border-border px-4 py-5 sm:px-6 md:border-b-0 md:px-8 odd:border-r md:not-last:border-r"
       style={{ ["--i" as string]: index + 3 }}
     >
       <p className="text-13 font-medium text-muted-foreground">{label}</p>
@@ -72,7 +72,7 @@ export function Featured({ event }: { event: EventSummary }) {
           </div>
           <h1
             id="featured-title"
-            className="enter mx-auto mt-6 max-w-[16ch] font-display text-40 leading-[1.05] md:text-56"
+            className="enter mx-auto mt-6 max-w-[22ch] font-display text-40 leading-[1.05] text-balance md:text-56"
             style={{ ["--i" as string]: 1 }}
           >
             {event.title}
@@ -130,11 +130,11 @@ export function Featured({ event }: { event: EventSummary }) {
 function EventPlate({ event }: { event: EventSummary }) {
   const { weekday, day, month } = dateParts(event.startsAt, event.timezone);
   if (event.image) {
-    return <img src={event.image} alt="" className="aspect-16/10 w-full border-b border-border object-cover" loading="lazy" />;
+    return <img src={event.image} alt="" className="aspect-[2/1] w-full border-b border-border object-cover sm:aspect-16/10" loading="lazy" />;
   }
   const live = event.state === "live";
   return (
-    <div aria-hidden="true" className="relative aspect-16/10 overflow-hidden border-b border-border">
+    <div aria-hidden="true" className="relative aspect-[2/1] overflow-hidden border-b border-border sm:aspect-16/10">
       <svg className="absolute inset-0 h-full w-full text-border" preserveAspectRatio="none" viewBox="0 0 160 100">
         <path d="M0 100 A100 100 0 0 1 100 0" fill="none" stroke="currentColor" vectorEffect="non-scaling-stroke" />
         <line x1="100" y1="0" x2="100" y2="100" stroke="currentColor" vectorEffect="non-scaling-stroke" />
@@ -206,6 +206,21 @@ export function EventCard({ event, index }: { event: EventSummary; index: number
   );
 }
 
+/**
+ * Completes the last row of the card grid, so a short row ends in a quiet ruled cell
+ * instead of an empty hole. Absent on phones (one column) and when the row is full.
+ */
+function RowEnd({ count }: { count: number }) {
+  const sm = count % 2 === 0 ? "sm:hidden" : "sm:flex sm:col-span-1";
+  const lg = count % 3 === 0 ? "lg:hidden" : count % 3 === 1 ? "lg:flex lg:col-span-2" : "lg:flex lg:col-span-1";
+  return (
+    <li aria-hidden="true" className={`hidden flex-col justify-end gap-2 p-5 sm:p-6 ${sm} ${lg} sm:!border-r-0`}>
+      <p className="text-15 text-muted-foreground">That's every event for now.</p>
+      <p className="max-w-[34ch] text-13 text-muted-foreground">New events appear here as soon as organisers publish them.</p>
+    </li>
+  );
+}
+
 export default function Discover() {
   const [filter, setFilter] = useState<Filter>("all");
   const events = useResource("events", getEvents);
@@ -244,18 +259,18 @@ export default function Discover() {
       {featured ? <Featured event={featured} /> : <h1 className="sr-only">Events</h1>}
 
       <section aria-labelledby="more-title">
-        <div className="flex items-stretch justify-between border-b border-border">
-          <h2 id="more-title" className="flex items-center px-4 font-display text-21 sm:px-6 md:px-8">
+        <div className="flex flex-col border-b border-border sm:flex-row sm:items-stretch sm:justify-between">
+          <h2 id="more-title" className="flex min-h-14 items-center px-4 font-display text-21 sm:px-6 md:px-8">
             {featured ? "More events" : "Events"}
           </h2>
-          <div role="group" aria-label="Filter events" className="flex items-stretch">
+          <div role="group" aria-label="Filter events" className="grid grid-cols-3 border-t border-border sm:flex sm:items-stretch sm:border-t-0">
             {filters.map(({ id, label }) => (
               <button
                 key={id}
                 type="button"
                 aria-pressed={filter === id}
                 onClick={() => setFilter(id)}
-                className={`relative flex min-h-14 items-center gap-2 border-l border-border px-4 text-15 transition-colors duration-120 ease-standard motion-reduce:transition-none sm:px-5 ${
+                className={`relative flex min-h-14 items-center justify-center gap-2 border-border px-4 text-15 not-first:border-l sm:justify-start sm:border-l transition-colors duration-120 ease-standard motion-reduce:transition-none sm:px-5 ${
                   filter === id ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -277,6 +292,7 @@ export default function Discover() {
             {visible.map((event, index) => (
               <EventCard key={event.slug} event={event} index={index} />
             ))}
+            <RowEnd count={visible.length} />
           </ul>
         ) : (
           <StateBlock

@@ -25,7 +25,7 @@ export default function Agenda() {
   return (
     <PageShell bleed>
       <PageHeader label="My schedule" title="My agenda">
-        The sessions on your pass, in the event's local time. Tap one to see it in the programme.
+        The sessions on your pass, in the event's local time. Select one to see it in the programme.
       </PageHeader>
 
       {agenda.status === "loading" ? (
@@ -61,14 +61,14 @@ function AgendaGroup({ group, index }: { group: AgendaGroupItem; index: number }
   return (
     <div className="enter" style={{ ["--i" as string]: index }}>
       <RuledRow label={groupLabel[group.group]}>
-        <ul>
+        <ul className="max-w-3xl">
           {group.sessions.map((session) => {
             const dayChanged = session.day !== lastDay;
             lastDay = session.day;
             return (
               <li key={session.id}>
                 {dayChanged && session.day !== today ? (
-                  <p className="mt-4 mb-2 text-15 font-medium text-muted-foreground first:mt-0">
+                  <p className="pt-6 pb-2 text-15 font-medium text-muted-foreground">
                     {formatLongDay(session.startsAt, session.timezone)}
                   </p>
                 ) : null}
@@ -87,8 +87,8 @@ function AgendaRow({ session, isNow, muted }: { session: AgendaSession; isNow: b
   return (
     <Link
       to={`/events/${session.eventSlug}#session-${session.id}`}
-      className={`-mt-px flex min-h-16 items-center justify-between gap-4 border border-border px-4 py-3 transition-colors duration-120 ease-standard hover:bg-card/40 motion-reduce:transition-none ${
-        isNow ? "border-l-2 border-l-foreground" : ""
+      className={`relative -mt-px flex min-h-16 flex-col gap-1 border sm:flex-row sm:items-center sm:justify-between sm:gap-4 border-border px-4 py-3 transition-colors duration-120 ease-standard hover:bg-card/40 motion-reduce:transition-none ${
+        isNow ? "before:absolute before:-inset-y-px before:-left-px before:w-0.5 before:bg-foreground" : ""
       } ${muted ? "text-muted-foreground" : ""}`}
     >
       <div className="min-w-0">
@@ -98,7 +98,7 @@ function AgendaRow({ session, isNow, muted }: { session: AgendaSession; isNow: b
           </span>{" "}
           · {session.room}
         </p>
-        <p className="mt-1 truncate text-17">{session.title}</p>
+        <p className="mt-1 text-17 sm:truncate">{session.title}</p>
       </div>
       {muted ? (
         <p className="shrink-0 text-13">Ended</p>
@@ -108,7 +108,7 @@ function AgendaRow({ session, isNow, muted }: { session: AgendaSession; isNow: b
             spaceLeft.tone === "destructive" ? "text-destructive" : spaceLeft.tone === "warning" ? "text-warning" : "text-muted-foreground"
           }`}
         >
-          {spaceLeft.count !== null ? <span className="font-mono">{spaceLeft.label}</span> : spaceLeft.label}
+          {spaceLeft.label}
         </p>
       )}
     </Link>

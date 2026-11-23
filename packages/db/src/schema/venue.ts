@@ -28,6 +28,28 @@ const tstz = (name: string) => timestamp(name, { withTimezone: true, mode: "date
 const createdAt = () => tstz("created_at").notNull().defaultNow();
 const updatedAt = () => tstz("updated_at").notNull().defaultNow();
 
+/** `checkpoints.position_jsonb` — the contracts' `GridPoint`. */
+export interface CheckpointPosition {
+  x: number;
+  y: number;
+  side: "n" | "e" | "s" | "w";
+}
+
+/**
+ * The shape of `GridPoint` (packages/contracts/src/rest/venue.ts): an object with exactly the keys
+ * x, y (integers 0–10 000) and side (n, e, s or w). CASE fixes the evaluation order, so a malformed
+ * value fails the check instead of raising a cast error.
+ */
+const CHECKPOINT_POSITION_CHECK = `position_jsonb IS NULL OR CASE
+  WHEN jsonb_typeof(position_jsonb) <> 'object' THEN false
+  WHEN (position_jsonb - 'x' - 'y' - 'side') <> '{}'::jsonb THEN false
+  WHEN coalesce(jsonb_typeof(position_jsonb -> 'x'), '') <> 'number' OR coalesce(jsonb_typeof(position_jsonb -> 'y'), '') <> 'number' THEN false
+  WHEN coalesce(jsonb_typeof(position_jsonb -> 'side'), '') <> 'string' THEN false
+  ELSE (position_jsonb ->> 'side') IN ('n', 'e', 's', 'w')
+   AND (position_jsonb ->> 'x')::numeric BETWEEN 0 AND 10000 AND (position_jsonb ->> 'x')::numeric = trunc((position_jsonb ->> 'x')::numeric)
+   AND (position_jsonb ->> 'y')::numeric BETWEEN 0 AND 10000 AND (position_jsonb ->> 'y')::numeric = trunc((position_jsonb ->> 'y')::numeric)
+END`;
+
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -135,10 +157,17 @@ export const checkpoints = pgTable(
     /** Gate health (01 §6, 06 D12). Written by the heartbeat handler. */
     last_heartbeat_at: tstz("last_heartbeat_at"),
     last_clock_offset_ms: integer("last_clock_offset_ms"),
+    /**
+     * Where the gate sits on the venue's abstract grid and which edge it faces — the contracts'
+     * `GridPoint` (`{ x, y, side }`, integer grid units 0–10 000, side n/e/s/w). Null when not placed.
+     * A place on the floor plan, never a person's location (D-04). The grid's extent is derived.
+     */
+    position_jsonb: jsonb("position_jsonb").$type<CheckpointPosition>(),
     created_at: createdAt(),
   },
   (t) => [
     unique("checkpoints_id_venue_uq").on(t.id, t.venue_id),
+    check("checkpoints_position_grid_point", sql.raw(CHECKPOINT_POSITION_CHECK)),
     foreignKey({
       name: "checkpoints_zone_same_venue_fk",
       columns: [t.zone_id, t.venue_id],

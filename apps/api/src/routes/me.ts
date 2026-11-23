@@ -4,13 +4,12 @@
  * - Everything here is the caller's own data; ids come from the token, never from the request.
  * - Sessions: the schedule of every event the attendee is confirmed for (unlisted ones included,
  *   because they are registered for them).
- * - Notifications are derived from state (no notification store yet): pass issued / revoked / under
- *   review, sessions starting within 24 hours, data requests finished. Ids are stable per fact.
+ * - Notifications are stored when something happens (domain/notifications.ts) and read here; mark-read
+ *   answers per item; operators broadcast to an event or one tier (audited).
  * - Export: queued, built by a job, downloaded by the attendee only (GET /me/data-export/:id).
  * - Erasure: queued for an admin (MFA, audited), who processes or rejects it with a note. Processing
  *   scrubs the identity in place and ends the attendee's sessions; registrations and aggregates stay.
  */
-import { createHash } from "node:crypto";
 import type { Express } from "express";
 import { ContractError } from "@synan/contracts/errors";
 import { endpoints, type Notification } from "@synan/contracts/rest";
@@ -18,12 +17,8 @@ import type { AppContext } from "../app.js";
 import { mount } from "../http/route.js";
 import { JOB } from "../jobs.js";
 import type { DataRequestRowT } from "../repo/types.js";
+import { NOTE } from "../domain/notifications.js";
 
-const H = 3600_000;
-const stableId = (s: string) => {
-  const h = createHash("sha256").update(s).digest("hex");
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
-};
 export const dataRequestDto = (r: DataRequestRowT) => ({
   id: r.id, attendee_id: r.attendee_id, kind: r.kind, state: r.state, requested_at: r.requested_at.toISOString(),
   completed_at: r.completed_at?.toISOString() ?? null, note: r.note,
@@ -36,14 +31,21 @@ export async function processDataExports(app: AppContext) {
     if (!r) return;
     const data = await app.repos.dataRequests.collectExport(r.attendee_id);
     const key = `data-exports/${r.attendee_id}/${r.id}.json`;
-    await app.reportStorage.put(key, Buffer.from(JSON.stringify(data), "utf8"), "application/json");
-    await app.repos.dataRequests.finish(r.id, { state: "completed", objectKey: key, actorId: null, now: new Date(app.clock.now()) });
-    const a = await app.repos.attendees.byId(r.attendee_id);
-    if (a?.email) {
-      void app.mailer
-        .send({ to: a.email, tag: "data.export_ready", subject: "Your data export is ready", text: "Your data export is ready. Sign in to your account to download it." })
-        .catch((e: unknown) => console.error("[mail] export notice failed:", e instanceof Error ? e.message : String(e)));
-    }
+    const stored = await app.reportStorage.put(key, Buffer.from(JSON.stringify(data), "utf8"), "application/json");
+    // Identity leaves the vault in this file: registered (audited) so retention deletes it.
+    await app.repos.exportedFiles.record({
+      reportId: null, dataRequestId: r.id, objectKey: key, contentType: "application/json", sizeBytes: stored.sizeBytes, containsIdentity: true,
+      keyId: stored.keyId, retentionDays: app.config.exportRetentionDays, actorId: null, now: new Date(app.clock.now()),
+    });
+    const to = (await app.repos.attendees.byId(r.attendee_id))?.email ?? null;
+    // Completion and its notice are one unit of work: no notice for an export that did not complete.
+    await app.repos.transaction(async (s) => {
+      await s.repos.dataRequests.finish(r.id, { state: "completed", objectKey: key, actorId: null, now: new Date(app.clock.now()) });
+      if (to) {
+        await app.mail.send({ to, tag: "data.export_ready", subject: "Your data export is ready", text: "Your data export is ready. Sign in to your account to download it." }, s);
+      }
+    });
+    await app.notifications.forAttendee(r.attendee_id, NOTE.exportReady());
   }
 }
 
@@ -61,34 +63,32 @@ export function meRoutes(x: Express, app: AppContext) {
     return { items };
   });
 
+  // Stored notifications (written when something happens), newest first, with read state.
   mount(x, app, endpoints.myNotifications, async ({ ctx }) => {
-    const now = app.clock.now();
-    const items: Notification[] = [];
-    for (const r of await confirmedEvents(ctx!.sub)) {
-      const e = await app.repos.events.byId(r.event_id);
-      const cred = await app.repos.credentials.forRegistration(r.id);
-      if (!e || !cred) continue;
-      items.push({ id: stableId(`pass:${cred.id}`), kind: "pass", at: cred.issued_at.toISOString(), title: "Your pass is ready", body: `Your pass for ${e.title} is ready in the app and by email.`, read: false });
-      if (cred.state === "revoked") {
-        items.push({ id: stableId(`revoked:${cred.id}`), kind: "pass", at: (cred.revoked_at ?? cred.issued_at).toISOString(), title: "Your pass was cancelled", body: `Your pass for ${e.title} no longer opens doors.`, read: false });
-      } else if (cred.state === "suspended_review") {
-        items.push({ id: stableId(`review:${cred.id}`), kind: "pass", at: new Date(now).toISOString(), title: "Your pass is under review", body: "Please see a member of staff at the entrance.", read: false });
-      }
-      for (const s of await app.repos.events.sessions(e.id)) {
-        const t = s.starts_at.getTime();
-        if (t > now && t - now <= 24 * H) {
-          items.push({ id: stableId(`session:${s.id}`), kind: "session", at: new Date(t - H).toISOString(), title: `${s.title} starts soon`, body: `${s.title} starts at ${s.starts_at.toISOString()}.`, read: false });
-        }
-      }
-    }
-    for (const d of await app.repos.dataRequests.forAttendee(ctx!.sub)) {
-      if (d.state === "completed" || d.state === "rejected") {
-        const title = d.kind === "export" ? (d.state === "completed" ? "Your data export is ready" : "Your data export was declined") : "Your erasure request was declined";
-        items.push({ id: stableId(`dr:${d.id}`), kind: "security", at: (d.completed_at ?? d.requested_at).toISOString(), title, body: d.note ?? "See your account page.", read: false });
-      }
-    }
-    items.sort((a, b) => b.at.localeCompare(a.at));
-    return { items };
+    const rows = await app.repos.notifications.list(ctx!.sub, { now: new Date(app.clock.now()), limit: 100 });
+    return { items: rows.map((n): Notification => ({ id: n.id, kind: n.kind, at: n.at.toISOString(), title: n.title, body: n.body, read: n.read })) };
+  });
+
+  // Per item: an id that is not the caller's answers exactly like an unknown one (read: false).
+  mount(x, app, endpoints.markNotificationsRead, async ({ body, ctx }) => {
+    const now = new Date(app.clock.now());
+    const ids = [...new Set(body.ids)];
+    const mine = new Set((await app.repos.notifications.list(ctx!.sub, { now, limit: 10_000 })).map((n) => n.id));
+    await app.repos.notifications.markRead(ctx!.sub, ids.filter((id) => mine.has(id)), now);
+    return { items: ids.map((id) => ({ id, read: mine.has(id) })) };
+  });
+
+  // Operator broadcast to an event (or one tier): audited with counts and lengths, never the text's audience.
+  mount(x, app, endpoints.broadcastNotification, async ({ params, body, ctx }) => {
+    const e = await app.repos.events.byId(params.id);
+    if (!e) throw new ContractError("NOT_FOUND");
+    if (e.state === "draft" || e.state === "archived") throw new ContractError("CONFLICT", "Only a published, live or closed event can be messaged.");
+    const id = await app.notifications.broadcast({ eventId: e.id, tier: body.tier ?? null, kind: body.kind, title: body.title, body: body.body });
+    await app.audit.append({
+      actorId: ctx!.sub, action: "notification.broadcast", target: `event:${e.id}`,
+      meta: { notification_id: id, tier: body.tier ?? null, kind: body.kind, title_length: body.title.length, body_length: body.body.length },
+    });
+    return { id, event_id: e.id, tier: body.tier ?? null, created_at: new Date(app.clock.now()).toISOString() };
   });
 
   mount(x, app, endpoints.dataExport, async ({ ctx }) => {
@@ -142,6 +142,7 @@ export function meRoutes(x: Express, app: AppContext) {
     const s = await app.repos.dataRequests.finish(r.id, { state: "rejected", note: body.note, actorId: ctx!.sub, now: new Date(app.clock.now()) });
     if (s === "not_open") throw new ContractError("CONFLICT", "This request is already closed.");
     await app.audit.append({ actorId: ctx!.sub, action: "data_request.reject", target: `data_request:${r.id}`, meta: { kind: r.kind } });
+    await app.notifications.forAttendee(r.attendee_id, r.kind === "export" ? NOTE.exportDeclined() : NOTE.erasureDeclined());
     return dataRequestDto((await app.repos.dataRequests.byId(r.id))!);
   });
 }

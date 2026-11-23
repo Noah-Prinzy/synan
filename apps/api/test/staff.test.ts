@@ -53,12 +53,21 @@ describe("slice 6 · staff and assignments", () => {
     const a = (await h.call<{ items: StaffAssignment[] }>("GET", "/me/assignments", { token: gate })).body.items[0]!;
     const other = await h.gateToken(h.seed.checkpoints.vip);
     expect((await h.call("POST", `/staff-assignments/${a.id}/handover`, { token: other })).status).toBe(404);
+    h.clock.advance(1_000); // the counted period ends at the handover (exclusive)
     const r = await h.call<HandoverSummary>("POST", `/staff-assignments/${a.id}/handover`, { token: gate });
     expect(r.status).toBe(200);
     expect(r.body.admitted).toBe(1);
     expect(r.body.refused).toBe(1);
     expect(r.body.by_result.unknown_token).toBe(1);
-    expect((await h.app.ctx.repos.audit.all()).map((x) => x.action)).toContain("staff_assignment.handover");
+    // The database's summary fields, mapped: admitted = let_through, queued = offline.
+    expect(r.body).toMatchObject({ let_through: 1, scans: 2, offline: 0, queued: 0, late_synced: 0, duplicates: 0 });
+    const entries = (await h.app.ctx.repos.audit.all()).filter((x) => x.action === "staff.handover" && x.target === `staff_assignment:${a.id}`);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.meta_jsonb).toMatchObject({ let_through: 1, refused: 1 });
+    // Asking again re-reads the summary; it is not handed over (or audited) twice.
+    const again = await h.call<HandoverSummary>("POST", `/staff-assignments/${a.id}/handover`, { token: gate });
+    expect(again.body).toMatchObject({ admitted: 1, handed_over_at: r.body.handed_over_at });
+    expect((await h.app.ctx.repos.audit.all()).filter((x) => x.action === "staff.handover" && x.target === `staff_assignment:${a.id}`)).toHaveLength(1);
   });
 });
 

@@ -147,9 +147,10 @@ Tracked here so they are not scattered. None blocks frontend work unless marked.
 | O-19 | Should event pages show live occupancy to visitors who are not signed in? | Not today: the live channel needs a signed-in user. |
 | O-20 | Will events have photographs, and who supplies them? | Unknown. Screens are built to look intentional with or without an image. |
 | O-21 | Does leaving through a perimeter exit remove a person from the room they were last counted in? | Not today. |
-| O-22 | Missing endpoints: MFA enrolment, and a scanner heartbeat | To be added to [02 §5–§6](02-architecture.md) in Phase 4. |
+| O-22 | Missing endpoints: MFA enrolment, and a scanner heartbeat | Settled: both exist. |
 | O-23 | Keep per-person session attendance after the event, for example for attendance certificates? | No. It would reverse part of D-03. Owner to say if wanted. |
 | O-24 | Where is Synan hosted, and on which managed PostgreSQL? | Undecided. Needed before any real event, and to run the tests that need a real server. |
+| O-25 | How long should the link in a scheduled-report email last? Anyone holding the link can download the file. | 24 hours, provisional (configurable from 5 minutes to 72 hours). Owner to confirm. |
 
 ---
 

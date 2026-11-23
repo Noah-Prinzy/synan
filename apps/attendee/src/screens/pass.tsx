@@ -1,5 +1,5 @@
 import { Wordmark, pageTitle } from "@synan/ui/brand";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { currentCode, type PortalCodeBatch } from "@synan/mock";
@@ -8,16 +8,10 @@ import { useOnline } from "../components/use-online";
 import { getCodes, getPass, tierLabel, type CredentialState, type Pass } from "../data/pass";
 import { formatDay, formatTime } from "../data/format";
 import { clock, realtime, usePortalVersion } from "../data/mock";
-import { Badge, buttonClass, type BadgeTone } from "@synan/ui/components";
+import { ActionButton, Badge, DrawnCheck, buttonClass, type BadgeTone } from "@synan/ui/components";
+import { useDevicePreference, useWakeLock } from "@synan/ui/mobile";
+import { emailPassCopy } from "../data/pass";
 
-type ScreenWakeLock = { request: (type: "screen") => Promise<unknown> };
-
-async function keepScreenOn(): Promise<boolean> {
-  const api = (navigator as Navigator & { wakeLock?: ScreenWakeLock }).wakeLock;
-  if (!api) return false;
-  await api.request("screen");
-  return true;
-}
 
 const toneFor: Record<CredentialState, BadgeTone> = {
   READY: "success",
@@ -133,8 +127,8 @@ function QrBlock({ holder, online }: { holder: string; online: boolean }) {
   }
 
   return (
-    <div className="flex flex-col items-center px-6 pt-8 pb-8">
-      <div className="w-full max-w-75 border border-qr-ink bg-qr-field p-3">
+    <div className="flex flex-col items-center px-6 pt-5 pb-6 sm:pt-8 sm:pb-8">
+      <div className="w-full max-w-75 border border-qr-ink bg-qr-field p-3 short-landscape:max-w-[min(18.75rem,calc(100dvh-11rem))]">
         <QRCodeSVG
           key={code.code}
           value={code.code}
@@ -181,6 +175,32 @@ function BandRow({ band, nearestDesk }: { band: Pass["band"]; nearestDesk: strin
 }
 
 /**
+ * "Keep screen on" (docs/06 A4): a toggle, remembered on this device. The lock is taken
+ * again whenever the page comes back into view, because browsers drop it when hidden.
+ */
+function KeepScreenOn({ onNotice }: { onNotice: (message: string) => void }) {
+  const [wanted, setWanted] = useDevicePreference("synan.pass.keepScreenOn", false);
+  const state = useWakeLock(wanted);
+  const on = wanted && state === "on";
+  useEffect(() => {
+    if (!wanted) return;
+    if (state === "unsupported") onNotice("This browser can't keep the screen on. Turn up the brightness instead.");
+    if (state === "failed") onNotice("Couldn't keep the screen on. Your phone may be in battery saver.");
+  }, [wanted, state, onNotice]);
+  return (
+    <button
+      type="button"
+      aria-pressed={wanted}
+      onClick={() => setWanted(!wanted)}
+      className={`pressable relative flex min-h-16 items-center justify-center gap-1.5 px-2 py-3 text-center text-13 font-medium transition-colors duration-120 ease-standard hover:bg-card/40 motion-reduce:transition-none ${on ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+    >
+      {on ? <DrawnCheck className="text-brand" /> : null}
+      {on ? "Screen stays on" : "Keep screen on"}
+    </button>
+  );
+}
+
+/**
  * The pass as an object: a ticket with a header (the event), the holder at display
  * size, the tier set as type, a perforation, and the stub that does the work at the door.
  */
@@ -201,34 +221,17 @@ export function PassTicket({
   const bandFirst = pass.state === "READY" && pass.band !== null;
   const notify = (message: string) => onNotice?.(message);
 
-  const actions: { label: string; run: () => void }[] = [
-    { label: "Add to Wallet", run: () => notify("Wallet passes arrive with the emailed copy in this build.") },
-    {
-      label: "Email me a copy",
-      run: () => notify("A copy is on its way. The emailed code works once, at the first entrance you use it."),
-    },
-    {
-      label: "Keep screen on",
-      run: () => {
-        keepScreenOn()
-          .then((held) =>
-            notify(held ? "The screen stays on while this page is open." : "This browser can't keep the screen on."),
-          )
-          .catch(() => notify("Couldn't keep the screen on."));
-      },
-    },
-  ];
-
   const qr = <QrBlock holder={pass.holder} online={online} />;
 
   return (
     <article
       aria-label={`Pass for ${pass.event.title}`}
-      className={`mx-auto w-full max-w-130 border bg-background ${pass.state === "REVOKED" ? "border-destructive" : "border-border"}`}
+      className={`mx-auto flex w-full max-w-130 flex-col border bg-background ${pass.state === "REVOKED" ? "border-destructive" : "border-border"}`}
     >
-      <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-5 sm:px-6">
+      <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6 sm:py-5">
         <div className="min-w-0">
-          <p className="mb-4 text-17">
+          {/* The site header shows the logo right above on phones; the pass repeats it only where there is room. */}
+          <p className="mb-4 hidden text-17 md:block">
             <Wordmark small />
           </p>
           <p className="font-display text-21 leading-tight">{pass.event.title}</p>
@@ -243,11 +246,11 @@ export function PassTicket({
       </header>
 
       <div className="grid grid-cols-[minmax(0,1fr)_auto] border-b border-border">
-        <div className="px-5 py-6 sm:px-6">
+        <div className="px-5 py-4 sm:px-6 sm:py-6">
           <p className="text-13 font-medium text-muted-foreground">Guest</p>
-          <p className="mt-1 font-display text-40 leading-none wrap-break-word">{pass.holder}</p>
+          <p className="mt-1 font-display text-28 leading-none wrap-break-word sm:text-40">{pass.holder}</p>
         </div>
-        <div className="flex flex-col justify-end border-l border-border px-5 py-6 sm:px-6">
+        <div className="flex flex-col justify-end border-l border-border px-5 py-4 sm:px-6 sm:py-6">
           <p className="text-13 font-medium text-muted-foreground">Tier</p>
           <p className="mt-1 text-21 font-medium">{tier}</p>
         </div>
@@ -297,24 +300,27 @@ export function PassTicket({
           ) : null}
         </>
       ) : (
-        <>
-          <p className="px-6 pt-6 text-center text-17">{descriptionFor["NOT YET BOUND"]}</p>
+        <div className="short-landscape:order-first short-landscape:border-b short-landscape:border-border">
+          <p className="px-6 pt-5 text-center text-17 sm:pt-6 short-landscape:sr-only">{descriptionFor["NOT YET BOUND"]}</p>
           {qr}
-        </>
+        </div>
       )}
 
       {usable ? (
-        <div className="grid grid-cols-3 divide-x divide-border border-t border-border">
-          {actions.map((action) => (
-            <button
-              key={action.label}
-              type="button"
-              onClick={action.run}
-              className="flex min-h-16 items-center justify-center px-2 py-3 text-center text-13 font-medium text-muted-foreground transition-colors duration-120 ease-standard hover:bg-card/40 hover:text-foreground motion-reduce:transition-none"
-            >
-              {action.label}
-            </button>
-          ))}
+        <div className="grid grid-cols-2 divide-x divide-border border-t border-border">
+          <ActionButton
+            variant="plain"
+            doneLabel="Sent to your email"
+            failedLabel="Couldn't send. Try again"
+            action={async () => {
+              await emailPassCopy();
+              notify("A copy is in your inbox. The emailed code works once, at the first entrance where it's scanned.");
+            }}
+            className="min-h-16 w-full px-2 text-13 text-muted-foreground hover:bg-card/40 hover:text-foreground"
+          >
+            Email me a copy
+          </ActionButton>
+          <KeepScreenOn onNotice={notify} />
         </div>
       ) : null}
 
@@ -337,6 +343,7 @@ export default function Pass() {
   const pass = getPass(params.get("state"));
   const online = useOnline();
   const [notice, setNotice] = useState<string | null>(null);
+  const showNotice = useCallback((message: string) => setNotice(message), []);
 
   // stream/me: a revocation or hold lands here while the screen is open (P-16).
   const [announcement, setAnnouncement] = useState("");
@@ -350,13 +357,14 @@ export default function Pass() {
   }, []);
 
   return (
-    <PageShell>
+    <PageShell bleed>
+      <div className="px-4 py-4 sm:px-6 sm:py-10 md:px-10 md:py-14 short-landscape:py-4">
       <h1 className="sr-only">My pass</h1>
       <p role="status" aria-live="assertive" className="sr-only">
         {announcement}
       </p>
       <div className="enter">
-        <PassTicket pass={pass} online={online} liveChange={pass.state !== firstState.current} onNotice={setNotice} />
+        <PassTicket pass={pass} online={online} liveChange={pass.state !== firstState.current} onNotice={showNotice} />
       </div>
       <p role="status" className="mx-auto mt-3 min-h-5 w-full max-w-130 text-15 text-muted-foreground">
         {notice}
@@ -367,6 +375,7 @@ export default function Pass() {
           Offline — your pass still works.
         </p>
       ) : null}
+      </div>
     </PageShell>
   );
 }

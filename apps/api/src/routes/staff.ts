@@ -52,12 +52,13 @@ export function staffRoutes(x: Express, app: AppContext) {
   mount(x, app, endpoints.inviteStaff, async ({ body, ctx }) => {
     if (await app.repos.users.byEmail(body.email)) throw new ContractError("CONFLICT", "A user with this address already exists.");
     const user: UserRow = { id: randomUUID(), email: body.email, password_hash: "", role: body.role, mfa_enrolled_at: null, mfa_secret: null };
-    await app.repos.users.insert(user);
-    const token = await app.repos.userInvites.create({ userId: user.id, createdBy: ctx!.sub, now: new Date(app.clock.now()) });
-    const link = `${app.config.attendeeAppOrigin}/staff/activate#token=${token}`;
-    void app.mailer
-      .send({ to: body.email, tag: "staff.invite", subject: `${BRAND.name}: activate your staff account`, text: `Set your password with this link (works once, 72 hours):\n\n${link}` })
-      .catch((e: unknown) => console.error("[mail] staff invite failed:", e instanceof Error ? e.message : String(e)));
+    // The account, its activation token and the email are one unit of work.
+    await app.repos.transaction(async (s) => {
+      await s.repos.users.insert(user);
+      const token = await s.repos.userInvites.create({ userId: user.id, createdBy: ctx!.sub, now: new Date(app.clock.now()) });
+      const link = `${app.config.attendeeAppOrigin}/staff/activate#token=${token}`;
+      await app.mail.send({ to: body.email, tag: "staff.invite", subject: `${BRAND.name}: activate your staff account`, text: `Set your password with this link (works once, 72 hours):\n\n${link}` }, s);
+    });
     await audit(ctx!.sub, "staff.invite", `user:${user.id}`, { role: user.role });
     return staffDto(user);
   });
@@ -121,25 +122,40 @@ export function staffRoutes(x: Express, app: AppContext) {
     if (!a || (ctx!.kind !== "operator" && a.user_id !== ctx!.sub)) throw new ContractError("NOT_FOUND");
     const now = new Date(app.clock.now());
     if (now.getTime() < a.shift_start.getTime()) throw new ContractError("CONFLICT", "The shift has not started.");
-    if (!a.handed_over_at) await app.repos.staff.markHandedOver(a.id, now);
-    const at = a.handed_over_at ?? now;
-    const c = await app.repos.scans.shiftCounts({ checkpointId: a.checkpoint_id, staffUserId: a.user_id, from: a.shift_start, to: new Date(Math.min(at.getTime() + 1, a.shift_end.getTime())) });
-    const admitted = (c.byResult.admitted ?? 0) + (c.byResult.already_inside ?? 0);
-    const refused = Object.entries(c.byResult).filter(([r]) => DENIED.has(r)).reduce((s, [, n]) => s + n, 0);
-    if (!a.handed_over_at) await audit(ctx!.sub, "staff_assignment.handover", `staff_assignment:${a.id}`, { admitted, refused, queued: c.offline });
+    // Stamped and audited (`staff.handover`, counts only) once, in one step; asking again re-reads the summary.
+    const done = await app.repos.staff.handOver(a.id, { actorId: ctx!.sub, now });
+    const s = done && done !== "already_handed_over" ? done : await app.repos.staff.handoverSummary(a.id);
+    if (!s) throw new ContractError("NOT_FOUND");
+    const at = done && done !== "already_handed_over" ? now : ((await app.repos.staff.byId(a.id))!.handed_over_at ?? now);
     return {
       assignment_id: a.id, checkpoint_id: a.checkpoint_id, shift_start: a.shift_start.toISOString(), shift_end: a.shift_end.toISOString(),
-      handed_over_at: at.toISOString(), admitted, refused, queued: c.offline, by_result: c.byResult,
+      handed_over_at: at.toISOString(),
+      // Contract names (01 §3) ← @synan/db summary: admitted ← let_through, queued ← offline.
+      admitted: s.let_through, refused: s.refused, queued: s.offline, by_result: s.by_result,
+      scans: s.scans, let_through: s.let_through, duplicates: s.duplicates, offline: s.offline, late_synced: s.late_synced,
+      period_end: s.period_end.toISOString(), first_scan_at: s.first_scan_at?.toISOString() ?? null, last_scan_at: s.last_scan_at?.toISOString() ?? null,
     };
   });
 
-  mount(x, app, endpoints.gateHeartbeat, async ({ body, ctx }) => {
+  mount(x, app, endpoints.gateHeartbeat, async ({ body, ctx, ip }) => {
     const now = app.clock.now();
+    const channel = `${endpoints.gateHeartbeat.method} ${endpoints.gateHeartbeat.path}`;
     const mine = (await currentAssignments(app, ctx!.sub)).some((a) => a.checkpoint_id === body.checkpoint_id);
-    if (!mine) throw new ContractError("CHECKPOINT_NOT_ASSIGNED");
-    app.scans.gates.set(body.checkpoint_id, {
-      checkpointId: body.checkpoint_id, lastSeenAt: now, clockOffsetMs: body.clock_offset_ms, deviceId: body.device_id, queueDepth: body.online ? body.queue_depth : Math.max(1, body.queue_depth),
+    if (!mine) {
+      // A scanner heartbeating for a gate its user is not staffing now (03 §8.2, assignment check).
+      await app.scannerTrust.refused({ reason: "not_assigned", channel, ip, userId: ctx!.sub, checkpointId: body.checkpoint_id });
+      throw new ContractError("CHECKPOINT_NOT_ASSIGNED");
+    }
+    const cp = (await app.repos.venues.checkpoint(body.checkpoint_id))!;
+    // The phone is a device too: heartbeat, queue depth and clock offset land on the devices table.
+    const r = await app.gates.phoneHeartbeat({
+      userId: ctx!.sub, venueId: cp.venue_id, checkpointId: cp.id, clientDeviceId: body.device_id,
+      clockOffsetMs: body.clock_offset_ms, queueDepth: body.queue_depth, online: body.online,
     });
+    if (r !== "ok") {
+      await app.scannerTrust.refused({ reason: "scanner_retired", channel, ip, userId: ctx!.sub, checkpointId: cp.id });
+      throw new ContractError("FORBIDDEN", "This scanner has been retired.");
+    }
     return { server_time: new Date(now).toISOString() };
   });
 

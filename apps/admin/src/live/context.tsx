@@ -33,6 +33,8 @@ interface CommandContextValue {
   events: CommandEvent[] | null;
   event: CommandEvent | null;
   selectEvent: (id: string) => void;
+  /** Fetch the event list again (after an event is published, closed or renamed). */
+  refreshEvents: () => Promise<void>;
   operator: OperatorContext | null;
 }
 
@@ -66,14 +68,19 @@ export function CommandProvider({ children }: { children: ReactNode }) {
     if (event) void store.open(event);
   }, [event]);
 
+  const refreshEvents = useCallback(async () => {
+    const list = await api.events();
+    setEvents(list);
+  }, []);
+
   const selectEvent = useCallback((id: string) => {
     writeStoredEvent(id);
     setSelected(id);
   }, []);
 
   const value = useMemo(
-    () => ({ store, events, event, selectEvent, operator }),
-    [events, event, selectEvent, operator],
+    () => ({ store, events, event, selectEvent, refreshEvents, operator }),
+    [events, event, selectEvent, refreshEvents, operator],
   );
   return <CommandContext.Provider value={value}>{children}</CommandContext.Provider>;
 }

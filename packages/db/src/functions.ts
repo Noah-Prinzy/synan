@@ -130,6 +130,18 @@ export async function auditPrune(db: Db): Promise<number> {
   return toNum(r[0]!.n);
 }
 
+/**
+ * Deletes breach alerts older than `olderThanMonths` (default and minimum 12: D-03, O-11), with
+ * their finished webhook deliveries; an alert whose delivery is still pending waits for a later
+ * run. Writes one audit entry when it deletes anything. Returns the number of alerts deleted
+ * (migration 0022). Run it daily from a job worker (app_api).
+ */
+export async function alertsPrune(db: Db, opts: { olderThanMonths?: number; now?: Date } = {}): Promise<number> {
+  const now = opts.now ? sql`${opts.now.toISOString()}::timestamptz` : sql`now()`;
+  const r = await rows(db, sql`select public.alerts_prune(${opts.olderThanMonths ?? 12}::integer, ${now}) as n`);
+  return toNum(r[0]!.n);
+}
+
 /** Erasure: scrubs an attendee's identifying columns, keeps the row, writes an audit entry. */
 export async function eraseAttendee(db: Db, attendeeId: string, actorId?: string | null): Promise<boolean> {
   const r = await rows(db, sql`select pii_vault.erase_attendee(${attendeeId}::uuid, ${actorId ?? null}::uuid) as ok`);

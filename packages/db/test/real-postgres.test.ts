@@ -153,6 +153,10 @@ describe.skipIf(!ADMIN)("real PostgreSQL", () => {
     const mail = await enqueueEmail(dbs.db, cipher, { template: "t", to: "c@example.test", content: { subject: "s", text: "x" } });
     const sends = await Promise.all(Array.from({ length: 8 }, () => claimEmail(dbs.db, cipher, mail)));
     expect(sends.filter(Boolean)).toHaveLength(1);
+    // A crashed worker's claim: once the lease has run out, concurrent sweepers reclaim it exactly once.
+    await owner.$client.query(`update email_outbox set claimed_at = now() - interval '10 minutes' where id = $1`, [mail]);
+    const reclaims = await Promise.all(Array.from({ length: 8 }, () => claimEmail(dbs.db, cipher, mail)));
+    expect(reclaims.filter(Boolean).map((x) => x!.attempts)).toEqual([2]);
   });
 
   it("audit chain under 50 concurrent appends stays intact", async () => {

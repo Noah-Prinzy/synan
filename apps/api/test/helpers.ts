@@ -22,29 +22,39 @@ export interface Harness {
   clock: ManualClock;
   mailer: MemoryMailer;
   seed: SeedResult;
+  /**
+   * One request. Afterwards the email queue is drained (deterministically, no sleeping) so tests can
+   * read `mailer` at once; harnesses started with `autoDrainMail: false` drain only via `drainMail`.
+   */
   call<T = unknown>(method: string, path: string, opts?: { token?: string; body?: unknown; headers?: Record<string, string> }): Promise<{ status: number; body: T; headers: Headers }>;
+  /** Wait for off-path work, then send every due outbox email through the transport now. */
+  drainMail(): Promise<void>;
   login(email: string): Promise<TokenPair>;
   /** Access token of the security-staff user assigned to this checkpoint. */
   gateToken(checkpointId: string): Promise<string>;
   close(): Promise<void>;
 }
 
-export async function startHarness(opts: CreateAppOptions = {}): Promise<Harness> {
+export async function startHarness(opts: CreateAppOptions & { autoDrainMail?: boolean } = {}): Promise<Harness> {
   const clock = new ManualClock(Date.now());
   const mailer = new MemoryMailer();
+  const { autoDrainMail = true, ...appOpts } = opts;
   const app = await createApp({
     clock,
     mailer,
     seed: true,
-    ...opts,
+    ...appOpts,
     config: {
       repo: REPO_UNDER_TEST,
       rateLimits: { authPerMin: 10_000, scanPerMin: 100_000, resendPerHour: 10_000 },
-      ...opts.config,
+      ...appOpts.config,
     },
   });
   const base = await app.listen(0, "127.0.0.1");
+  // Idle sockets outlive the gaps a busy test machine leaves between requests (no ECONNRESET on reuse).
+  app.server.keepAliveTimeout = 120_000;
   const seed = app.seed!;
+  const drainMail = async () => void (await app.ctx.mail.drain());
 
   const call: Harness["call"] = async (method, path, o = {}) => {
     const headers: Record<string, string> = { ...o.headers };
@@ -56,6 +66,7 @@ export async function startHarness(opts: CreateAppOptions = {}): Promise<Harness
       body: o.body === undefined ? undefined : typeof o.body === "string" ? o.body : JSON.stringify(o.body),
     });
     const text = await res.text();
+    if (autoDrainMail) await drainMail();
     return { status: res.status, body: text ? JSON.parse(text) : undefined, headers: res.headers } as never;
   };
 
@@ -77,7 +88,7 @@ export async function startHarness(opts: CreateAppOptions = {}): Promise<Harness
     return t.access_token;
   };
 
-  return { app, base, clock, mailer, seed, call, login, gateToken, close: () => app.close() };
+  return { app, base, clock, mailer, seed, call, drainMail, login, gateToken, close: () => app.close() };
 }
 
 export const errCode = (body: unknown) => (body as ApiError).error.code;

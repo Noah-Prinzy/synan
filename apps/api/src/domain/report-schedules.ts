@@ -68,13 +68,19 @@ export class ReportScheduler {
       const ttlS = this.app.config.reportEmailLinkTtlS;
       const url = reportExports.downloadUrl(report, ttlS)!;
       const expires = new Date(this.app.clock.now() + ttlS * 1000).toISOString();
-      for (const to of recipients) {
-        await this.app.mail.send({
-          to, tag: "report.scheduled", subject: "Your scheduled report is ready",
-          text: `A scheduled ${FORMAT_NOUN[s.format]} is ready to download.\n\n${url}\n\nThis link stops working at ${expires}. If you did not expect this message, ask an administrator to remove you from the schedule.\n`,
-        });
-      }
-      await repos.reportSchedules.finish(s.id, { ok: true, error: null, now: this.now() });
+      // The emails and the finished run are one unit of work: a run is recorded only with its emails queued.
+      await repos.transaction(async (tx) => {
+        for (const to of recipients) {
+          await this.app.mail.send(
+            {
+              to, tag: "report.scheduled", subject: "Your scheduled report is ready",
+              text: `A scheduled ${FORMAT_NOUN[s.format]} is ready to download.\n\n${url}\n\nThis link stops working at ${expires}. If you did not expect this message, ask an administrator to remove you from the schedule.\n`,
+            },
+            tx,
+          );
+        }
+        await tx.repos.reportSchedules.finish(s.id, { ok: true, error: null, now: this.now() });
+      });
     } catch (e) {
       // Errors carry no personal data (export failures and the messages above only).
       await repos.reportSchedules.finish(s.id, { ok: false, error: e instanceof Error ? e.message : "run failed", now: this.now() });

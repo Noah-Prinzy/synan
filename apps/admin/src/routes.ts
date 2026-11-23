@@ -44,6 +44,7 @@ export const SCREENS = {
     title: "First run",
     purpose: "Three steps — organization, venue, done — then hands off to the event wizard. Reachable only while the organization has no published venue.",
     data: "POST /organizations · POST /venues",
+    built: true,
   },
   signIn: {
     path: "/sign-in",
@@ -58,6 +59,7 @@ export const SCREENS = {
     title: "Venues",
     purpose: "Table of venues: name, city, rooms, capacity, active events. One primary action, New venue.",
     data: "GET /venues",
+    built: true,
   },
   venueNew: {
     path: "/venues/new",
@@ -65,6 +67,7 @@ export const SCREENS = {
     title: "New venue",
     purpose: "Name, city, time zone, floors. Creating a venue goes straight into the spatial editor so it is never left with no zones.",
     data: "POST /venues",
+    built: true,
   },
   venueEditor: {
     path: "/venues/:id",
@@ -72,6 +75,7 @@ export const SCREENS = {
     title: "Spatial editor",
     purpose: "Zones and rooms drawn on the abstract grid, with capacity and thresholds per room. The only screen with a drawing mode; changes are drafts until Publish layout.",
     data: "GET /venues/:id · PUT /zones · PUT /rooms/:id",
+    built: true,
   },
   events: {
     path: "/events",
@@ -79,6 +83,7 @@ export const SCREENS = {
     title: "Events",
     purpose: "Table of events with state, registrations and last edit. Duplicate is the prominent row action.",
     data: "GET /events",
+    built: true,
   },
   eventNew: {
     path: "/events/new/:step?",
@@ -86,6 +91,7 @@ export const SCREENS = {
     title: "Event wizard",
     purpose: "Basics → Venue & rooms → Access rules → Pass template → Review. Publish stays disabled until every requirement is met.",
     data: "draft endpoints",
+    built: true,
   },
   eventOverview: {
     path: "/events/:id/overview",
@@ -93,6 +99,7 @@ export const SCREENS = {
     title: "Event overview",
     purpose: "The KPI strip scoped to this event, and the readiness checklist.",
     data: "GET /events/:id/summary",
+    built: true,
   },
   eventSchedule: {
     path: "/events/:id/schedule",
@@ -100,6 +107,7 @@ export const SCREENS = {
     title: "Schedule",
     purpose: "Sessions by room and time.",
     data: "GET /events/:id/sessions",
+    built: true,
   },
   eventRooms: {
     path: "/events/:id/rooms",
@@ -107,6 +115,7 @@ export const SCREENS = {
     title: "Rooms & rules",
     purpose: "Tier × room matrix of permit and deny. Changes show a diff and need an explicit republish.",
     data: "GET · PUT /events/:id/access-rules",
+    built: true,
   },
   eventAttendees: {
     path: "/events/:id/attendees",
@@ -114,6 +123,7 @@ export const SCREENS = {
     title: "Event attendees",
     purpose: "The attendee table scoped to this event.",
     data: "GET /attendees (scoped)",
+    built: true,
   },
   eventCredentials: {
     path: "/events/:id/credentials",
@@ -121,6 +131,7 @@ export const SCREENS = {
     title: "Event credentials",
     purpose: "Band inventory and provisioning for this event.",
     data: "GET /credentials (scoped)",
+    built: true,
   },
   eventStaff: {
     path: "/events/:id/staff",
@@ -128,6 +139,7 @@ export const SCREENS = {
     title: "Event staff",
     purpose: "Shift assignments per checkpoint, conflicts, and handover.",
     data: "GET /staff-assignments",
+    built: true,
   },
   eventReports: {
     path: "/events/:id/reports",
@@ -135,6 +147,7 @@ export const SCREENS = {
     title: "Event reports",
     purpose: "Reports for this event and their export jobs.",
     data: "GET /reports?eventId=",
+    built: true,
   },
   eventSummary: {
     path: "/events/:id/summary",
@@ -150,6 +163,7 @@ export const SCREENS = {
     title: "Event settings",
     purpose: "Time zone, capacity policy overrides, retention, and the danger zone.",
     data: "PATCH /events/:id",
+    built: true,
   },
   attendees: {
     path: "/attendees",

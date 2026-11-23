@@ -262,12 +262,15 @@ Organisation and venue
   GET   /venues/:id/zones           POST  /venues/:id/zones     PUT  /zones/:id
   POST  /rooms                      PUT   /rooms/:id            POST /rooms/:id/recount
   GET   /checkpoints                GET   /checkpoints/:id/scans
+                                    (a checkpoint may carry a grid position {x, y, side}; null removes it)
   GET   /gates/health
 
 Events
   GET   /events                     POST  /events               GET  /events/:slug
   PATCH /events/:id                 POST  /events/:id/publish
-  GET   /events/:id/summary         GET   /events/:id/sessions
+  GET   /events/:id/summary         (?series_minutes=0..240 adds a per-minute scan series)
+  GET   /events/:id/sessions
+  POST  /events/:id/notifications   (operator broadcast to the event's attendees; audited)
   GET   /events/:id/post-event-summary   (the one-page summary of a closed event — D-21)
   GET   /events/:slug/profile-schema
   GET   /events/:id/access-rules    PUT   /events/:id/access-rules
@@ -287,7 +290,9 @@ Credentials and carriers
   POST  /carriers/import            POST  /carriers/bind        POST  /carriers/:id/rebind
 
 Scans and alerts
-  POST  /scans                      (batch, idempotent — online scans and offline sync)
+  POST  /scans                      (batch, idempotent — online scans and offline sync; an item over
+                                     the checkpoint's per-minute limit is refused as RATE_LIMITED,
+                                     not stored, and resent unchanged)
   GET   /scans                      (paged)
   GET   /breach-alerts              POST  /alerts/:id/ack       POST  /alerts/:id/resolve
 
@@ -297,13 +302,17 @@ Staff
 Reports
   GET   /reports                    GET   /reports/:eventId     GET   /reports/:eventId/:kind
   POST  /reports/:id/export         (async job: Excel workbook, CSV, PDF summary — P-14, D-21)
+  GET   /events/:id/report-schedules              POST  /events/:id/report-schedules  (MFA, audited)
+  PATCH /events/:id/report-schedules/:scheduleId  DELETE (same path)                  (audited)
   GET   /dashboard
 
 Attendee self-service
   GET   /me/credential              POST  /me/credential/bind
+  POST  /me/credential/resend       (emails a fresh single-use copy of the own pass; always 202)
   GET   /me/credential/codes        (a batch of signed portal QR codes — D-12)
   GET   /me/registration            (own registration for one event, for the event page)
   GET   /me/sessions                GET   /me/notifications     GET  /me/assignments
+  POST  /me/notifications/read      (mark own notifications read)
   POST  /me/data-export             POST  /me/data-erasure
 ```
 
@@ -322,6 +331,16 @@ Attendee self-service
 change, batched per 250 ms. The client interpolates between authoritative states on
 `requestAnimationFrame`. Sixty frames per second is a property of the client's render loop and is
 never a claim about the network.
+
+**Totals.** Occupancy snapshots and deltas also carry event totals (`on_site`, `in_rooms`). On the
+public scope the totals are withheld below the minimum crowd size (O-08), like any other count.
+
+**Refused scanners.** A connection to `/stream/scans` with an invalid ticket, or for a checkpoint
+the user is not staffing now, is refused and raises a `rogue_scanner` alert on `/stream/alerts`
+([03 §8.2](03-security-privacy.md)). A heartbeat from a retired scanner closes the stream.
+
+**Heartbeats.** A scanner's heartbeat frame carries its device id, the same id it sends over REST,
+so gate health is recorded per device ([01 §8](01-product.md)).
 
 **Reconnection.** Exponential backoff with jitter, and a `last_event_id` cursor so missed events are
 replayed.

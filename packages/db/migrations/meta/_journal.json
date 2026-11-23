@@ -148,6 +148,20 @@
       "when": 1795438113636,
       "tag": "0020_delivery_functions",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795447721097,
+      "tag": "0021_email_lease_checkpoint_position",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1795447728236,
+      "tag": "0022_email_lease_retention",
+      "breakpoints": true
     }
   ]
 }

@@ -4,7 +4,7 @@
  * the scrim close it, and a sheet rides above the on-screen keyboard.
  */
 import { useRef, type ReactNode } from "react";
-import { useKeyboardInset, useModal } from "../../../../packages/ui/src/components/mobile";
+import { useKeyboardInset, useModal } from "@synan/ui/mobile";
 
 export function Sheet({
   open,

@@ -25,6 +25,8 @@ interface Delta {
   at: string;
   rooms: RoomOccupancy[];
   zones: ZoneOccupancy[];
+  /** Full-scope totals at the flush. */
+  totals: { on_site: number; in_rooms: number };
 }
 
 interface EventState {
@@ -40,6 +42,11 @@ interface EventState {
   /** Last values sent to the public scope (suppressed). Public frames carry only changes to these. */
   pubRooms: Map<string, RoomOccupancy>;
   pubZones: Map<string, ZoneOccupancy>;
+  /** People inside the perimeter (from the projection). */
+  onSite: number;
+  dirtyTotals: boolean;
+  /** Last totals sent to the public scope (suppressed). */
+  pubTotals: string;
 }
 
 export class TelemetryHub {
@@ -70,6 +77,9 @@ export class TelemetryHub {
         subs: new Set(),
         pubRooms: new Map(),
         pubZones: new Map(),
+        onSite: 0,
+        dirtyTotals: false,
+        pubTotals: JSON.stringify({ on_site: null, in_rooms: null }), // zero is below any k ≥ 1
       };
       this.events.set(eventId, s);
     }
@@ -77,8 +87,9 @@ export class TelemetryHub {
   }
 
   /** Set the full state without emitting (startup / projection rebuild). */
-  prime(eventId: string, rooms: RoomOccupancy[], zones: ZoneOccupancy[]) {
+  prime(eventId: string, rooms: RoomOccupancy[], zones: ZoneOccupancy[], onSite?: number) {
     const s = this.state(eventId);
+    if (onSite !== undefined) s.onSite = onSite;
     for (const r of rooms) {
       s.rooms.set(r.room_id, r);
       s.pubRooms.set(r.room_id, this.suppress(r, "public"));
@@ -87,10 +98,20 @@ export class TelemetryHub {
       s.zones.set(z.zone_id, z);
       s.pubZones.set(z.zone_id, this.suppress(z, "public"));
     }
+    s.pubTotals = JSON.stringify(this.suppressTotals(this.totalsOf(s), "public"));
   }
 
-  update(eventId: string, rooms: RoomOccupancy[], zones: ZoneOccupancy[]) {
+  onSiteOf(eventId: string): number {
+    return this.state(eventId).onSite;
+  }
+
+  /** `onSite`: people inside the perimeter now (the projection's count), when the caller knows it. */
+  update(eventId: string, rooms: RoomOccupancy[], zones: ZoneOccupancy[], onSite?: number) {
     const s = this.state(eventId);
+    if (onSite !== undefined && onSite !== s.onSite) {
+      s.onSite = onSite;
+      s.dirtyTotals = true;
+    }
     for (const r of rooms) {
       const prev = s.rooms.get(r.room_id);
       if (prev && prev.occupancy === r.occupancy && prev.level === r.level && prev.capacity === r.capacity) continue;
@@ -103,7 +124,7 @@ export class TelemetryHub {
       s.zones.set(z.zone_id, z);
       s.dirtyZones.add(z.zone_id);
     }
-    if (s.dirtyRooms.size || s.dirtyZones.size) this.schedule(eventId, s);
+    if (s.dirtyRooms.size || s.dirtyZones.size || s.dirtyTotals) this.schedule(eventId, s);
   }
 
   private schedule(eventId: string, s: EventState) {
@@ -118,12 +139,14 @@ export class TelemetryHub {
   private flush(eventId: string) {
     const s = this.state(eventId);
     s.timer = null;
-    if (!s.dirtyRooms.size && !s.dirtyZones.size) return;
+    if (!s.dirtyRooms.size && !s.dirtyZones.size && !s.dirtyTotals) return;
+    s.dirtyTotals = false;
     const delta: Delta = {
       seq: ++s.seq,
       at: new Date(this.clock.now()).toISOString(),
       rooms: [...s.dirtyRooms].map((id) => s.rooms.get(id)!),
       zones: [...s.dirtyZones].map((id) => s.zones.get(id)!),
+      totals: this.totalsOf(s),
     };
     s.dirtyRooms.clear();
     s.dirtyZones.clear();
@@ -164,8 +187,23 @@ export class TelemetryHub {
       s.pubZones.set(z.zone_id, v);
       zones.push(v);
     }
-    if (!rooms.length && !zones.length) return null;
-    return { id: this.cursor(d.seq), type: "occupancy.delta", at: d.at, data: { event_id: eventId, rooms, zones } };
+    const totals = this.suppressTotals(d.totals, "public");
+    const totalsChanged = JSON.stringify(totals) !== s.pubTotals;
+    if (!rooms.length && !zones.length && !totalsChanged) return null;
+    s.pubTotals = JSON.stringify(totals);
+    return { id: this.cursor(d.seq), type: "occupancy.delta", at: d.at, data: { event_id: eventId, rooms, zones, totals } };
+  }
+
+  private totalsOf(s: EventState) {
+    let inRooms = 0;
+    for (const r of s.rooms.values()) inRooms += r.occupancy ?? 0;
+    return { on_site: s.onSite, in_rooms: inRooms };
+  }
+
+  /** Public scope: a total below k is hidden like a room count (O-08). */
+  private suppressTotals(t: { on_site: number; in_rooms: number }, scope: TelemetryScope) {
+    const k = (n: number) => (scope === "full" || n >= this.opts.kAnon ? n : null);
+    return { on_site: k(t.on_site), in_rooms: k(t.in_rooms) };
   }
 
   private cursor(seq: number) {
@@ -190,6 +228,7 @@ export class TelemetryHub {
         event_id: eventId,
         rooms: d.rooms.map((r) => this.suppress(r, scope)),
         zones: d.zones.map((z) => this.suppress(z, scope)),
+        totals: this.suppressTotals(d.totals, scope),
       },
     };
   }
@@ -204,6 +243,7 @@ export class TelemetryHub {
         event_id: eventId,
         rooms: [...s.rooms.values()].map((r) => this.suppress(r, scope)),
         zones: [...s.zones.values()].map((z) => this.suppress(z, scope)),
+        totals: this.suppressTotals(this.totalsOf(s), scope),
       },
     };
   }

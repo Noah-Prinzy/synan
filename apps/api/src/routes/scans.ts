@@ -3,7 +3,6 @@ import { ContractError } from "@synan/contracts/errors";
 import { endpoints, type BreachAlert } from "@synan/contracts/rest";
 import type { AppContext } from "../app.js";
 import { toAlertDto } from "../domain/alerts.js";
-import { CLOCK_FAULT_MS } from "../domain/decision.js";
 import type { AuthContext } from "../domain/principal.js";
 import { mount } from "../http/route.js";
 import type { BreachAlertRow, ScanRow } from "../repo/types.js";
@@ -128,26 +127,7 @@ export function scanRoutes(x: Express, app: AppContext) {
   mount(x, app, endpoints.gateHealth, async ({ query }) => {
     const event = await app.repos.events.byId(query.event_id);
     if (!event) throw new ContractError("NOT_FOUND");
-    const cps = await app.repos.venues.checkpointsOfVenue(event.venue_id);
-    const now = app.clock.now();
-    const rates = await app.repos.rollups.gateRates(event.id);
-    const minute = Math.floor(now / 60_000) * 60_000 - 60_000;
-    return {
-      items: cps.map((cp) => {
-        const g = app.scans.gates.get(cp.id);
-        const live = g && now - g.lastSeenAt <= 60_000;
-        return {
-          checkpoint_id: cp.id,
-          label: cp.label,
-          link_state: !live ? ("offline" as const) : g.queueDepth ? ("degraded" as const) : ("online" as const),
-          last_heartbeat_at: g ? new Date(g.lastSeenAt).toISOString() : null,
-          queue_depth: g?.queueDepth ?? 0,
-          clock_offset_ms: g?.clockOffsetMs ?? null,
-          clock_fault: g ? Math.abs(g.clockOffsetMs) > CLOCK_FAULT_MS : false,
-          scans_last_minute: rates.find((r) => r.checkpoint_id === cp.id && r.minute_start.getTime() === minute)?.scans ?? 0,
-        };
-      }),
-    };
+    return { items: await app.gates.health(event) };
   });
 }
 

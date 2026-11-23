@@ -74,13 +74,16 @@ counters and an occupancy bar, and `Your status` — not registered / registered
 call to action. If the event is `closed`, the call to action becomes `View your pass`.
 
 **A3 · Registration `/events/:slug/register`**
-Three steps with a hairline stepper: **Identity → Profile → Confirm**.
+Three steps with a hairline stepper: **Your details → A few questions → Check and send**. On phones
+the stepper is a three-part progress rule.
 - Identity: full name, email, phone (optional).
 - Profile: event-defined fields from `profile_jsonb` — rendered from a schema-driven form (text, select,
   multi-select, consent checkbox). Consent for zone presence is a separate, unticked-by-default row with
   a plain-language explanation and a `what we store` disclosure (P-12).
 - Confirm: summary, `Send my pass` primary action.
-Success replaces the step body with an inline confirmation and moves to A4. Failure keeps the user in
+Success replaces the step body with an inline confirmation: the pass link has been emailed
+(`POST /users/register` answers 202), with an action to send it again. Opening the link signs the
+attendee in and opens A4. Someone already signed in as that address goes straight to A4. Failure keeps the user in
 place with field-level errors; a duplicate email routes to sign-in instead of erroring.
 
 This flow creates an **Ordinary** registration. The other tiers arrive differently: VIP by operator
@@ -98,8 +101,10 @@ The single most important attendee screen. One hairline card, centred, max 600:
   venue the band is the key (D-11).
 - Wristband row: `Bound · uid 04A2…9F` with a green dot, or `Not bound — bind at the desk` with the
   nearest desk location.
-- Actions as a three-up icon grid: `Add to Wallet`, `Email me a copy`, `Keep screen on` (stops the
-  phone dimming or locking while the pass is shown; a web page cannot set brightness itself). The
+- Actions: `Email me a copy` and `Keep screen on` (a toggle remembered on the device; it stops the
+  phone dimming or locking while the pass is shown; a web page cannot set brightness itself).
+  `Add to Wallet` returns when wallet passes are built ([01 §5](01-product.md), [07 §5](07-roadmap.md)).
+- On a phone the whole QR is visible without scrolling, in portrait and in landscape. The
   emailed copy is single-use, and the screen says so.
 - `NOT YET BOUND` is shown as a neutral state, not a warning: having no wristband before arriving is
   normal.

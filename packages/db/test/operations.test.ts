@@ -208,3 +208,46 @@ describe("venue rule", () => {
     await db.insert(s.checkpoints).values({ venue_id: v.venueId, zone_id: z2!.id, direction: "in", label: "zone gate, no room" });
   });
 });
+
+describe("checkpoint position (GridPoint)", () => {
+  it("stores, updates and clears a gate's grid position, typed in Drizzle and returned by gateHealth", async () => {
+    const e = await miniVenue(db);
+    const [c] = await db
+      .insert(s.checkpoints)
+      .values({ venue_id: e.venueId, zone_id: e.zoneId, direction: "in", perimeter_bool: true, label: "North gate", position_jsonb: { x: 120, y: 0, side: "n" } })
+      .returning();
+    expect(c!.position_jsonb).toEqual({ x: 120, y: 0, side: "n" });
+    const [u] = await db.update(s.checkpoints).set({ position_jsonb: { x: 10_000, y: 45, side: "e" } }).where(eq(s.checkpoints.id, c!.id)).returning();
+    expect(u!.position_jsonb).toEqual({ x: 10_000, y: 45, side: "e" });
+    const [read] = await db.select({ p: s.checkpoints.position_jsonb }).from(s.checkpoints).where(eq(s.checkpoints.id, c!.id));
+    expect(read!.p).toEqual({ x: 10_000, y: 45, side: "e" });
+
+    const h = await gateHealth(db, e.venueId);
+    expect(h.find((x) => x.checkpoint_id === c!.id)!.position).toEqual({ x: 10_000, y: 45, side: "e" });
+    expect(h.find((x) => x.checkpoint_id === e.cpAin)!.position).toBeNull(); // not placed
+
+    await db.update(s.checkpoints).set({ position_jsonb: null }).where(eq(s.checkpoints.id, c!.id));
+    expect((await gateHealth(db, e.venueId)).find((x) => x.checkpoint_id === c!.id)!.position).toBeNull();
+  });
+
+  it("refuses anything that is not a GridPoint", async () => {
+    const e = await miniVenue(db);
+    const bad: unknown[] = [
+      [1, 2, "n"], "n", 5, {}, { x: 1, y: 2 }, { x: 1, side: "n" }, { y: 1, side: "n" },
+      { x: 1, y: 2, side: "north" }, { x: 1, y: 2, side: "N" }, { x: 1, y: 2, side: 1 },
+      { x: -1, y: 2, side: "n" }, { x: 1, y: 10_001, side: "s" }, { x: 1.5, y: 2, side: "w" },
+      { x: "1", y: 2, side: "n" }, { x: 1, y: null, side: "n" }, { x: 1, y: 2, side: "n", z: 3 },
+    ];
+    for (const p of bad) {
+      await rejects(
+        q(db, `update checkpoints set position_jsonb = $1::jsonb where id = $2`, [JSON.stringify(p), e.cpAin]),
+        /checkpoints_position_grid_point/,
+      );
+    }
+    for (const ok of [{ x: 0, y: 0, side: "w" }, { x: 10_000, y: 10_000, side: "s" }, { side: "e", y: 3, x: 2.0 }]) {
+      await q(db, `update checkpoints set position_jsonb = $1::jsonb where id = $2`, [JSON.stringify(ok), e.cpAin]);
+    }
+    // A JSON null is refused too; "not placed" is SQL NULL.
+    await rejects(q(db, `update checkpoints set position_jsonb = 'null'::jsonb where id = $1`, [e.cpAin]), /checkpoints_position_grid_point/);
+  });
+});

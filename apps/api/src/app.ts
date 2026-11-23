@@ -21,6 +21,11 @@ import { ScanService } from "./domain/scan-service.js";
 import { WebhookService, type HostResolver, type WebhookTransport } from "./domain/webhooks.js";
 import { webhookRoutes } from "./routes/webhooks.js";
 import { ReportExporter } from "./domain/report-export.js";
+import { ReportScheduler } from "./domain/report-schedules.js";
+import { MailService } from "./domain/mail.js";
+import { NotificationService } from "./domain/notifications.js";
+import { GateService } from "./domain/gates.js";
+import { ScannerTrust } from "./domain/scanner-trust.js";
 import { EncryptedStorage, LocalDiskStorage, type ObjectStorage } from "./lib/storage.js";
 import { InProcessJobs, type Jobs } from "./lib/jobs.js";
 import { PgBossJobs } from "./lib/pgboss-jobs.js";
@@ -66,7 +71,15 @@ export interface AppContext {
   rateLimiter: RateLimiter;
   webhooks: WebhookService;
   reportExports: ReportExporter;
-  reportStorage: ObjectStorage;
+  reportSchedules: ReportScheduler;
+  /** Outbound email: every send goes through it. */
+  mail: MailService;
+  notifications: NotificationService;
+  /** Gate health from the devices table (phones register as scanner devices). */
+  gates: GateService;
+  /** Refused scanner/device connections → deduplicated `rogue_scanner` alerts, audited (03 §8.2). */
+  scannerTrust: ScannerTrust;
+  reportStorage: EncryptedStorage;
   jobs: Jobs;
   /** Contract endpoints that have a real handler (filled by `mount`). */
   mounted: Set<EndpointDef>;
@@ -155,13 +168,18 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<RunningApp
   const keys = new KeyService(repos.signingKeys, clock);
   await keys.init();
   const qr = new QrService(keys, { codeTtlS: config.qrCodeTtlS, leewayS: config.qrLeewayS });
-  const auth = new AuthService(repos, config, mailer, clock);
+  // pg-boss on PostgreSQL (D-17); in process for the memory and PGlite backends.
+  const jobs = opts.jobs ?? (config.repo === "postgres" ? new PgBossJobs(createJobs({ connectionString: config.databaseUrl!, mode: "worker" })) : new InProcessJobs());
+  // Every email goes through the outbox and the job queue; nothing sends inline.
+  const mail = new MailService({ repos, jobs, clock, mailer, sendTimeoutMs: config.mailSendTimeoutMs });
+  const auth = new AuthService(repos, config, mail, clock);
   await auth.init();
   const audit = new AuditService(repos.audit, clock);
   const alerts = new AlertService(repos.alerts, clock);
   const telemetry = new TelemetryHub(clock, { kAnon: config.kAnon });
-  const credentials = new CredentialService(repos, qr, audit, mailer, config, clock);
-  const scans = new ScanService(repos, qr, alerts, audit, telemetry, clock, { offlineSyncGraceMs: config.offlineSyncGraceS * 1000 });
+  const notifications = new NotificationService({ repos, clock });
+  const credentials = new CredentialService(repos, qr, audit, mail, config, clock, notifications);
+  const scans = new ScanService(repos, qr, alerts, audit, telemetry, clock, { offlineSyncGraceMs: config.offlineSyncGraceS * 1000, checkpointScansPerMin: config.checkpointScansPerMin }, notifications);
   const rateLimiter = new RateLimiter(() => clock.now());
   const webhooks = new WebhookService(repos, clock, opts.webhookTransport, opts.webhookResolver);
   webhooks.attach(alerts);
@@ -169,14 +187,14 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<RunningApp
   const cipher = await createAppCipher();
   const reportStorage = new EncryptedStorage(opts.storage ?? new LocalDiskStorage(config.reportStorageDir), cipher);
   const reportExports = new ReportExporter(repos, reportStorage, config, clock, cipher);
-  // pg-boss on PostgreSQL (D-17); in process for the memory and PGlite backends.
-  const jobs = opts.jobs ?? (config.repo === "postgres" ? new PgBossJobs(createJobs({ connectionString: config.databaseUrl!, mode: "worker" })) : new InProcessJobs());
 
   const ctx: AppContext = {
-    config, clock, repos, mailer, keys, qr, auth, audit, alerts, credentials, scans, telemetry, rateLimiter, webhooks, reportExports, reportStorage, jobs,
+    config, clock, repos, mailer, mail, notifications, scannerTrust: new ScannerTrust({ repos, alerts, audit, clock }), gates: new GateService({ repos, clock, rateLimited: (cp, now) => scans.rateLimitedRecently(cp, now) }), keys, qr, auth, audit, alerts, credentials, scans, telemetry, rateLimiter, webhooks, reportExports, reportStorage, jobs,
+    reportSchedules: null as unknown as ReportScheduler,
     mounted: new Set(),
   };
   reportExports.app = ctx;
+  ctx.reportSchedules = new ReportScheduler(ctx);
 
   const seed = (opts.seed ?? config.seed === "dev") ? await seedDev(ctx) : null;
 
@@ -185,9 +203,19 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<RunningApp
   x.set("trust proxy", config.trustProxy);
   x.use((req, res, next) => {
     res.setHeader("X-Request-Id", randomBytes(8).toString("hex"));
+    // Response hardening (03 §3). The API serves JSON and attachment downloads only, never a page, so
+    // nothing it returns may run, load, or be framed: CSP `default-src 'none'` with frame-ancestors
+    // (and X-Frame-Options for older browsers); no MIME sniffing; no Referer (signed download links
+    // carry their signature in the query); nothing stored by browsers or shared caches.
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("X-Permitted-Cross-Domain-Policies", "none");
+    // HTTPS only, in production only: on a development http:// origin the header is ignored at best and,
+    // on a shared hostname, would pin other local services to HTTPS. No `preload` (an owner decision).
+    if (config.production) res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
     const origin = req.headers.origin;
     if (origin && config.allowedOrigins.includes(origin)) {
       res.setHeader("Access-Control-Allow-Origin", origin);
@@ -252,6 +280,7 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<RunningApp
       });
     },
     async close() {
+      await mail.settle(); // off-path work (outbox writes) finishes before the database goes away
       await jobs.stop();
       telemetry.close();
       await ws.close();

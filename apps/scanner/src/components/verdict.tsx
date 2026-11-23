@@ -32,6 +32,9 @@ const STEPS = [
   { px: 96, className: "text-96" },
   { px: 56, className: "text-56" },
   { px: 40, className: "text-40" },
+  // Only with very large system text, where even 40 cannot hold the longest word.
+  { px: 28, className: "text-28" },
+  { px: 21, className: "text-21" },
 ] as const;
 
 let canvas: HTMLCanvasElement | null = null;
@@ -74,18 +77,19 @@ function useFittedStep(label: string, width: number, height: number): (typeof ST
     };
   }, []);
   if (width <= 0) return "text-56";
+  const last = STEPS[STEPS.length - 1]!;
   const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) / 16 || 1;
   const words = label.split(/\s+/);
   void fontsReady;
   // Room kept for the status line, the name and a two-line instruction.
-  const reserved = 9.5 * 16 * rem;
+  const reserved = Math.min(9.5 * 16 * rem, height * 0.45);
   for (const step of STEPS) {
     const px = step.px * rem;
     if (!words.every((word) => wordWidth(word, px) <= width)) continue;
-    if (height > 0 && lineCount(words, px, width) * px * 0.95 + reserved > height && step.px !== 40) continue;
+    if (height > 0 && lineCount(words, px, width) * px * 0.95 + reserved > height && step !== last) continue;
     return step.className;
   }
-  return "text-40";
+  return last.className;
 }
 
 function ago(ms: number): string {
@@ -138,7 +142,7 @@ export function VerdictPanel({
               <span>{scan.medium === "nfc" ? "Wristband" : scan.identifier}</span>
               {scan.offline ? <span className="border border-current px-1.5 py-0.5 text-11">Local</span> : null}
             </p>
-            <p className={`relative mt-2 inline-block pb-2 font-semibold leading-[0.95] tracking-tight ${step} ${toneText[copy.tone]}`}>
+            <p className={`relative mt-2 inline-block max-w-full pb-2 font-semibold leading-[0.95] tracking-tight wrap-anywhere ${step} ${toneText[copy.tone]}`}>
               <span className="settle-in block">{copy.label}</span>
               {scan.result === "admitted" ? <RewardRule /> : null}
             </p>

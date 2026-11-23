@@ -26,14 +26,35 @@ export function entryHash(prevHash: string, e: Pick<AuditRow, "id" | "actor_id" 
   return createHash("sha256").update(prevHash).update("\n").update(body).digest("hex");
 }
 
-/** Returns the index of the first broken entry, or -1 if the chain is intact. */
-export function verifyChain(rows: readonly AuditRow[]): number {
-  let prev = GENESIS_HASH;
+/** Audit retention (03 §6, D-03): entries older than this many months are pruned. */
+export const AUDIT_RETENTION_MONTHS = 12;
+/** Breach alert retention (03 §6, D-03). */
+export const ALERT_RETENTION_MONTHS = 12;
+
+/** `now` minus whole calendar months (UTC), as PostgreSQL's `now() - interval 'N months'`. */
+export function monthsBefore(now: Date, months: number): Date {
+  const d = new Date(now.getTime());
+  const day = d.getUTCDate();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() - months);
+  const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(day, last));
+  return d;
+}
+
+/**
+ * Returns the index of the first broken entry, or -1 if the chain is intact. After a retention prune
+ * the first remaining entry links to `anchor` (the hash the pruned run ended on), not to genesis.
+ * With `head` (the store's last written hash), removing trailing entries is detected too.
+ */
+export function verifyChain(rows: readonly AuditRow[], anchor: string = GENESIS_HASH, head?: string): number {
+  let prev = anchor;
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i]!;
     if (r.prev_hash !== prev || entryHash(prev, r) !== r.hash) return i;
     prev = r.hash;
   }
+  if (head !== undefined && prev !== head) return Math.max(0, rows.length - 1);
   return -1;
 }
 

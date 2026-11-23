@@ -185,8 +185,11 @@ export async function seed(db: AnyDb, options: SeedOptions = {}): Promise<SeedSu
           const both = capacity < 300;
           const inCp = uuid();
           const outCp = both ? inCp : uuid();
-          checkpoints.push({ id: inCp, venue_id: venueId, zone_id: zoneId, room_id: roomId, direction: both ? "both" : "in", label: both ? `${name} door` : `${name} in`, hardware_id: `RDR-${vi + 1}-${String(++hw).padStart(3, "0")}` });
-          if (!both) checkpoints.push({ id: outCp, venue_id: venueId, zone_id: zoneId, room_id: roomId, direction: "out", label: `${name} out`, hardware_id: `RDR-${vi + 1}-${String(++hw).padStart(3, "0")}` });
+          // Doors sit on the bottom edge of the room's rectangle (same grid units as its geometry).
+          const rx = (ri % 6) * 65;
+          const ry = zi * 100 + Math.floor(ri / 6) * 45;
+          checkpoints.push({ id: inCp, venue_id: venueId, zone_id: zoneId, room_id: roomId, direction: both ? "both" : "in", label: both ? `${name} door` : `${name} in`, hardware_id: `RDR-${vi + 1}-${String(++hw).padStart(3, "0")}`, position_jsonb: { x: rx + (both ? 30 : 20), y: ry + 40, side: "s" } });
+          if (!both) checkpoints.push({ id: outCp, venue_id: venueId, zone_id: zoneId, room_id: roomId, direction: "out", label: `${name} out`, hardware_id: `RDR-${vi + 1}-${String(++hw).padStart(3, "0")}`, position_jsonb: { x: rx + 40, y: ry + 40, side: "s" } });
           roomInfo.push({ id: roomId, venue: vi, zoneId, name, type, capacity, inCp, outCp, both });
         }
       }
@@ -194,9 +197,10 @@ export async function seed(db: AnyDb, options: SeedOptions = {}): Promise<SeedSu
         vi === 0
           ? [["Main Gate 1", "in"], ["Main Gate 2", "in"], ["Exit Gate 1", "out"], ["Exit Gate 2", "out"], ["Provisioning Desk", "both"]]
           : [["Harbour Gate", "in"], ["Harbour Exit", "out"], ["Harbour Desk", "both"]];
-      for (const [label, dir] of gates) {
+      for (const [gi, [label, dir]] of gates.entries()) {
         const id = uuid();
-        checkpoints.push({ id, venue_id: venueId, zone_id: groundZone[vi]!, direction: dir, perimeter_bool: true, label, last_heartbeat_at: d(now - int(2, 40) * 1000), last_clock_offset_ms: int(-300, 300) });
+        // Perimeter gates on the west edge of the ground-floor zone.
+        checkpoints.push({ id, venue_id: venueId, zone_id: groundZone[vi]!, direction: dir, perimeter_bool: true, label, last_heartbeat_at: d(now - int(2, 40) * 1000), last_clock_offset_ms: int(-300, 300), position_jsonb: { x: 0, y: 10 + gi * 15, side: "w" } });
         perimeter.push({ venue: vi, id, dir, label });
       }
     }

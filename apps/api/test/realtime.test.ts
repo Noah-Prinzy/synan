@@ -66,9 +66,16 @@ describe("slice 10 · /stream/scans", () => {
     expect((await again.waitFor((m) => m.type === "ready")).resumed).toBe(true);
     await again.waitFor((m) => m.type === "scan.result");
     // Heartbeat frames feed gate health.
-    again.ws.send(JSON.stringify({ type: "heartbeat", queue_depth: 3, clock_offset_ms: 10, online: true }));
-    await new Promise((r) => setTimeout(r, 100));
-    expect(h.app.ctx.scans.gates.get(h.seed.checkpoints.expo)?.queueDepth).toBe(3);
+    // Heartbeat frames feed gate health through the phone's device row (written asynchronously).
+    again.ws.send(JSON.stringify({ type: "heartbeat", queue_depth: 3, clock_offset_ms: 10, online: true, device_id: "phone-1" }));
+    const event = (await h.app.ctx.repos.events.byId(h.seed.eventId))!;
+    let expo;
+    for (let i = 0; i < 50; i++) {
+      expo = (await h.app.ctx.gates.health(event)).find((g) => g.checkpoint_id === h.seed.checkpoints.expo);
+      if (expo?.queue_depth === 3) break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    expect(expo).toMatchObject({ queue_depth: 3, link_state: "degraded", clock_offset_ms: 10 });
     for (const c of [again, ops]) c.ws.close();
   });
 });

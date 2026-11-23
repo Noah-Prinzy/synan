@@ -73,6 +73,6 @@ export function getSpaceLeft(session: AgendaSession): {
   if (session.admitted === null) return { count: null, label: "Not open yet", tone: "muted" };
   const spaceLeft = Math.max(0, session.capacity - session.admitted);
   if (spaceLeft === 0) return { count: 0, label: "Full", tone: "destructive" };
-  if (spaceLeft <= session.capacity * 0.15) return { count: spaceLeft, label: `${spaceLeft} left`, tone: "warning" };
-  return { count: spaceLeft, label: `${spaceLeft} left`, tone: "muted" };
+  if (spaceLeft <= session.capacity * 0.15) return { count: spaceLeft, label: `Nearly full · ${spaceLeft} ${spaceLeft === 1 ? "place" : "places"} left`, tone: "warning" };
+  return { count: spaceLeft, label: `${spaceLeft} places left`, tone: "muted" };
 }

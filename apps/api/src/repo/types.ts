@@ -85,7 +85,10 @@ export interface CheckpointRow {
   perimeter_bool: boolean;
   hardware_id: string | null;
   label: string;
+  /** checkpoints.position_jsonb: where the gate sits on the venue grid (contracts GridPoint); null/absent = not placed. */
+  position_jsonb?: GridPointRow | null;
 }
+export interface GridPointRow { x: number; y: number; side: "n" | "e" | "s" | "w" }
 export interface TransitTimeRow { venue_id: string; from_checkpoint_id: string; to_checkpoint_id: string; min_seconds: number }
 
 export interface EventRow {
@@ -447,6 +450,13 @@ export interface StaffRepo {
   /** `overlap` when the person already has an assignment overlapping this window (staff_assignments_no_overlap). */
   insert(row: StaffAssignmentRow & { created_by: string | null }): Promise<"ok" | "overlap">;
   markHandedOver(id: string, at: Date): Promise<void>;
+  /**
+   * Ends a shift once: stamps handed_over_at, audits `staff.handover` (the summary, no ids) and
+   * returns the summary (SQL: @synan/db handOverShift). `already_handed_over` the second time.
+   */
+  handOver(id: string, i: { actorId: string | null; now: Date }): Promise<HandoverRow | "already_handed_over" | null>;
+  /** The handover summary at any time (SQL: shiftHandoverSummary). */
+  handoverSummary(id: string): Promise<HandoverRow | null>;
 }
 export interface CredentialsRepo {
   byId(id: string): Promise<CredentialRow | null>;
@@ -525,6 +535,13 @@ export interface AlertsRepo {
   update(id: string, patch: Partial<BreachAlertRow>): Promise<BreachAlertRow>;
   /** `checkpointIds` scopes the list (an empty array returns nothing); the limit applies after scoping. */
   list(opts: { eventId?: string; state?: AlertState; severity?: Severity; checkpointIds?: readonly string[]; limit: number }): Promise<BreachAlertRow[]>;
+  /**
+   * Retention (03 §6, D-03): delete alerts that occurred more than `olderThanMonths` (≥ 12, else it
+   * throws) months before `now`, with their finished webhook deliveries (an alert whose delivery is
+   * still pending waits for the next run), and write one `retention.alerts_pruned` audit entry when
+   * anything went. Returns how many alerts were deleted. SQL: @synan/db alertsPrune.
+   */
+  prune(i: { olderThanMonths: number; now: Date }): Promise<number>;
 }
 export interface AuditRepo {
   /** Append to the hash chain. The store assigns id, prev_hash and hash atomically. */
@@ -532,6 +549,13 @@ export interface AuditRepo {
   all(): Promise<AuditRow[]>;
   /** Index of the first broken entry, or -1 when the chain is intact. */
   verify(): Promise<number>;
+  /**
+   * Retention (03 §6, D-03): delete the oldest contiguous run of entries older than 12 months and
+   * keep the rest verifiable (the store records the hash the pruned run ended on). Returns how many
+   * were deleted. SQL: @synan/db auditPrune — the database's clock decides (entries carry database
+   * time); memory: `now`.
+   */
+  prune(now: Date): Promise<number>;
 }
 
 /** Writes reference data (venues, events, rules, assignments). Used by the dev seed and tests only. */
@@ -623,6 +647,11 @@ export interface Repos {
   devices: DevicesRepo;
   reports: ReportsRepo;
   reportSchedules: ReportSchedulesRepo;
+  emailOutbox: EmailOutboxRepo;
+  notifications: NotificationsRepo;
+  exportedFiles: ExportedFilesRepo;
+  /** Run `fn` as one unit of work (see TxScope). Nested calls join the outer unit. */
+  transaction<T>(fn: (scope: TxScope) => Promise<T>): Promise<T>;
   dataRequests: DataRequestsRepo;
   maintenance: MaintenanceRepo;
   fixtures: FixtureWriter;
@@ -725,7 +754,15 @@ export interface DevicesRepo {
   retire(id: string, at: Date): Promise<void>;
   /** The active device holding this token, or null. */
   authenticate(token: string): Promise<DeviceRow | null>;
-  heartbeat(i: { deviceId: string; clockOffsetMs: number; queueDepth: number; appVersion: string | null; now: Date }): Promise<"ok" | "unknown_device" | "not_active">;
+  /** Also stamps the checkpoint's gate-health fields (`checkpointId`, else the device's own). */
+  heartbeat(i: { deviceId: string; checkpointId?: string | null; clockOffsetMs: number; queueDepth: number; appVersion: string | null; now: Date }): Promise<"ok" | "unknown_device" | "not_active">;
+  /**
+   * The device row of a staff phone running the Gate Scanner (kind `scanner`, no device token),
+   * found by its hardware id or created, and moved to `checkpointId` (its current assignment).
+   */
+  ensureScanner(i: { venueId: string; hardwareId: string; label: string; checkpointId: string }): Promise<string>;
+  /** Gate health for a venue, faults first (SQL: @synan/db gateHealth). */
+  gateHealth(venueId: string, opts: { eventId: string | null; now: Date }): Promise<GateHealthDbRow[]>;
 }
 
 export type ReportCell = string | number | null;
@@ -816,6 +853,152 @@ export interface ReportSchedulesRepo {
   claimDue(now: Date, opts: { limit: number; leaseMinutes: number }): Promise<ReportScheduleRow[]>;
   /** Success advances next_run_at past now (missed periods skipped; on_close → done); three failures in a row → failed. */
   finish(id: string, i: { ok: boolean; error: string | null; now: Date }): Promise<{ state: ReportScheduleRow["state"]; next_run_at: Date | null }>;
+}
+
+/** Content of an outbox email (encrypted at rest with its recipient on the SQL backend). */
+export interface EmailContent {
+  subject: string;
+  text: string;
+}
+export interface ClaimedEmail {
+  id: string;
+  template: string;
+  to: string;
+  content: EmailContent;
+  /** Including this one. */
+  attempts: number;
+}
+/**
+ * The email outbox. SQL: @synan/db enqueueEmail / claimEmail / finishEmail; `due` reads
+ * email_outbox ids directly (no personal data). Claims are atomic: a duplicate job never sends twice.
+ */
+export interface EmailOutboxRepo {
+  enqueue(i: { template: string; to: string; content: EmailContent; now: Date }): Promise<string>;
+  /**
+   * queued, failed with attempts left, or `sending` under a claim older than the lease (its worker
+   * died) → sending (attempts + 1, claimed now); null otherwise. Lease default: @synan/db
+   * EMAIL_CLAIM_LEASE_SECONDS (120 s).
+   */
+  claim(id: string, opts: { maxAttempts: number; now: Date; leaseSeconds?: number }): Promise<ClaimedEmail | null>;
+  /**
+   * sending → sent | failed. Null when the email was not being sent — or, with `attempt`, when it has
+   * been reclaimed since that attempt (a slow worker must not overwrite the reclaimer's outcome).
+   */
+  finish(id: string, i: { ok: boolean; error: string | null; now: Date; attempt?: number }): Promise<"sent" | "failed" | null>;
+  /** Ids that a claim would take now (queued, failed with attempts left, `sending` past its lease), oldest first. */
+  due(opts: { maxAttempts: number; limit: number; now: Date; leaseSeconds?: number }): Promise<string[]>;
+  /** Counts by state ("dead" = failed with no attempts left), for tests and health. */
+  stats(maxAttempts: number): Promise<{ queued: number; sending: number; sent: number; failed: number; dead: number }>;
+}
+
+export type NotificationKindT = "pass" | "session" | "capacity" | "event" | "security";
+export interface NotificationRow {
+  id: string;
+  kind: NotificationKindT;
+  at: Date;
+  title: string;
+  body: string;
+  read: boolean;
+}
+/**
+ * Attendee notifications. SQL: @synan/db notifyAttendee, broadcastNotification, listNotifications,
+ * markNotificationsRead. Text is generic: never a location, movement, or another person.
+ */
+export interface NotificationsRepo {
+  /** Personal (lives 30 days). */
+  notify(i: { attendeeId: string; kind: NotificationKindT; title: string; body: string; eventId: string | null; now: Date }): Promise<string>;
+  /** To the event's confirmed registrations (optionally one tier); lives until 7 days after the event ends. */
+  broadcast(i: { eventId: string; tier: AttendeeTier | null; kind: NotificationKindT; title: string; body: string; now: Date }): Promise<string>;
+  /** Personal and broadcast, newest first, unexpired at `now`. */
+  list(attendeeId: string, opts: { now: Date; limit: number }): Promise<NotificationRow[]>;
+  /** Marks those visible to the attendee; returns how many were newly marked. */
+  markRead(attendeeId: string, ids: readonly string[], now: Date): Promise<number>;
+}
+
+/** @synan/db gate_health, one row per checkpoint of the venue (faults first). */
+export interface GateHealthDbRow {
+  checkpoint_id: string;
+  label: string;
+  perimeter: boolean;
+  /** unknown: never heard from; offline: no heartbeat for 60 s. */
+  link_state: "online" | "offline" | "unknown";
+  last_heartbeat_at: Date | null;
+  heartbeat_age_s: number | null;
+  clock_offset_ms: number | null;
+  /** |offset| > 2 minutes (D-14). */
+  clock_fault: boolean;
+  /** Largest unsynced queue reported by an active device at the checkpoint; null when none reported. */
+  queue_depth: number | null;
+  last_scan_at: Date | null;
+  scans_last_15m: number;
+  staff_on_duty: number;
+  /** The checkpoint's grid position; null when not placed. */
+  position?: GridPointRow | null;
+}
+/** @synan/db shift_handover_summary. */
+export interface HandoverRow {
+  assignment_id: string;
+  checkpoint_id: string;
+  user_id: string;
+  period_start: Date;
+  period_end: Date;
+  scans: number;
+  /** admitted + already_inside */
+  let_through: number;
+  refused: number;
+  duplicates: number;
+  /** Decided on the device while offline. */
+  offline: number;
+  /** Received after the period ended (still queued on the device at handover). */
+  late_synced: number;
+  by_result: Record<string, number>;
+  first_scan_at: Date | null;
+  last_scan_at: Date | null;
+}
+
+export interface ExportedFileRow {
+  id: string;
+  report_id: string | null;
+  data_request_id: string | null;
+  object_key: string;
+  content_type: string;
+  size_bytes: number | null;
+  contains_identity: boolean;
+  /** The data key that wrapped the file's own key. */
+  key_id: string | null;
+  created_at: Date;
+  expires_at: Date;
+  deleted_at: Date | null;
+}
+/**
+ * The register of exported files (retention, 03 §6). SQL: @synan/db recordExportedFile,
+ * exportedFilesDue, markExportedFilesDeleted, listExportedFiles, cleanupDelivery. Recording a file
+ * that contains identity, and marking any file deleted, write audit entries (export.create,
+ * export.delete) in the same step.
+ */
+export interface ExportedFilesRepo {
+  record(i: {
+    reportId: string | null; dataRequestId: string | null; objectKey: string; contentType: string; sizeBytes: number | null;
+    containsIdentity: boolean; keyId: string | null; retentionDays: number; actorId: string | null; now: Date;
+  }): Promise<string>;
+  /** Not deleted and past expiry at `now`, oldest expiry first. */
+  due(now: Date, limit: number): Promise<ExportedFileRow[]>;
+  /** After their objects were removed. Returns how many were newly marked. */
+  markDeleted(ids: readonly string[], i: { actorId: string | null; now: Date }): Promise<number>;
+  list(q: { reportId?: string; dataRequestId?: string }): Promise<ExportedFileRow[]>;
+  /** Sent/failed email after 7 days, expired notifications, finished schedules after 30 days. */
+  cleanupDelivery(now: Date): Promise<{ emails: number; notifications: number; schedules: number }>;
+}
+
+/**
+ * A unit of work: `repos` write inside one transaction on the operational connection (SQL); on the
+ * memory backend outbox rows are only stored once `fn` succeeds. `handle` is the Drizzle
+ * transaction (pg-boss enqueueInTransaction), null in memory. `afterCommit` runs after commit.
+ */
+export interface TxScope {
+  repos: Repos;
+  handle: unknown;
+  afterCommit(fn: () => void): void;
 }
 
 export const REPORT_SECTION_NAMES = {

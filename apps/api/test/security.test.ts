@@ -523,7 +523,9 @@ describe("#12 email-link answers the same whatever the mail provider does", () =
     const hanging: Mailer = { send: () => { calls++; return new Promise(() => {}); } };
     const failing: Mailer = { send: async () => { calls++; throw new Error("provider down"); } };
     for (const mailer of [hanging, failing]) {
-      const h = await startHarness({ mailer });
+      // The request path never touches the provider: the outbox job does, later (and times out a hanging one).
+      const h = await startHarness({ mailer, autoDrainMail: false, config: { mailSendTimeoutMs: 100 } });
+      const start = calls;
       try {
         const t0 = Date.now();
         const known = await h.call("POST", "/auth/email-link", { body: { email: devEmail("vip") } });
@@ -531,11 +533,13 @@ describe("#12 email-link answers the same whatever the mail provider does", () =
         expect([known.status, unknown.status]).toEqual([202, 202]);
         expect(known.body).toEqual(unknown.body);
         expect(Date.now() - t0).toBeLessThan(2_000);
+        await h.drainMail();
+        expect(calls).toBeGreaterThan(start); // the known address reached the provider (and is retried while it fails)
       } finally {
         await h.close();
       }
     }
-    expect(calls).toBe(2); // the known address did trigger a send each time
+    expect(calls).toBeGreaterThanOrEqual(2); // the known address did trigger a send each time (retries may add more)
   });
 });
 

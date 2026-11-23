@@ -31,6 +31,8 @@ export const ClientHeartbeat = z.object({
   queue_depth: z.number().int().min(0),
   clock_offset_ms: z.number().int(),
   online: z.boolean(),
+  /** The phone's stable scanner id (the same one it sends to POST /gates/heartbeat and /scans), so both feed one device row. */
+  device_id: z.string().min(1).max(128).optional(),
 });
 
 export const ClientMessage = z.discriminatedUnion("type", [ClientHello, ClientPing, ClientHeartbeat]);
@@ -83,14 +85,25 @@ export const ZoneOccupancy = z.object({
 });
 export type ZoneOccupancy = z.infer<typeof ZoneOccupancy>;
 
+/**
+ * Event-wide totals carried on every snapshot and delta (additive), so a console need not poll the
+ * summary. `on_site`: people inside the perimeter; `in_rooms`: the sum of room counts. Each is null
+ * below the minimum crowd size on the public scope (O-08).
+ */
+export const OccupancyTotals = z.object({
+  on_site: z.number().int().min(0).nullable(),
+  in_rooms: z.number().int().min(0).nullable(),
+});
+export type OccupancyTotals = z.infer<typeof OccupancyTotals>;
+
 export const OccupancySnapshot = envelope(
   "occupancy.snapshot",
-  z.object({ event_id: Id, rooms: z.array(RoomOccupancy), zones: z.array(ZoneOccupancy) }),
+  z.object({ event_id: Id, rooms: z.array(RoomOccupancy), zones: z.array(ZoneOccupancy), totals: OccupancyTotals.optional() }),
 );
-/** Coalesced: at most one per 250 ms per connection, only rooms/zones that changed. */
+/** Coalesced: at most one per 250 ms per connection, only rooms/zones that changed; `totals` always current. */
 export const OccupancyDelta = envelope(
   "occupancy.delta",
-  z.object({ event_id: Id, rooms: z.array(RoomOccupancy), zones: z.array(ZoneOccupancy) }),
+  z.object({ event_id: Id, rooms: z.array(RoomOccupancy), zones: z.array(ZoneOccupancy), totals: OccupancyTotals.optional() }),
 );
 
 export const TelemetryEvent = z.discriminatedUnion("type", [OccupancySnapshot, OccupancyDelta]);

@@ -56,9 +56,9 @@ email. They expire the moment the RSVP is completed.
 | Multi-factor authentication | Required for operators on privileged actions: manual tier change, wristband override, credential re-issue and pass resend, report export. A step-up lasts 15 minutes. | v1 |
 | WebSocket ticket (P-16) | `POST /auth/ws-ticket` mints a single-use ticket valid for 30 seconds. The client passes it in the `Sec-WebSocket-Protocol` subprotocol, never in the URL, so it cannot leak into proxy logs or browser history. | v1 |
 | Per-channel authorisation | Each channel authorises independently. An attendee may join only `/stream/me`; staff join `/stream/scans` for assigned checkpoints only. | v1 |
-| Rate limiting | Per-IP and per-token limits on authentication and scan endpoints. | v1 |
+| Rate limiting | Per-IP and per-token limits on authentication and scan endpoints; a per-checkpoint limit of 3,000 scans per minute (§4); a strict per-attendee limit on self-service pass emails (3 per hour). Limits are counted per API instance in v1; running several instances needs a shared counter in PostgreSQL. | v1 |
 | Payload validation | Every incoming payload is validated against the contract schemas ([02 §7](02-architecture.md)). | v1 |
-| Transport | TLS everywhere: HTTPS and WSS. TLS 1.3 required. | v1 |
+| Transport | TLS everywhere: HTTPS and WSS. TLS 1.3 required. HSTS (one year, including subdomains) in production. Every API response forbids framing and sniffing, sends no referrer, and is never cached. | v1 |
 | Webhook signing | Outbound and inbound webhooks carry HMAC signature headers. | v1 |
 
 ---
@@ -74,7 +74,11 @@ email. They expire the moment the RSVP is completed.
 - The offline allowlist ([01 §8](01-product.md)) is **signed by the server** and scoped to one event
   and shift. The scanner verifies the signature before trusting it. It holds credential hashes, not
   identities, and **no secrets**: a stolen scanner yields nothing that can mint a pass.
-- Tap debouncing and per-checkpoint rate limits stop sensor flooding.
+- Tap debouncing (60 seconds, same credential and gate), a per-person limit, and a per-checkpoint
+  limit of 3,000 scans per minute stop sensor flooding. The checkpoint limit is above the whole
+  venue's design peak ([02 §9](02-architecture.md)), so a legitimate gate cannot reach it, and it
+  counts scans by when they happened, so an offline backlog is never throttled. Refused scans are
+  returned to the scanner, counted in gate health, and alerted.
 - Gate devices are venue-owned ([01 §2](01-product.md), D-09), so a scanner can be wiped, re-issued,
   and accounted for at the end of a shift.
 - Conflicts that only appear when offline gates sync — a single-use QR used twice, a pass-back, a
@@ -105,8 +109,8 @@ result. **No coordinates are ever stored, streamed, or displayed.** Where older 
 - Names, emails, and registration details live in an identity vault, protected by PostgreSQL
   row-level security and AES-256 column encryption with managed key rotation. Row-level security is
   in place and guards against application mistakes; isolating the vault from a compromised
-  application needs a separate database role, which is a Hardening item. The column encryption and
-  key management are **not yet built** ([07 §1.5](07-roadmap.md)).
+  application needs a separate database role. Identity columns are encrypted with AES-256-GCM
+  under a data key; managed key rotation is a Hardening item ([07](07-roadmap.md)).
 - At first check-in, a credential is bound to an **ephemeral attendee ID** for that event. Scan
   records, WebSocket telemetry, occupancy counters, and AI inference use only this ID.
 - Personal data is never sent into telemetry streams or to the AI model.
@@ -142,6 +146,8 @@ anonymous ID from the start.
 | Breach alerts | 12 months |
 | Audit log | 12 months |
 | Identity and registration records | Until the attendee erases them or the organisation's policy removes them |
+| Exported files (reports, attendee data exports) | 7 days, then deleted |
+| Notifications to attendees | Removed with the attendee's erasure |
 
 **The purge.** When an event closes, a scheduled worker waits for the grace period (O-06) and then
 drops the event's scan partition and its ephemeral ID mapping. Scan data is stored in per-event
@@ -149,6 +155,23 @@ partitions precisely so that this is a partition drop, not a row-by-row delete.
 
 After the purge, what remains is aggregate statistics, alerts, and the audit log. Breach alerts keep
 their reference to the credential involved for their 12-month life, as a security record (O-11).
+
+**Pruning.** A daily job deletes audit entries and breach alerts older than 12 months. The hash of
+the last deleted audit entry is kept as the chain's anchor, so the remaining log still verifies end
+to end and any later removal or alteration is still detected. Each run that deletes anything is
+itself audited. The frozen post-event summary keeps its alert counts.
+
+**Exported files.** Every exported file is entered in a register with its retention date. The file
+is encrypted with its own key, which is wrapped by the data key. A cleanup job deletes each file when
+its retention ends and audits the deletion; a deletion that fails stays due and is retried.
+
+**Outgoing email.** An email is written to an encrypted outbox in the same transaction as the change
+it announces, and sent by a job that carries only the outbox id. Addresses never appear in job
+payloads, logs, or stored errors. A send is claimed for 120 seconds; an email abandoned by a crashed
+worker is retried when the claim lapses, up to five attempts, and a worker records an outcome only
+for the attempt it claimed. Outbox rows are deleted 7 days after they are sent or fail. Whether a
+recipient can ever receive a duplicate depends on the email provider honouring the idempotency key
+sent with each message (O-13).
 
 **Encryption.** Data in transit: TLS 1.3, and mutual TLS between scanners, the WebSocket broker,
 inference nodes, and the database once hardening lands. Data at rest: AES-256 for volumes, the
@@ -164,7 +187,10 @@ detail, and when.
 The log is **hash-chained**: each entry stores the hash of the previous entry, so an entry cannot be
 altered or removed without breaking the chain. At minimum the following are audited: tier overrides,
 credential revocation and re-issue, wristband rebinding, access-rule republishing, clearing a
-suspended credential, credential access-history lookups, report exports, and retention changes.
+suspended credential, credential access-history lookups, report exports (each scheduled export,
+and separately whenever attendee identity is included), report-schedule changes, deletion of
+exported files, operator broadcasts, shift handovers, and retention changes. Audit entries record
+counts and lengths, never recipient addresses or message text.
 
 ---
 
@@ -190,5 +216,5 @@ suspended credential, credential access-history lookups, report exports, and ret
 | Impossible travel | Transit-time rule; later refined by the AI model | Credential set to `suspended_review`. Floor supervisor notified with the last two checkpoints for physical verification. A supervisor clears or revokes it. |
 | Offline conflict found at sync: single-use QR used twice, pass-back across gates, capacity overrun | Server-side reconciliation of queued scans | Alert naming every scan involved. Occupancy corrected. For a doubled QR or pass-back, the credential is set to `suspended_review`. |
 | Scanner clock off by more than two minutes | Clock offset sent with each sync | Gate-health fault. Scans are still accepted and ordered by corrected time. |
-| Rogue scanner connection | Assignment check in v1; mutual TLS rejection in hardening | Connection dropped. Security operations alerted. |
+| Rogue scanner connection | An unknown, revoked, rotated, or forged device or access token; an invalid stream ticket; a retired scanner; or no current assignment for the checkpoint. Mutual TLS rejection in hardening. | Connection refused or dropped. One high-severity alert per source and reason per 10 minutes, audited. The alert text carries no token or address. An expired token is not an alert: it is the normal cue to refresh. |
 | Sudden zone density spike | Capacity thresholds in v1; predictive model later | Amber capacity warning in Admin Command. With the model, the warning arrives about 15 minutes before saturation and suggests overflow routing. |

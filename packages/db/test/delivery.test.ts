@@ -12,6 +12,8 @@ import {
   cleanupDelivery,
   createReportSchedule,
   deleteReportSchedule,
+  EMAIL_CLAIM_LEASE_SECONDS,
+  emailsDue,
   enqueueEmail,
   exportedFilesDue,
   finishEmail,
@@ -199,6 +201,106 @@ describe("email outbox", () => {
     expect(await finishEmail(db, id, { ok: true })).toBeNull();
     const [row] = await db.select().from(s.email_outbox).where(eq(s.email_outbox.id, id));
     expect([row!.state, row!.provider_id, row!.sent_at, row!.last_error]).toEqual(["sent", "msg-1", T("01T09:10:00"), null]);
+  });
+
+  describe("claim lease (a worker crashed mid-send)", () => {
+    let fresh: TestDb;
+    const mail = (to: string, now: Date) => enqueueEmail(fresh, devCipher, { template: "t", to, content: { subject: "s", text: "x" }, now });
+    const claimedAt = async (id: string) => (await fresh.select({ c: s.email_outbox.claimed_at }).from(s.email_outbox).where(eq(s.email_outbox.id, id)))[0]!.c;
+    beforeAll(async () => {
+      fresh = await createTestDb();
+    });
+
+    it("reclaims a stale `sending` row after the lease (default 120 s), counting the lost attempt", async () => {
+      expect(EMAIL_CLAIM_LEASE_SECONDS).toBe(120);
+      const id = await mail("stale@example.test", T("02T10:00:00"));
+      expect((await claimEmail(fresh, devCipher, id, { now: T("02T10:00:00") }))!.attempts).toBe(1);
+      expect(await claimedAt(id)).toEqual(T("02T10:00:00"));
+      // The worker dies. Within the lease nobody else may take it.
+      expect(await claimEmail(fresh, devCipher, id, { now: T("02T10:01:59") })).toBeNull();
+      const again = (await claimEmail(fresh, devCipher, id, { now: T("02T10:02:00") }))!;
+      expect([again.to, again.attempts]).toEqual(["stale@example.test", 2]);
+      expect(await claimedAt(id)).toEqual(T("02T10:02:00")); // a new lease
+      expect(await claimEmail(fresh, devCipher, id, { now: T("02T10:03:00") })).toBeNull();
+      expect(await finishEmail(fresh, id, { ok: true, now: T("02T10:03:00") })).toBe("sent");
+      expect(await claimEmail(fresh, devCipher, id, { now: T("03T10:00:00") })).toBeNull(); // sent rows are never reclaimed
+    });
+
+    it("does not reclaim a fresh `sending` row, honours a custom lease, and respects max attempts", async () => {
+      const id = await mail("lease@example.test", T("02T11:00:00"));
+      await claimEmail(fresh, devCipher, id, { now: T("02T11:00:00") });
+      expect(await claimEmail(fresh, devCipher, id, { now: T("02T11:00:30") })).toBeNull();
+      expect(await claimEmail(fresh, devCipher, id, { leaseSeconds: 600, now: T("02T11:05:00") })).toBeNull();
+      expect((await claimEmail(fresh, devCipher, id, { leaseSeconds: 30, now: T("02T11:00:30") }))!.attempts).toBe(2);
+      // Out of attempts: a stale claim at the limit is not taken again.
+      expect(await claimEmail(fresh, devCipher, id, { maxAttempts: 2, now: T("02T12:00:00") })).toBeNull();
+      expect((await claimEmail(fresh, devCipher, id, { maxAttempts: 3, now: T("02T12:00:00") }))!.attempts).toBe(3);
+    });
+
+    it("lets exactly one of two concurrent claimers win a stale row", async () => {
+      const id = await mail("race@example.test", T("02T13:00:00"));
+      await claimEmail(fresh, devCipher, id, { now: T("02T13:00:00") });
+      const now = T("02T13:10:00");
+      const [a, b] = await Promise.all([claimEmail(fresh, devCipher, id, { now }), claimEmail(fresh, devCipher, id, { now })]);
+      expect([a, b].filter(Boolean).map((x) => x!.attempts)).toEqual([2]);
+      // Two concurrent claims of a queued row: also one winner.
+      const q2 = await mail("race2@example.test", T("02T13:00:00"));
+      const both = await Promise.all([claimEmail(fresh, devCipher, q2, { now }), claimEmail(fresh, devCipher, q2, { now })]);
+      expect(both.filter(Boolean)).toHaveLength(1);
+    });
+
+    it("emailsDue lists claimable ids oldest first, stale `sending` included, and app_api may run it", async () => {
+      const f = await createTestDb();
+      const at = (m: string) => T(`05T10:${m}:00`);
+      const put = (to: string, now: Date) => enqueueEmail(f, devCipher, { template: "t", to, content: { subject: "s", text: "x" }, now });
+      const queued = await put("q@example.test", at("05"));
+      const failed = await put("f@example.test", at("01"));
+      await claimEmail(f, devCipher, failed, { now: at("01") });
+      await finishEmail(f, failed, { ok: false, error: "421" });
+      const dead = await put("d@example.test", at("00"));
+      for (let i = 0; i < 2; i++) {
+        await claimEmail(f, devCipher, dead, { now: at("00") });
+        await finishEmail(f, dead, { ok: false, error: "550" });
+      }
+      const stale = await put("s@example.test", at("02"));
+      await claimEmail(f, devCipher, stale, { now: at("02") });
+      const live = await put("l@example.test", at("03"));
+      await claimEmail(f, devCipher, live, { now: at("09") });
+      const sent = await put("x@example.test", at("00"));
+      await claimEmail(f, devCipher, sent, { now: at("00") });
+      await finishEmail(f, sent, { ok: true });
+
+      const now = at("10"); // stale's claim is 8 min old, live's 1 min
+      expect(await emailsDue(f, { now })).toEqual([dead, failed, stale, queued]);
+      expect(await emailsDue(f, { maxAttempts: 2, now })).toEqual([failed, stale, queued]); // dead is out of attempts
+      expect(await emailsDue(f, { now, limit: 2 })).toEqual([dead, failed]);
+      expect(await emailsDue(f, { now, leaseSeconds: 50 })).toEqual([dead, failed, stale, live, queued]);
+      expect(await emailsDue(f, { now, leaseSeconds: 3600 })).toEqual([dead, failed, queued]);
+
+      // The application role can list due ids; its privileges on email_outbox are its usual table grant.
+      await q(f, "set role app_api");
+      try {
+        expect(await emailsDue(f, { now })).toEqual([dead, failed, stale, queued]);
+        expect((await claimEmail(f, devCipher, stale, { now }))!.to).toBe("s@example.test");
+      } finally {
+        await q(f, "reset role");
+      }
+      await f.$client.close();
+    });
+
+    it("cleanup fails email abandoned in `sending` for a day, then deletes it after 7 days", async () => {
+      const f = await createTestDb();
+      const id = await enqueueEmail(f, devCipher, { template: "t", to: "a@example.test", content: { subject: "s", text: "x" }, now: T("01T00:00:00") });
+      await claimEmail(f, devCipher, id, { maxAttempts: 1, now: T("01T00:00:00") });
+      expect(await claimEmail(f, devCipher, id, { maxAttempts: 1, now: T("01T12:00:00") })).toBeNull(); // out of attempts
+      await cleanupDelivery(f, T("01T12:00:00"));
+      expect((await f.select().from(s.email_outbox))[0]!.state).toBe("sending"); // under a day: left alone
+      expect((await cleanupDelivery(f, T("02T00:00:01"))).emails).toBe(0);
+      const [row] = await f.select().from(s.email_outbox);
+      expect([row!.state, row!.last_error]).toEqual(["failed", "abandoned: claim lease expired"]);
+      expect((await cleanupDelivery(f, T("08T00:00:01"))).emails).toBe(1);
+      await f.$client.close();
+    });
   });
 });
 

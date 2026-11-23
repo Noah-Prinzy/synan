@@ -153,12 +153,21 @@ export function attachWebSockets(server: Server, app: AppContext) {
       const ticketProto = offered.find((p) => p.startsWith(WS_TICKET_PREFIX));
       if (!offered.includes(WS_SUBPROTOCOL) || !ticketProto) return reject(socket, 401, "Unauthorized");
       const grant = await app.auth.consumeWsTicket(ticketProto.slice(WS_TICKET_PREFIX.length));
-      if (!grant || grant.channel !== path) return reject(socket, 401, "Unauthorized");
+      // Rogue scanner connection (03 §8.2): a scanner stream with a ticket that is not valid. The ticket is never recorded.
+      const ip = req.socket.remoteAddress ?? "unknown";
+      if (!grant || grant.channel !== path) {
+        if (path === "/stream/scans") await app.scannerTrust.refused({ reason: "invalid_ws_ticket", channel: "ws /stream/scans", ip, userId: grant?.ctx.sub ?? null });
+        return reject(socket, 401, "Unauthorized");
+      }
 
       let g: ChannelGrant;
       try {
         g = await authoriseChannel(app, grant.ctx, grant.channel, grant.eventId, grant.checkpointId);
-      } catch {
+      } catch (e) {
+        // The assignment ended between minting and connecting, or never existed.
+        if (path === "/stream/scans" && e instanceof ContractError && e.code === "CHECKPOINT_NOT_ASSIGNED") {
+          await app.scannerTrust.refused({ reason: "not_assigned", channel: "ws /stream/scans", ip, userId: grant.ctx.sub, checkpointId: grant.checkpointId, eventId: grant.eventId });
+        }
         return reject(socket, 403, "Forbidden");
       }
       wss.handleUpgrade(req, socket, head, (ws) => {
@@ -183,7 +192,7 @@ export function attachWebSockets(server: Server, app: AppContext) {
           hub = hubs.me;
           view = (e) => (e.meta.attendee_id === ctx.sub && byEvent(e) ? env(e) : null);
         }
-        onChannel(app, ws, grant.channel, g, hub, view, grant.channel === "/stream/scans" && g.checkpoints?.length === 1 ? g.checkpoints[0]! : grant.checkpointId);
+        onChannel(app, ws, grant.channel, g, hub, view, grant.channel === "/stream/scans" && g.checkpoints?.length === 1 ? g.checkpoints[0]! : grant.checkpointId, ctx.sub, ip);
       });
     })().catch(() => reject(socket, 500, "Internal Server Error"));
   });
@@ -214,7 +223,7 @@ export function attachWebSockets(server: Server, app: AppContext) {
 }
 
 /** Shared framing: hello within 5 s, ping/pong, slow-consumer cut-off. */
-function frame(app: AppContext, ws: WebSocket, onHello: (lastEventId: string | undefined) => void, onHeartbeat?: (m: { queue_depth: number; clock_offset_ms: number; online: boolean }) => void) {
+function frame(app: AppContext, ws: WebSocket, onHello: (lastEventId: string | undefined) => void, onHeartbeat?: (m: { queue_depth: number; clock_offset_ms: number; online: boolean; device_id?: string }) => void) {
   const w = ws as WebSocket & { alive?: boolean };
   w.alive = true;
   ws.on("pong", () => (w.alive = true));
@@ -257,7 +266,7 @@ function frame(app: AppContext, ws: WebSocket, onHello: (lastEventId: string | u
   return send;
 }
 
-function onChannel(app: AppContext, ws: WebSocket, channel: WsChannel, g: ChannelGrant, hub: ChannelHub<Meta>, view: View<Meta>, heartbeatCheckpoint: string | null) {
+function onChannel(app: AppContext, ws: WebSocket, channel: WsChannel, g: ChannelGrant, hub: ChannelHub<Meta>, view: View<Meta>, heartbeatCheckpoint: string | null, userId: string, remoteIp: string) {
   let unsubscribe: (() => void) | null = null;
   // A staff stream ends with the shift (server time).
   const shiftTimer = g.until !== null ? setTimeout(() => ws.close(WS_CLOSE.POLICY, "shift ended"), Math.max(0, g.until - app.clock.now())) : null;
@@ -273,11 +282,20 @@ function onChannel(app: AppContext, ws: WebSocket, channel: WsChannel, g: Channe
     },
     channel === "/stream/scans" && g.scope === "own" && heartbeatCheckpoint
       ? (m) => {
-          const prev = app.scans.gates.get(heartbeatCheckpoint);
-          app.scans.gates.set(heartbeatCheckpoint, {
-            checkpointId: heartbeatCheckpoint, lastSeenAt: app.clock.now(), clockOffsetMs: m.clock_offset_ms,
-            deviceId: prev?.deviceId ?? "ws", queueDepth: m.online ? m.queue_depth : Math.max(1, m.queue_depth),
-          });
+          // The phone is a device: the frame lands on its device row and the checkpoint (never logged with detail).
+          void (async () => {
+            const cp = await app.repos.venues.checkpoint(heartbeatCheckpoint);
+            if (!cp) return;
+            const r = await app.gates.phoneHeartbeat({
+              userId, venueId: cp.venue_id, checkpointId: cp.id, clientDeviceId: m.device_id ?? "stream",
+              clockOffsetMs: m.clock_offset_ms, queueDepth: m.queue_depth, online: m.online,
+            });
+            if (r !== "ok") {
+              // An operator retired this phone's scanner: drop the stream and alert (03 §8.2).
+              await app.scannerTrust.refused({ reason: "scanner_retired", channel: "ws /stream/scans", ip: remoteIp, userId, checkpointId: cp.id });
+              ws.close(WS_CLOSE.POLICY, "scanner retired");
+            }
+          })().catch((e: unknown) => console.error(`[ws] heartbeat failed: ${e instanceof Error ? e.message.slice(0, 120) : "error"}`));
         }
       : undefined,
   );

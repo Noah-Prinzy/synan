@@ -3,7 +3,7 @@
  * pass shows verbatim (docs/06 A4), and the four tiers (D-02).
  */
 import type { AttendeeTier, CredentialState as ContractCredentialState, MyCredential } from "@synan/mock";
-import { hint } from "@synan/mock";
+import { delay, hint, type PortalCodeBatch } from "@synan/mock";
 import { portal } from "./mock";
 
 export type CredentialState = "READY" | "NOT YET BOUND" | "UNDER REVIEW" | "REVOKED" | "REPLACED";
@@ -78,8 +78,39 @@ export function getPass(preview?: string | null): Pass {
   };
 }
 
-export function getCodes() {
+const CODES_KEY = "synan.pass.codes";
+
+/**
+ * GET /me/credential/codes: the next 15 minutes of signed codes (D-05, D-12). Each batch
+ * fetched online is kept on the device, so a reload with no connection still has codes
+ * to rotate through until they run out.
+ */
+export function getCodes(): PortalCodeBatch {
+  if (typeof navigator === "undefined" || navigator.onLine) {
+    const batch = portal.codes();
+    try {
+      localStorage.setItem(CODES_KEY, JSON.stringify(batch));
+    } catch {
+      /* storage blocked: the batch lives for this page only */
+    }
+    return batch;
+  }
+  try {
+    const saved = localStorage.getItem(CODES_KEY);
+    if (saved) return JSON.parse(saved) as PortalCodeBatch;
+  } catch {
+    /* fall through */
+  }
   return portal.codes();
+}
+
+/**
+ * Email a fresh single-use copy of the pass. No attendee endpoint exists for this yet
+ * (only the operator resend, POST /credentials/:id/resend); proposed: POST /me/credential/resend.
+ */
+export async function emailPassCopy(): Promise<void> {
+  await delay(600);
+  if (typeof navigator !== "undefined" && !navigator.onLine) throw new Error("offline");
 }
 
 export function reportLostBand(): void {

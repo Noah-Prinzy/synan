@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, Link, useLocation } from "react-router-dom";
 import { BRAND, Wordmark } from "@synan/ui/brand";
 import { useSession } from "../data/auth";
+import { useModal } from "@synan/ui/mobile";
 
 const navItems = [
   { to: "/", label: "Events" },
@@ -45,44 +46,6 @@ function NavCell({ to, label, onClick }: { to: string; label: string; onClick?: 
   );
 }
 
-/** Keep Tab focus inside `container` while it is open. */
-function useFocusTrap(container: React.RefObject<HTMLElement | null>, active: boolean, onEscape: () => void) {
-  useEffect(() => {
-    if (!active) return;
-    const node = container.current;
-    if (!node) return;
-    const focusables = () =>
-      Array.from(node.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'));
-    focusables()[0]?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onEscape();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const items = focusables();
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (!first || !last) return;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = overflow;
-    };
-  }, [active, container, onEscape]);
-}
-
 export default function SiteHeader() {
   const session = useSession();
   const [open, setOpen] = useState(false);
@@ -91,14 +54,26 @@ export default function SiteHeader() {
   const toggleRef = useRef<HTMLButtonElement>(null);
   const close = useRef(() => {
     setOpen(false);
-    toggleRef.current?.focus();
+    toggleRef.current?.focus({ preventScroll: true });
   }).current;
 
   useEffect(() => {
     setOpen(false);
   }, [location.pathname]);
 
-  useFocusTrap(sheetRef, open, close);
+  // Focus moves into the menu, Tab cycles through it and the Close button, Escape closes
+  // and returns focus to the button, and the page behind does not scroll.
+  useModal(sheetRef, open, close, { also: [toggleRef] });
+
+  // Rotating or resizing past the phone breakpoint closes the menu (it is hidden there).
+  useEffect(() => {
+    if (!open) return;
+    const wide = window.matchMedia("(min-width: 48rem)");
+    const onChange = () => wide.matches && setOpen(false);
+    onChange();
+    wide.addEventListener("change", onChange);
+    return () => wide.removeEventListener("change", onChange);
+  }, [open]);
 
   const [reveal] = useState(() => revealOnLoad && !revealConsumed);
   useEffect(() => {
@@ -148,7 +123,7 @@ export default function SiteHeader() {
           role="dialog"
           aria-modal="true"
           aria-label="Menu"
-          className="fade-in fixed inset-x-0 top-14 bottom-0 z-40 overflow-y-auto border-t border-border bg-background md:hidden"
+          className="fade-in fixed inset-x-0 top-14 bottom-0 z-40 overflow-y-auto overscroll-contain border-t border-border bg-background pb-[env(safe-area-inset-bottom)] md:hidden"
           onClick={(event) => {
             if (event.target === event.currentTarget) close();
           }}
@@ -162,13 +137,19 @@ export default function SiteHeader() {
                     end={item.to === "/"}
                     onClick={() => setOpen(false)}
                     className={({ isActive }) =>
-                      `flex min-h-16 items-center justify-between px-4 font-display text-28 sm:px-6 ${
+                      `relative flex min-h-16 items-center justify-between px-4 font-display text-28 active:bg-card/40 sm:px-6 ${
                         isActive ? "text-foreground" : "text-muted-foreground"
                       }`
                     }
                   >
-                    {item.label}
-                    <span aria-hidden="true" className="text-17">→</span>
+                    {({ isActive }) => (
+                      <>
+                        {/* Where you are: the 2px accent rule of an active list item (docs/05 §2.1). */}
+                        {isActive ? <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.5 bg-brand" /> : null}
+                        {item.label}
+                        {isActive ? null : <span aria-hidden="true" className="text-17">→</span>}
+                      </>
+                    )}
                   </NavLink>
                 </li>
               ))}

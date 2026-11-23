@@ -7,6 +7,7 @@ import { ErrorState, OfflineState, StateBlock } from "../components/states";
 import { getEventDetail, type EventDetail as EventRecord } from "../data/events";
 import { dayKey, formatLongDay, formatTime, zoneLabel } from "../data/format";
 import { portal, useResource } from "../data/mock";
+import { useSession } from "../data/auth";
 import { MorphSkeleton } from "@synan/ui/components";
 
 const sections = [
@@ -85,27 +86,50 @@ function useHashLanding(ready: boolean) {
   }, [ready, hash]);
 }
 
-function StatusCell({ event }: { event: EventRecord }) {
-  const statusText =
-    event.membership === "checked-in" ? "You're checked in" : event.membership === "registered" ? "You're registered" : "Not registered yet";
+function StatusCell({ event, signedIn }: { event: EventRecord; signedIn: boolean }) {
+  // Signed out, we cannot know whether this person registered: offer both doors.
+  const membership = signedIn ? event.membership : "none";
+  const statusText = event.closed
+    ? "This event has ended"
+    : membership === "checked-in"
+      ? "You're checked in"
+      : membership === "registered"
+        ? "You're registered"
+        : "Registration is open";
+  const line = event.closed
+    ? "Registration has closed."
+    : membership === "none"
+      ? "Register in three short steps and we'll email your pass. You collect a wristband when you arrive."
+      : "Your pass is all you need at the entrance.";
   const cta =
-    event.closed || event.membership !== "none"
+    membership !== "none"
       ? { label: "View your pass", path: "/pass" }
-      : { label: "Register", path: `/events/${event.slug}/register` };
+      : event.closed
+        ? { label: "Browse other events", path: "/" }
+        : { label: "Register", path: `/events/${event.slug}/register` };
   return (
-    <div className="flex flex-col justify-between gap-6 px-4 py-8 sm:px-6 md:px-8">
+    <div className="flex h-full flex-col justify-center gap-6 px-4 py-8 sm:px-6 md:px-8 lg:py-10">
       <div>
-        <p className="text-13 font-medium text-muted-foreground">Your status</p>
+        <p className="text-13 font-medium text-muted-foreground">Your place</p>
         <p className="mt-2 font-display text-28 leading-tight">{statusText}</p>
-        <p className="mt-2 text-15 text-muted-foreground">
-          {event.membership === "none"
-            ? "Register to receive your pass. You'll collect a wristband when you arrive."
-            : "Your pass is all you need at the entrance."}
-        </p>
+        <p className="mt-2 text-15 leading-relaxed text-muted-foreground">{line}</p>
       </div>
-      <Link to={cta.path} className={buttonClass("primary", "md", "w-full")}>
-        {cta.label}
-      </Link>
+      <div>
+        <Link to={cta.path} className={buttonClass("primary", "md", "w-full")}>
+          {cta.label}
+        </Link>
+        {!signedIn && !event.closed ? (
+          <p className="mt-3 text-15 text-muted-foreground">
+            Already registered?{" "}
+            <Link
+              to={`/sign-in?next=${encodeURIComponent("/pass")}`}
+              className="inline-flex min-h-11 items-center text-foreground underline underline-offset-4 hover:text-brand"
+            >
+              Sign in to see your pass
+            </Link>
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -142,10 +166,10 @@ function SessionList({ event }: { event: EventRecord }) {
                   </div>
                   {live && session.occupancy > 0 ? (
                     <div className="self-center">
-                      <div className="mb-1.5 flex justify-between text-13 text-muted-foreground">
-                        <span>Room</span>
-                        <span className={`font-mono ${pct >= 100 ? "text-destructive" : pct >= 85 ? "text-warning" : ""}`}>{pct}%</span>
-                      </div>
+                      <p className={`mb-1.5 text-right text-13 ${pct >= 100 ? "text-destructive" : pct >= 85 ? "text-warning" : "text-muted-foreground"}`}>
+                        {pct >= 100 ? "Full" : pct >= 85 ? "Nearly full · " : ""}
+                        {pct < 100 ? <><span className="font-mono">{pct}%</span> full</> : null}
+                      </p>
                       <AnimatedBar value={pct} tone={barTone(pct)} label={`${session.room}: ${pct}% full`} />
                     </div>
                   ) : (
@@ -174,6 +198,7 @@ function DetailSkeleton() {
 
 export default function EventDetail() {
   const { slug } = useParams<{ slug?: string }>();
+  const session = useSession();
   const resource = useResource(`event:${slug}:${portal.version()}`, () => getEventDetail(slug) ?? null);
   const ready = resource.status === "ready" && resource.data !== null;
   const active = useActiveSection(ready);
@@ -221,7 +246,7 @@ export default function EventDetail() {
 
   return (
     <PageShell bleed>
-      <section className="grid border-b border-border lg:grid-cols-[minmax(0,1fr)_24rem]">
+      <section className="grid grid-cols-1 border-b border-border lg:grid-cols-[minmax(0,1fr)_24rem]">
         <div className="px-4 py-10 sm:px-6 md:px-8 md:py-16">
           <Link to="/" className="inline-flex min-h-11 items-center text-15 text-muted-foreground hover:text-foreground">
             ← All events
@@ -249,11 +274,11 @@ export default function EventDetail() {
           </p>
         </div>
         <div className="border-t border-border lg:border-t-0 lg:border-l">
-          <StatusCell event={event} />
+          <StatusCell event={event} signedIn={session !== null} />
         </div>
       </section>
 
-      <div className="grid md:grid-cols-[14rem_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 md:grid-cols-[14rem_minmax(0,1fr)]">
         {/* The rail: sticky, scroll-spied. On phones it becomes a sticky row of cells. */}
         <nav
           aria-label="On this page"

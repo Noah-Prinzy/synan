@@ -26,6 +26,7 @@ import { canonicalJson } from "./audit.js";
 import type { AuditService } from "./audit.js";
 import type { AlertService } from "./alerts.js";
 import {
+  blockThreshold,
   CLOCK_FAULT_MS,
   decide,
   evaluateAccess,
@@ -38,12 +39,17 @@ import {
 import { OccupancyProjection, type RoomMeta } from "./occupancy.js";
 import type { AuthContext } from "./principal.js";
 import type { QrService } from "./qr.js";
+import { NOTE, type NotificationService } from "./notifications.js";
 import { sha256b64url } from "../lib/crypto.js";
 import type { Clock } from "../lib/clock.js";
 import { KeyedMutex } from "../lib/mutex.js";
 import { EventEmitter } from "node:events";
 import type { CarrierRow, CheckpointRow, CredentialRow, EventRow, OccupancyAdjustmentRow, Repos, ScanRow } from "../repo/types.js";
 import type { TelemetryHub } from "../realtime/telemetry-hub.js";
+import { MinuteBuckets } from "../http/rate-limit.js";
+
+/** Default per-checkpoint scan limit (config RATE_CHECKPOINT_SCANS_PER_MIN). */
+export const CHECKPOINT_SCANS_PER_MIN = 3000;
 
 const PASSING_LOCAL: ReadonlySet<ScanResult> = new Set(["admitted", "already_inside", "offline_queued"]);
 
@@ -102,8 +108,21 @@ export class ScanService {
     private readonly audit: AuditService,
     private readonly telemetry: TelemetryHub,
     private readonly clock: Clock,
-    private readonly opts: { offlineSyncGraceMs: number } = { offlineSyncGraceMs: 3600_000 },
+    private readonly opts: { offlineSyncGraceMs: number; checkpointScansPerMin?: number } = { offlineSyncGraceMs: 3600_000 },
+    private readonly notes: NotificationService | null = null,
   ) {}
+
+  /** Per-checkpoint scan load by minute of judged time (03 §4); kept a day past the clock-drift bound. */
+  private readonly gateLoad = new MinuteBuckets(MAX_CLOCK_DRIFT_MS + 3600_000);
+
+  private get cpLimit() {
+    return this.opts.checkpointScansPerMin ?? CHECKPOINT_SCANS_PER_MIN;
+  }
+
+  /** Scans this instance refused at a checkpoint over its per-minute limit, in the 15 minutes up to `nowMs`. */
+  rateLimitedRecently(checkpointId: string, nowMs: number): number {
+    return this.gateLoad.refused(checkpointId, nowMs - 15 * 60_000, nowMs);
+  }
 
   /* ------------------------------------------------------------ projection */
 
@@ -172,7 +191,7 @@ export class ScanService {
         if (s.carrier_kind === "qr_email" && s.direction === "in" && !proj.emailRedeemScan.has(eph)) proj.emailRedeemScan.set(eph, s.id);
       } else if (isDenial(s.result)) proj.recordDenial(eph, at);
     }
-    this.telemetry.prime(eventId, proj.allRooms(), proj.allZones());
+    this.telemetry.prime(eventId, proj.allRooms(), proj.allZones(), proj.zoneOf.size);
     return proj;
   }
 
@@ -444,6 +463,13 @@ export class ScanService {
         rogue.set(`${cp.id}|outside shift`, { checkpointId: cp.id, why: late ? "synced after shift grace" : "outside shift" });
         continue;
       }
+      // Per-checkpoint limit (03 §4), on top of the per-person request limit and the 60 s debounce. Counted
+      // in the minute the scan is judged at; a refused item is not stored, so it can be resent as it is.
+      if (!this.gateLoad.take(cp.id, at, this.cpLimit, receivedAt)) {
+        reject(s, "RATE_LIMITED", "This checkpoint is over its per-minute scan limit; keep the scan queued and resend it.");
+        rogue.set(`${cp.id}|flood`, { checkpointId: cp.id, why: `over the checkpoint scan limit of ${this.cpLimit} per minute` });
+        continue;
+      }
       accepted.push({ s, i, cp, at, skewMs });
     }
 
@@ -462,8 +488,8 @@ export class ScanService {
 
     // Telemetry: only what changed; the hub coalesces to ≤ 4 Hz.
     const zoneChanges = proj.allZones().filter((z) => zonesBefore.get(z.zone_id) !== z.occupancy);
-    if (changed.size || zoneChanges.length) {
-      this.telemetry.update(event.id, [...changed].filter((id) => proj.rooms.has(id)).map((id) => proj.roomView(id)), zoneChanges);
+    if (changed.size || zoneChanges.length || this.telemetry.onSiteOf(event.id) !== proj.zoneOf.size) {
+      this.telemetry.update(event.id, [...changed].filter((id) => proj.rooms.has(id)).map((id) => proj.roomView(id)), zoneChanges, proj.zoneOf.size);
     }
 
     return {
@@ -537,11 +563,14 @@ export class ScanService {
     let credential = r.credential;
     // Impossible travel → suspend for review before deciding (01 §7, D-06).
     let travelDetected = false;
+    let becameSuspended = false;
+    let roomFilled: string | null = null;
     if (credential && credential.state !== "suspended_review" && credential.state !== "revoked" && credential.state !== "replaced") {
       const prev = proj.lastRead.get(eph) ?? null;
       const transit = await this.transitLookup(event.venue_id);
       if (isImpossibleTravel(prev, { checkpointId: cp.id, atMs: at }, transit)) {
         travelDetected = true;
+        becameSuspended = true;
         credential = await this.repos.credentials.update(credential.id, { state: "suspended_review" });
         pendingAlerts.push({
           spec: {
@@ -678,7 +707,10 @@ export class ScanService {
     if (credential && passed) {
       proj.lastPassage.set(`${eph}|${cp.id}`, at);
       if (recorded === "admitted") {
+        const fullBefore = room ? proj.count(room.id) >= blockThreshold(room) : true;
         const { impliedExit, fault } = this.applyMovement(proj, eph, cp, direction, at, changed, scanId);
+        // The room has just reached its blocking threshold: sessions running in it are announced as full.
+        if (room && !fullBefore && room.capacity > 0 && proj.count(room.id) >= blockThreshold(room)) roomFilled = room.id;
         if (impliedExit) {
           // Recorded against the door they were counted in through, so the room is derivable from it.
           const exitRow: ScanRow = {
@@ -727,8 +759,12 @@ export class ScanService {
       proj.recordDenial(eph, at);
     }
     if (suspendForConflict && credential && credential.state !== "revoked") {
+      if (credential.state !== "suspended_review") becameSuspended = true;
       credential = await this.repos.credentials.update(credential.id, { state: "suspended_review" });
     }
+    // Attendee notices: generic text only (no gate, room or time of the passage).
+    if (becameSuspended && credential) await this.notes?.forCredential(credential.id, NOTE.passReview);
+    if (roomFilled) await this.notes?.roomFull(event.id, roomFilled, at);
 
     // Alerts carry the server's time; the scan's own time is on the scans they name.
     const alertIds: string[] = [];

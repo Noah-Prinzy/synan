@@ -12,7 +12,7 @@
 import { randomUUID } from "node:crypto";
 import type { Express } from "express";
 import { ContractError } from "@synan/contracts/errors";
-import { endpoints } from "@synan/contracts/rest";
+import { endpoints, GridShape } from "@synan/contracts/rest";
 import type { AppContext } from "../app.js";
 import { mount } from "../http/route.js";
 import type { CheckpointRow, RoomRow, ScanRow, VenueRow, ZoneRow } from "../repo/types.js";
@@ -20,14 +20,34 @@ import type { CheckpointRow, RoomRow, ScanRow, VenueRow, ZoneRow } from "../repo
 type Json = Record<string, unknown>;
 
 export const venueDto = (v: VenueRow) => ({ id: v.id, org_id: v.org_id, name: v.name, address: v.address, timezone: v.timezone, city: v.city });
-export const zoneDto = (z: ZoneRow) => ({ id: z.id, venue_id: z.venue_id, name: z.name, floor: z.floor, geometry: z.geometry_jsonb });
+/** The venue grid's extent: the smallest box holding every grid shape; null when there is none. */
+export function gridOf(shapes: readonly unknown[]): { w: number; h: number } | null {
+  let w = -1;
+  let h = -1;
+  for (const s of shapes) {
+    const g = GridShape.safeParse(s);
+    if (!g.success) continue;
+    if (g.data.kind === "rect") {
+      w = Math.max(w, g.data.x + g.data.w);
+      h = Math.max(h, g.data.y + g.data.h);
+    } else {
+      for (const [px, py] of g.data.points) {
+        w = Math.max(w, px);
+        h = Math.max(h, py);
+      }
+    }
+  }
+  return w < 0 ? null : { w, h };
+}
+
+export const zoneDto =(z: ZoneRow) => ({ id: z.id, venue_id: z.venue_id, name: z.name, floor: z.floor, geometry: z.geometry_jsonb });
 export const roomDto = (r: RoomRow) => ({
   id: r.id, venue_id: r.venue_id, zone_id: r.zone_id, name: r.name, capacity: r.capacity, warn_at_pct: r.warn_at_pct,
   block_at_pct: r.block_at_pct, continuous: r.continuous_bool, capacity_policy: r.capacity_policy, geometry: r.geometry_jsonb,
 });
 export const checkpointDto = (c: CheckpointRow) => ({
   id: c.id, venue_id: c.venue_id, zone_id: c.zone_id, room_id: c.room_id, direction: c.direction,
-  perimeter: c.perimeter_bool, hardware_id: c.hardware_id, label: c.label,
+  perimeter: c.perimeter_bool, hardware_id: c.hardware_id, label: c.label, position: c.position_jsonb ?? null,
 });
 const scanDto = (s: ScanRow) => ({
   id: s.id, event_id: s.event_id, checkpoint_id: s.checkpoint_id, ephemeral_id: null, carrier_kind: s.carrier_kind, result: s.result,
@@ -102,7 +122,7 @@ export function layoutRoutes(x: Express, app: AppContext) {
     const [zones, rooms, cps] = await Promise.all([
       app.repos.venues.zonesOfVenue(v.id), app.repos.venues.roomsOfVenue(v.id), app.repos.venues.checkpointsOfVenue(v.id),
     ]);
-    return { ...venueDto(v), zones: zones.map(zoneDto), rooms: rooms.map(roomDto), checkpoints: cps.map(checkpointDto) };
+    return { ...venueDto(v), zones: zones.map(zoneDto), rooms: rooms.map(roomDto), checkpoints: cps.map(checkpointDto), grid: gridOf([...zones, ...rooms].map((r) => r.geometry_jsonb)) };
   });
 
   /* ---- zones ---- */
@@ -177,7 +197,7 @@ export function layoutRoutes(x: Express, app: AppContext) {
     await hardwareFree(body.venue_id, body.hardware_id);
     const row: CheckpointRow = {
       id: randomUUID(), venue_id: body.venue_id, zone_id: body.zone_id, room_id: body.room_id, direction: body.direction,
-      perimeter_bool: body.perimeter, hardware_id: body.hardware_id, label: body.label,
+      perimeter_bool: body.perimeter, hardware_id: body.hardware_id, label: body.label, position_jsonb: body.position ?? null,
     };
     await app.repos.fixtures.checkpoint(row);
     await audit(ctx!.sub, "checkpoint.create", `checkpoint:${row.id}`, { venue_id: row.venue_id, perimeter: row.perimeter_bool });
@@ -189,8 +209,12 @@ export function layoutRoutes(x: Express, app: AppContext) {
     if (!cur) throw new ContractError("NOT_FOUND");
     await checkCheckpoint(cur.venue_id, body.zone_id ?? cur.zone_id, body.room_id !== undefined ? body.room_id : cur.room_id);
     if (body.hardware_id !== undefined) await hardwareFree(cur.venue_id, body.hardware_id, cur.id);
-    const { perimeter, ...rest } = body;
-    const updated = await app.repos.venues.updateCheckpoint(params.id, { ...rest, ...(perimeter !== undefined ? { perimeter_bool: perimeter } : {}) });
+    const { perimeter, position, ...rest } = body;
+    const updated = await app.repos.venues.updateCheckpoint(params.id, {
+      ...rest,
+      ...(perimeter !== undefined ? { perimeter_bool: perimeter } : {}),
+      ...(position !== undefined ? { position_jsonb: position } : {}), // null removes the marker
+    });
     await audit(ctx!.sub, "checkpoint.update", `checkpoint:${params.id}`, { fields: Object.keys(body) });
     app.scans.forgetProjections();
     return checkpointDto(updated);

@@ -4,8 +4,28 @@ import { Email, IanaTimezone, Id, IsoDateTime, pageOf, PageQuery } from "../comm
 import { CapacityPolicy, CarrierKind, CheckpointDirection, GateLinkState, ScanResult } from "../enums/index.js";
 import { ADMIN_ONLY, endpoint, IdParam, OPERATORS, type Access } from "./endpoint.js";
 
-/** Optional map geometry. Abstract zone-grid shapes only, never real coordinates of people (D-04). */
-export const Geometry = z.record(z.string(), z.unknown()).nullable();
+/**
+ * Map geometry on the venue's abstract grid (integer grid units, origin top-left). Shapes of rooms
+ * and zones only — never coordinates of people (D-04).
+ */
+const GridUnit = z.number().int().min(0).max(10_000);
+/** Rooms are drawn as rectangles. */
+export const GridRect = z.object({ kind: z.literal("rect"), x: GridUnit, y: GridUnit, w: GridUnit.min(1), h: GridUnit.min(1) });
+export type GridRect = z.infer<typeof GridRect>;
+/** Zones are drawn as polygons (3–64 vertices). */
+export const GridPolygon = z.object({ kind: z.literal("polygon"), points: z.array(z.tuple([GridUnit, GridUnit])).min(3).max(64) });
+export type GridPolygon = z.infer<typeof GridPolygon>;
+/** What a write accepts for `geometry` (validated server-side); either shape on a room or a zone. */
+export const GridShape = z.discriminatedUnion("kind", [GridRect, GridPolygon]);
+export type GridShape = z.infer<typeof GridShape>;
+/** Where a gate sits on the grid and which edge it faces (`checkpoints.position_jsonb`). */
+export const GridPoint = z.object({ x: GridUnit, y: GridUnit, side: z.enum(["n", "e", "s", "w"]) });
+export type GridPoint = z.infer<typeof GridPoint>;
+/** The grid's extent: the smallest box holding every room and zone shape of the venue. */
+export const VenueGrid = z.object({ w: z.number().int().min(0), h: z.number().int().min(0) });
+export type VenueGrid = z.infer<typeof VenueGrid>;
+/** Read shape: a grid shape, or (older data) any object, or null. Writes accept GridShape only. */
+export const Geometry = z.union([GridShape, z.record(z.string(), z.unknown())]).nullable();
 
 export const Organization = z.object({
   id: Id,
@@ -37,7 +57,7 @@ export const Zone = z.object({
   geometry: Geometry,
 });
 export type Zone = z.infer<typeof Zone>;
-export const CreateZone = Zone.omit({ id: true, venue_id: true });
+export const CreateZone = Zone.omit({ id: true, venue_id: true }).extend({ geometry: GridShape.nullable() });
 export const UpdateZone = CreateZone.partial();
 
 export const Room = z.object({
@@ -55,7 +75,7 @@ export const Room = z.object({
   geometry: Geometry,
 });
 export type Room = z.infer<typeof Room>;
-export const CreateRoom = Room.omit({ id: true });
+export const CreateRoom = Room.omit({ id: true }).extend({ geometry: GridShape.nullable() });
 export const UpdateRoom = CreateRoom.partial();
 
 export const RecountRequest = z.object({
@@ -83,6 +103,11 @@ export const Checkpoint = z.object({
   perimeter: z.boolean(),
   hardware_id: z.string().max(200).nullable(),
   label: z.string().max(200),
+  /**
+   * Where the gate sits on the venue grid (a gate marker, never a person's location — D-04). Null or
+   * absent: not placed. On update, null removes it and omitting it leaves it unchanged.
+   */
+  position: GridPoint.nullable().optional(),
 });
 export type Checkpoint = z.infer<typeof Checkpoint>;
 
@@ -114,16 +139,34 @@ export const ScanRecord = z.object({
 });
 export type ScanRecord = z.infer<typeof ScanRecord>;
 
+/**
+ * Gate health from the devices at each checkpoint (fixed readers, kiosks and staff phones all
+ * heartbeat as devices). `link_state`: `offline` after 60 s without a heartbeat or never heard from
+ * (`heartbeat_age_s` null); `degraded` when the link is up but a device still holds unsynced scans
+ * or its clock is more than two minutes out; otherwise `online`.
+ */
 export const GateHealth = z.object({
   checkpoint_id: Id,
   label: z.string(),
   link_state: GateLinkState,
+  /** Seconds since the last heartbeat; null when the gate has never been heard from. */
+  heartbeat_age_s: z.number().int().min(0).nullable().optional(),
+  perimeter: z.boolean().optional(),
+  last_scan_at: IsoDateTime.nullable().optional(),
+  /** Scans in the last 15 minutes (implied exits excluded). */
+  scans_last_15m: z.number().int().min(0).optional(),
+  /** Staff assigned and on shift now (not handed over). */
+  staff_on_duty: z.number().int().min(0).optional(),
   last_heartbeat_at: IsoDateTime.nullable(),
   queue_depth: z.number().int().min(0),
   clock_offset_ms: z.number().int().nullable(),
   /** Offset beyond two minutes (D-14). */
   clock_fault: z.boolean(),
   scans_last_minute: z.number().int().min(0),
+  /** The gate's grid position (as Checkpoint.position); null when not placed. */
+  position: GridPoint.nullable().optional(),
+  /** Scans refused in the last 15 minutes by the checkpoint's per-minute scan limit (03 §4; this API instance). */
+  scans_rate_limited_15m: z.number().int().min(0).optional(),
 });
 export type GateHealth = z.infer<typeof GateHealth>;
 
@@ -133,7 +176,8 @@ export const venueEndpoints = {
   createOrganization: endpoint({ method: "POST", path: "/organizations", access: ADMIN_ONLY, audited: true, body: CreateOrganization, response: Organization, status: 201 }),
   listVenues: endpoint({ method: "GET", path: "/venues", access: OPERATORS, query: PageQuery, response: pageOf(Venue) }),
   createVenue: endpoint({ method: "POST", path: "/venues", access: ADMIN_ONLY, audited: true, body: CreateVenue, response: Venue, status: 201 }),
-  getVenue: endpoint({ method: "GET", path: "/venues/:id", access: OPERATORS, params: IdParam, response: Venue.extend({ zones: z.array(Zone), rooms: z.array(Room), checkpoints: z.array(Checkpoint) }) }),
+  /** `grid` (additive) is derived from the room and zone shapes; null when none has a grid shape. */
+  getVenue: endpoint({ method: "GET", path: "/venues/:id", access: OPERATORS, params: IdParam, response: Venue.extend({ zones: z.array(Zone), rooms: z.array(Room), checkpoints: z.array(Checkpoint), grid: VenueGrid.nullable().optional() }) }),
   listZones: endpoint({ method: "GET", path: "/venues/:id/zones", access: OPERATORS, params: IdParam, response: z.object({ items: z.array(Zone) }) }),
   createZone: endpoint({ method: "POST", path: "/venues/:id/zones", access: ADMIN_ONLY, audited: true, params: IdParam, body: CreateZone, response: Zone, status: 201 }),
   updateZone: endpoint({ method: "PUT", path: "/zones/:id", access: ADMIN_ONLY, audited: true, params: IdParam, body: UpdateZone, response: Zone }),

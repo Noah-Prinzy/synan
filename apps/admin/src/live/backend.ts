@@ -11,6 +11,7 @@
  *   ?ambient=0          no background traffic
  *   ?scenario=<name>    play a named scenario on load;  &loop=1 to repeat it
  *   ?fps=1              show the frame-time sampler
+ *   ?setup=fresh        no organisation or venues yet (D0 first run, empty venue list)
  */
 import { DEMO_NOW, MockClock } from "@synan/mock";
 import { createCommandMock } from "@synan/mock/command";
@@ -33,6 +34,8 @@ export const devParams = {
   scenario: params.get("scenario"),
   loop: params.get("loop") === "1",
   fps: params.get("fps") === "1",
+  /** First run (D0): no organisation and no venues yet. */
+  freshSetup: params.get("setup") === "fresh",
 };
 
 export const clock = new MockClock(DEMO_NOW);
@@ -43,9 +46,13 @@ export const backend = createCommandMock({
   noLiveEvent: devParams.noLive,
   latencyMs: devParams.slow ? 2500 : 300,
   failFirstLoad: devParams.fail,
+  freshOrganization: devParams.freshSetup,
 });
 
 export const api = backend.api;
+
+/** The configure side: first run, venues, events, the wizard and the event workspace. */
+export const configure = backend.configure;
 
 export function connect(eventId: string): LiveTransport | null {
   const transport = backend.realtimeFor(eventId);

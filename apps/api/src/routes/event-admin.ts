@@ -17,6 +17,7 @@ import { endpoints, ProfileField, type EventAdmin } from "@synan/contracts/rest"
 import { ATTENDEE_TIER_VALUES, ROLE_VALUES } from "@synan/contracts/enums";
 import type { AppContext } from "../app.js";
 import { mount } from "../http/route.js";
+import { JOB } from "../jobs.js";
 import type { AccessRuleRow, EventRoomRow, EventRow } from "../repo/types.js";
 import { canSeeEvent, detailOf } from "./events.js";
 
@@ -143,11 +144,31 @@ export function eventAdminRoutes(x: Express, app: AppContext) {
       from: e.state, to: body.state,
     });
     app.scans.forgetProjections();
+    if (body.state === "closed") app.jobs.kick(JOB.scheduledReport); // "on close" report schedules fire now
     return adminDto(app, updated);
   });
 
-  mount(x, app, endpoints.eventSummary, async ({ params }) => {
+  mount(x, app, endpoints.eventSummary, async ({ params, query }) => {
     const e = await eventOr404(params.id);
+    // Per-minute series from the per-gate rollups (both backends keep them as scans arrive), zero-filled.
+    const last = Math.floor(app.clock.now() / 60_000) * 60_000 - 60_000;
+    const first = last - (query.series_minutes - 1) * 60_000;
+    const byMinute = new Map<number, { scans: number; admitted: number; denied: number }>();
+    if (query.series_minutes > 0) {
+      for (const r of await app.repos.rollups.gateRates(e.id)) {
+        const t = r.minute_start.getTime();
+        if (t < first || t > last) continue;
+        const m = byMinute.get(t) ?? { scans: 0, admitted: 0, denied: 0 };
+        m.scans += r.scans;
+        m.admitted += r.admitted;
+        m.denied += r.denied;
+        byMinute.set(t, m);
+      }
+    }
+    const series = Array.from({ length: query.series_minutes }, (_, i) => {
+      const t = first + i * 60_000;
+      return { at: new Date(t).toISOString(), ...(byMinute.get(t) ?? { scans: 0, admitted: 0, denied: 0 }) };
+    });
     const regs = (await app.repos.registrations.forEvent(e.id)).filter((r) => r.state !== "cancelled");
     const byTier = Object.fromEntries(ATTENDEE_TIER_VALUES.map((t) => [t, regs.filter((r) => r.tier === t).length])) as Record<(typeof ATTENDEE_TIER_VALUES)[number], number>;
     const onSite = e.state === "live" ? (await app.scans.projection(e.id)).zoneOf.size : 0;
@@ -160,6 +181,7 @@ export function eventAdminRoutes(x: Express, app: AppContext) {
       by_tier: byTier,
       open_alerts: open.length,
       as_of: new Date(app.clock.now()).toISOString(),
+      series,
     };
   });
 
@@ -211,9 +233,9 @@ export function eventAdminRoutes(x: Express, app: AppContext) {
     let gatesOffline = 0;
     for (const e of live) {
       onSite += (await app.scans.projection(e.id)).zoneOf.size;
-      for (const cp of await app.repos.venues.checkpointsOfVenue(e.venue_id)) {
-        const g = app.scans.gates.get(cp.id);
-        if (!g || now - g.lastSeenAt > 60_000) gatesOffline++;
+      // From the devices table (every instance agrees): never heard from or silent for 60 s.
+      for (const g of await app.repos.devices.gateHealth(e.venue_id, { eventId: e.id, now: new Date(now) })) {
+        if (g.link_state !== "online") gatesOffline++;
       }
     }
     const open = await app.repos.alerts.list({ state: "open", limit: 100_000 });

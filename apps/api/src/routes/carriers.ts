@@ -17,6 +17,7 @@ import { carrierDto, credentialRef } from "../domain/credential-service.js";
 import { currentCheckpoints, mayRunDesk } from "../domain/scope.js";
 import { nfcIdentifier } from "../domain/scan-service.js";
 import { mount } from "../http/route.js";
+import { NOTE } from "../domain/notifications.js";
 import type { BindStatus, CredentialRow } from "../repo/types.js";
 
 const invalid = (path: string, message: string) => new ContractError("VALIDATION_FAILED", message, [{ path, message }]);
@@ -87,6 +88,7 @@ export function carrierRoutes(x: Express, app: AppContext) {
     if (!cred) throw new ContractError("NO_CREDENTIAL");
     const r = await app.repos.carriers.bind({ identifier: nfcIdentifier(body.identifier), credentialId: cred.id, actorId: ctx!.sub, now: now() });
     if (r.status !== "bound") throw bindError(r.status, "body.identifier");
+    await app.notifications.forCredential(cred.id, NOTE.bandBound);
     return carrierDto((await app.repos.carriers.forCredential(cred.id)).find((c) => c.id === r.carrier_id)!);
   });
 
@@ -99,6 +101,7 @@ export function carrierRoutes(x: Express, app: AppContext) {
       const r = await app.repos.carriers.rebind({ credentialId: cred.id, newIdentifier, disposition: "retired", actorId: ctx!.sub, now: now() });
       if (r.status !== "rebound") throw bindError(r.status, "body.identifier");
       await audit(ctx!.sub, "carrier.replace_damaged", `credential:${cred.id}`, { reason: body.reason, old_carrier_id: r.old_carrier_id, new_carrier_id: r.new_carrier_id });
+      await app.notifications.forCredential(cred.id, NOTE.bandBound);
       return carrierDto((await app.repos.carriers.forCredential(cred.id)).find((c) => c.id === r.new_carrier_id)!);
     }
     // Lost band (01 §5.3): band lost, credential replaced, a new credential issued, the new band bound — one step.
@@ -113,6 +116,7 @@ export function carrierRoutes(x: Express, app: AppContext) {
     if (fresh.registration_id) {
       await app.credentials.sendEmailedQr(fresh.id).catch((e: unknown) => console.error("[mail] pass delivery failed:", e instanceof Error ? e.message : String(e)));
     }
+    await app.notifications.forCredential(fresh.id, NOTE.passReissued);
     app.scans.forgetProjections();
     return carrierDto((await app.repos.carriers.forCredential(fresh.id)).find((c) => c.id === r.new_carrier_id)!);
   });
@@ -153,6 +157,7 @@ export function carrierRoutes(x: Express, app: AppContext) {
     // The attendee is the actor of the binding; the audit entry names the attendee id.
     const r = await app.repos.carriers.bind({ identifier, credentialId: cred.id, actorId: attendeeId, now: now() });
     if (r.status !== "bound") throw bindError(r.status, body.binding.via === "nfc" ? "body.binding.uid" : "body.binding.code");
+    await app.notifications.forCredential(cred.id, NOTE.bandBound);
     return app.credentials.myCredential(attendeeId, body.event_id);
   });
 }

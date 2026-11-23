@@ -1,4 +1,5 @@
 // Auth mock layer using localStorage
+import { portal } from "./mock";
 const STORAGE_KEY = "syn.session";
 const MAGIC_PREFIX = "syn-magic-";
 
@@ -35,7 +36,7 @@ export function signIn(email: string): Session {
   const emailTrimmed = email.trim();
   const session: Session = {
     email: emailTrimmed,
-    name: emailTrimmed.split("@")[0] || "User",
+    name: portal.holderName,
   };
   setStoredSession(session);
   return session;
@@ -48,7 +49,7 @@ export function verifyToken(token: string): Session | null {
     const emailTrimmed = decodeURIComponent(email).trim();
     const session: Session = {
       email: emailTrimmed,
-      name: emailTrimmed.split("@")[0] || "User",
+      name: portal.holderName,
     };
     setStoredSession(session);
     return session;
@@ -59,6 +60,14 @@ export function verifyToken(token: string): Session | null {
 /** Mock: tokens starting syn-expired- are expired; anything else not syn-magic- is invalid. */
 export function linkProblem(token: string): "expired" | "invalid" {
   return token.startsWith("syn-expired-") ? "expired" : "invalid";
+}
+
+/** PATCH /users/:id/profile (full_name). Mock: the session keeps the new name. */
+export async function updateName(name: string): Promise<void> {
+  const current = getStoredSession();
+  if (!current) throw new Error("signed out");
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  setStoredSession({ ...current, name: name.trim() });
 }
 
 export function signOut(): void {

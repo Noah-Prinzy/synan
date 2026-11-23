@@ -138,13 +138,23 @@ attendee sheet has no name or email columns.
   AES-256-GCM in 64 KiB chunks. Store the stream's `keyId` in `exported_files.key_id`. Keep a retired data
   key for at least the retention period (7 days) after rotation.
 - **Email outbox**: `enqueueEmail` (recipient and content encrypted) → enqueue `JOB_QUEUES.email` with
-  `{ outbox_id }` in the same transaction → worker `claimEmail` (null if already sent or in flight) →
-  `finishEmail`.
+  `{ outbox_id }` in the same transaction → worker `claimEmail` (null if already sent, in flight, or out of
+  attempts) → `finishEmail`. A claim is a lease (`claimed_at`; `EMAIL_CLAIM_LEASE_SECONDS` = 120 s, or
+  `leaseSeconds`): a row left `sending` by a crashed worker is claimed again once its lease has run out, and the
+  lost try counts as an attempt. Keep the mail provider timeout well below the lease. `emailsDue` lists claimable
+  ids (oldest first, stale `sending` included; no address or content) for a sweep.
 - **Notifications**: `notifyAttendee`, `broadcastNotification` (an event's confirmed registrations, optionally
   one tier), `listNotifications` (contract shape, with read state), `markNotificationsRead`.
   Erasure deletes an attendee's notifications and read receipts.
-- **Cleanup**: `cleanupDelivery` (sent/failed email after 7 days, expired notifications, finished schedules
-  after 30 days) on `JOB_QUEUES.deliveryCleanup`.
+- **Cleanup**: `cleanupDelivery` (sent/failed email after 7 days, email abandoned in `sending` for a day marked
+  failed first, expired notifications, finished schedules after 30 days) on `JOB_QUEUES.deliveryCleanup`.
+- **Retention (D-03)**: `auditPrune` (audit entries older than 12 months; the hash of the last pruned entry is kept
+  as the chain anchor, so `auditVerify` still passes) and `alertsPrune({ olderThanMonths, now })` (breach alerts
+  older than 12 months, minimum 12, with their finished webhook deliveries; one audit entry per run). Both run
+  from a job worker (`app_api`), daily.
+- **Gate positions**: `checkpoints.position_jsonb` is the contracts `GridPoint` (`{ x, y, side }`, integers
+  0–10 000, side n/e/s/w; a CHECK enforces the shape), typed `CheckpointPosition`; `gateHealth` returns it as
+  `position`. The venue grid extent is derived, not stored.
 - **Devices**: `token_version` goes up on every token change and whenever a device leaves `active` (a trigger,
   whoever writes). Check it per request with `deviceTokenVersion`; `rotateDeviceTokenVersioned` returns it.
 
@@ -209,6 +219,8 @@ live in hand-written migrations that `push` does not know about.
 | `0014_phase4_flows.sql` | Hand-written: registration, data requests, webhooks (secret enforced encrypted), report claim, session resets, purge due, staff, devices, gate health, event duplication and readiness, `app_jobs` role and job-schema grants |
 | `0019_delivery_tables.sql` | Generated: `report_schedules`, `exported_files`, `email_outbox`, `notifications`, `notification_reads`, `event_reports.format` / `include_identity`, `devices.token_version` |
 | `0020_delivery_functions.sql` | Hand-written: schedule claim and finish, exported-file record / due / mark deleted, email claim and finish, notifications for an attendee, delivery cleanup, device token-version trigger, erasure removing notifications |
+| `0021_email_lease_checkpoint_position.sql` | Generated: `email_outbox.claimed_at`, `checkpoints.position_jsonb` with the `GridPoint` check |
+| `0022_email_lease_retention.sql` | Hand-written: email claim lease and `email_due`, cleanup of abandoned sends, `gate_health` with position, `alerts_prune` |
 
 ## SQL functions
 
@@ -219,7 +231,8 @@ live in hand-written migrations that `push` does not know about.
 | `purge_event_movement_data(event_id, force, actor_id)` | `purgeEventMovementData()` |
 | `rebuild_event_rollups(event_id)` | `rebuildEventRollups()` |
 | `take_attendance_snapshot(event_id, at)` | `takeAttendanceSnapshot()` |
-| `audit_verify()` · `audit_prune()` | `auditVerify()` · `auditPrune()` |
+| `audit_verify()` · `audit_prune()` · `alerts_prune(months, now)` | `auditVerify()` · `auditPrune()` · `alertsPrune()` |
+| `email_claim(id, max_attempts, now, lease)` · `email_due(max_attempts, limit, lease, now)` | `claimEmail()` · `emailsDue()` |
 | `pii_vault.erase_attendee(attendee_id, actor_id)` | `eraseAttendee()` (vault connection) |
 | `auth_start_session` · `auth_rotate_session` · `auth_revoke_family` · `auth_revoke_holder` | `startSession()` · `rotateSession()` · `revokeFamily()` · `revokeHolderSessions()` |
 | `auth_redeem_link` · `ws_consume_ticket` · `auth_cleanup` | `redeemLink()` · `consumeWsTicket()` · `cleanupAuthState()` |
