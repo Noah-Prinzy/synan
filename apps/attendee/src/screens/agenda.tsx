@@ -1,56 +1,38 @@
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
-import { groupAgenda, getSpaceLeft, type AgendaGroupItem } from "../data/agenda";
-import { useSession } from "../data/auth";
-import { PageShell, Eyebrow } from "../components/page";
+import { pageTitle } from "@synan/ui/brand";
+import { groupAgenda, getSpaceLeft, type AgendaGroupItem, type AgendaSession } from "../data/agenda";
+import { formatLongDay, formatTime } from "../data/format";
+import { clock } from "../data/mock";
+import { dayKey } from "../data/format";
+import { PageShell } from "../components/page";
 
-function formatTime(start: string, end: string): string {
-  const formatter = new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Africa/Kampala",
-  });
-  return `${formatter.format(new Date(start))}–${formatter.format(new Date(end))}`;
-}
-
-function formatDay(dateStr: string): string {
-  const date = new Date(dateStr);
-  return new Intl.DateTimeFormat("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  }).format(date);
-}
+const groupLabel: Record<AgendaGroupItem["group"], string> = {
+  NOW: "Now",
+  NEXT: "Next",
+  LATER: "Later",
+  EARLIER: "Earlier",
+};
 
 export default function Agenda() {
   useEffect(() => {
-    document.title = "Agenda · Connexia";
+    document.title = pageTitle("Agenda");
   }, []);
 
-  const session = useSession();
   const groups = groupAgenda();
-
-  // If no sessions, show empty state
-  const hasSessions = groups.length > 0;
 
   return (
     <PageShell>
-      <div className="max-w-[68rem]">
-        <Eyebrow>My schedule</Eyebrow>
-        <h1 className="mt-2 font-serif text-[1.75rem] leading-tight">My agenda</h1>
+      <div className="max-w-[56rem]">
+        <p className="text-13 font-medium text-muted-foreground">My schedule</p>
+        <h1 className="mt-2 font-display text-40">My agenda</h1>
 
-        {!hasSessions && (
-          <div className="mt-12 text-center">
-            <p className="text-muted-foreground">
-              No sessions in your agenda
-            </p>
-          </div>
-        )}
-
-        {hasSessions && (
+        {groups.length === 0 ? (
+          <p className="mt-12 text-17 text-muted-foreground">Nothing on your agenda yet. Sessions you register for appear here.</p>
+        ) : (
           <div className="mt-8">
-            {groups.map((group) => (
-              <AgendaSection key={group.group} group={group} />
+            {groups.map((group, index) => (
+              <AgendaSection key={group.group} group={group} index={index} />
             ))}
           </div>
         )}
@@ -59,53 +41,66 @@ export default function Agenda() {
   );
 }
 
-function AgendaSection({ group }: { group: AgendaGroupItem }) {
-  const sessions = group.sessions;
+function AgendaSection({ group, index }: { group: AgendaGroupItem; index: number }) {
+  const isNow = group.group === "NOW";
+  const earlier = group.group === "EARLIER";
+  const today = group.sessions[0] ? dayKey(new Date(clock.now()).toISOString(), group.sessions[0].timezone) : "";
+  let lastDay = "";
 
   return (
-    <section className="border-border border-t py-8 first:border-t-0">
-      <h2 className="font-mono text-[0.625rem] tracking-[0.18em] uppercase text-muted-foreground mb-6">
-        {group.group}
+    <section aria-labelledby={`agenda-${group.group}`} className="enter border-t border-border py-8" style={{ ["--i" as string]: index }}>
+      <h2 id={`agenda-${group.group}`} className="mb-4 font-display text-28">
+        {groupLabel[group.group]}
       </h2>
-      <div className="space-y-1">
-        {sessions.map((session) => {
-          const spaceLeft = getSpaceLeft(session);
-          const isNow = group.group === "NOW";
-
+      <ul>
+        {group.sessions.map((session) => {
+          const dayChanged = session.day !== lastDay;
+          lastDay = session.day;
           return (
-            <Link
-              key={session.id}
-              to={`/events/${session.eventSlug}#session-${session.id}`}
-              className={`border-border flex items-center justify-between gap-4 border-y p-4 hover:bg-card/50 transition-colors motion-reduce:transition-none ${
-                isNow ? "border-l-2 border-l-foreground" : ""
-              }`}
-            >
-              <div className="min-w-0">
-                <p className="font-mono text-[0.6875rem] tracking-[0.12em] uppercase text-muted-foreground">
-                  {formatTime(session.startsAt, session.endsAt)} · {session.room}
+            <li key={session.id}>
+              {dayChanged && (session.day !== today || group.group === "LATER") ? (
+                <p className="mt-4 mb-2 text-15 font-medium text-muted-foreground">
+                  {session.day === today ? "Today" : formatLongDay(session.startsAt, session.timezone)}
                 </p>
-                <p className="font-serif text-[1.125rem] leading-tight mt-1 truncate">
-                  {session.title}
-                </p>
-                <p className="font-mono text-[0.625rem] tracking-[0.08em] uppercase text-muted-foreground mt-1">
-                  {session.eventTitle}
-                </p>
-              </div>
-              <div className="shrink-0">
-                <p 
-                  className={`font-mono text-[0.6875rem] uppercase tracking-wider ${
-                    spaceLeft.tone === "destructive" ? "text-destructive" :
-                    spaceLeft.tone === "warning" ? "text-warning" :
-                    "text-muted-foreground"
-                  }`}
-                >
-                  {spaceLeft.label}
-                </p>
-              </div>
-            </Link>
+              ) : null}
+              <AgendaRow session={session} isNow={isNow} muted={earlier} />
+            </li>
           );
         })}
-      </div>
+      </ul>
     </section>
+  );
+}
+
+function AgendaRow({ session, isNow, muted }: { session: AgendaSession; isNow: boolean; muted: boolean }) {
+  const spaceLeft = getSpaceLeft(session);
+  return (
+    <Link
+      to={`/events/${session.eventSlug}#session-${session.id}`}
+      className={`-mt-px flex items-center justify-between gap-4 border border-border p-4 transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] hover:bg-card/40 motion-reduce:transition-none ${
+        isNow ? "border-l-2 border-l-foreground" : ""
+      } ${muted ? "text-muted-foreground" : ""}`}
+    >
+      <div className="min-w-0">
+        <p className="text-15 text-muted-foreground">
+          <span className="font-mono">
+            {formatTime(session.startsAt, session.timezone)}–{formatTime(session.endsAt, session.timezone)}
+          </span>{" "}
+          · {session.room}
+        </p>
+        <p className="mt-1 truncate text-17">{session.title}</p>
+      </div>
+      {muted ? (
+        <p className="shrink-0 text-13">Ended</p>
+      ) : (
+        <p
+          className={`shrink-0 text-13 ${
+            spaceLeft.tone === "destructive" ? "text-destructive" : spaceLeft.tone === "warning" ? "text-warning" : "text-muted-foreground"
+          }`}
+        >
+          {spaceLeft.count !== null ? <span className="font-mono">{spaceLeft.label}</span> : spaceLeft.label}
+        </p>
+      )}
+    </Link>
   );
 }

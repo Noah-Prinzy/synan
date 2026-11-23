@@ -31,7 +31,7 @@ export function Badge({ tone = "neutral", dot = false, pulse = false, children, 
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 border px-2 py-1 font-mono text-[0.625rem] uppercase tracking-[0.12em]",
+        "inline-flex items-center gap-1.5 border px-2 py-1 font-sans text-13 font-medium leading-none",
         frame[tone],
         className,
       )}
@@ -39,7 +39,7 @@ export function Badge({ tone = "neutral", dot = false, pulse = false, children, 
       {dot ? (
         <span
           aria-hidden="true"
-          className={cn("size-1", dotTone[tone], pulse && "animate-status-pulse [animation-duration:2s] motion-reduce:animate-none")}
+          className={cn("size-1.5", dotTone[tone], pulse && "animate-status-pulse")}
         />
       ) : null}
       {children}

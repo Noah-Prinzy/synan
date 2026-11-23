@@ -1,6 +1,9 @@
+import { pageTitle } from "@synan/ui/brand";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import SiteHeader from "../components/site-header";
+import { buttonClass } from "@synan/ui/components";
+import { PageShell } from "../components/page";
+import { StateBlock } from "../components/states";
 import {
   clearDraft,
   findEvent,
@@ -14,17 +17,6 @@ import {
   type RegistrationDraft,
 } from "../data/registration";
 
-function SkipLink() {
-  return (
-    <a
-      href="#content"
-      className="absolute top-0 -left-[9999px] focus:left-4 focus:top-4 focus:z-50 focus:block focus:border focus:border-brand focus:bg-background focus:px-3 focus:py-2 focus:font-mono focus:text-[0.6875rem] focus:tracking-[0.12em] focus:text-brand focus:uppercase focus:underline focus:underline-offset-2"
-    >
-      Skip to content
-    </a>
-  );
-}
-
 export type Step = "identity" | "profile" | "confirm";
 
 const steps: { id: Step; label: string }[] = [
@@ -34,16 +26,14 @@ const steps: { id: Step; label: string }[] = [
 ];
 
 const fieldClass =
-  "w-full border border-border bg-transparent px-3 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-brand aria-[invalid=true]:border-destructive motion-reduce:transition-none";
+  "min-h-12 w-full border border-border bg-transparent px-3 py-2.5 text-17 text-foreground outline-none transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] placeholder:text-muted-foreground focus:border-brand aria-[invalid=true]:border-destructive motion-reduce:transition-none";
 
-const primaryButton =
-  "inline-flex items-center justify-center bg-foreground px-5 py-2.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase text-background transition-opacity hover:opacity-90 disabled:opacity-50 motion-reduce:transition-none";
+const primaryButton = buttonClass("primary", "md");
 
-const secondaryButton =
-  "inline-flex items-center justify-center border border-border px-5 py-2.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors hover:border-brand hover:text-brand motion-reduce:transition-none";
+const secondaryButton = buttonClass("secondary", "md");
 
 const checkboxClass =
-  "mt-0.5 size-4 shrink-0 appearance-none border border-border bg-transparent transition-colors checked:border-brand checked:bg-brand focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand motion-reduce:transition-none";
+  "mt-0.5 size-5 shrink-0 appearance-none border border-border bg-transparent transition-colors checked:border-brand checked:bg-brand focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand motion-reduce:transition-none";
 
 function Field({
   id,
@@ -62,16 +52,16 @@ function Field({
     <div className="flex flex-col gap-2">
       <label
         htmlFor={id}
-        className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase"
+        className="text-13 font-medium text-muted-foreground"
       >
         {label}
       </label>
       {children}
-      {hint && !error && <p className="text-xs leading-relaxed text-muted-foreground">{hint}</p>}
+      {hint && !error && <p className="text-13 leading-relaxed text-muted-foreground">{hint}</p>}
       {error && (
         <p
           id={`${id}-error`}
-          className="font-mono text-[0.625rem] tracking-[0.08em] text-destructive uppercase"
+          className="text-13 font-medium text-destructive"
         >
           {error}
         </p>
@@ -94,7 +84,7 @@ export default function Register({ step }: { step: Step }) {
   const isProfileStep = step === "profile";
 
   useEffect(() => {
-    document.title = "Register · Connexia";
+    document.title = pageTitle("Register");
   }, []);
 
   const [draft, setDraft] = useState<RegistrationDraft>(() => loadDraft(slug));
@@ -102,6 +92,7 @@ export default function Register({ step }: { step: Step }) {
   const [duplicate, setDuplicate] = useState(false);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [failed, setFailed] = useState<null | "offline" | "error">(null);
 
   useEffect(() => {
     saveDraft(slug, draft);
@@ -214,29 +205,31 @@ export default function Register({ step }: { step: Step }) {
 
   function submitConfirm(formEvent: FormEvent) {
     formEvent.preventDefault();
+    setFailed(null);
     setSending(true);
     window.setTimeout(() => {
-      clearDraft(slug);
       setSending(false);
+      // Mock: an address containing "+fail@" simulates a server failure.
+      if (!navigator.onLine) return setFailed("offline");
+      if (draft.email.includes("+fail@")) return setFailed("error");
+      clearDraft(slug);
       setSent(true);
     }, 700);
   }
 
   if (!event) {
     return (
-      <main className="bg-background text-foreground flex min-h-dvh flex-col">
-        <SkipLink />
-        <SiteHeader />
-        <div id="content" className="mx-auto w-full max-w-[1600px] px-6 py-20 md:px-10 xl:px-16">
-          <h1 className="font-serif text-3xl">Registration unavailable.</h1>
-          <p className="mt-3 text-sm text-muted-foreground">
+      <PageShell>
+        <div>
+          <h1 className="font-serif text-40">Registration unavailable.</h1>
+          <p className="mt-3 text-15 text-muted-foreground">
             This event does not exist, or registration has not opened.
           </p>
           <Link to="/" className={`${secondaryButton} mt-8`}>
             Browse events
           </Link>
         </div>
-      </main>
+      </PageShell>
     );
   }
 
@@ -259,15 +252,12 @@ export default function Register({ step }: { step: Step }) {
   ];
 
   return (
-    <main className="bg-background text-foreground min-h-dvh">
-      <SkipLink />
-      <SiteHeader />
-
-      <div id="content" className="mx-auto w-full max-w-[1600px] px-6 pt-10 pb-24 md:px-10 xl:px-16">
-        <p className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase">
+    <PageShell>
+      <div className="pb-6">
+        <p className="text-13 font-medium text-muted-foreground">
           {dateLine} · {event.city}
         </p>
-        <h1 className="mt-3 font-serif text-3xl leading-tight">{event.title}</h1>
+        <h1 className="mt-3 font-display text-40 leading-tight md:text-56">{event.title}</h1>
 
         <ol
           aria-label="Registration steps"
@@ -278,11 +268,11 @@ export default function Register({ step }: { step: Step }) {
               index < activeIndex ? "done" : index === activeIndex ? "current" : "todo";
             const body = (
               <span
-                className={`flex items-center gap-2 px-1 py-3 font-mono text-[0.625rem] tracking-[0.12em] uppercase ${
-                  state === "todo" ? "text-muted-foreground/60" : "text-foreground"
+                className={`flex min-h-12 items-center gap-2 px-1 py-3 text-15 ${
+                  state === "todo" ? "text-muted-foreground" : "text-foreground"
                 }`}
               >
-                <span className={state === "done" ? "text-muted-foreground" : ""}>
+                <span className={`font-mono text-13 ${state === "done" ? "text-muted-foreground" : ""}`}>
                   {String(index + 1).padStart(2, "0")}
                 </span>
                 {item.label}
@@ -313,16 +303,13 @@ export default function Register({ step }: { step: Step }) {
 
         {sent ? (
           <section className="pt-10">
-            <p className="font-mono text-[0.625rem] tracking-[0.12em] text-success uppercase">
+            <p className="text-13 font-medium text-success">
               Registered
             </p>
-            <h2 className="mt-3 font-serif text-3xl">You&rsquo;re in.</h2>
-            <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
-              Your pass is ready. Bring it to the gate — the QR still works if the venue network
-              drops.
-            </p>
-            <p className="mt-6 font-mono text-[0.6875rem] tracking-[0.08em] text-muted-foreground uppercase">
-              Credential · READY
+            <h2 className="mt-3 font-serif text-40">You&rsquo;re in.</h2>
+            <p className="mt-3 max-w-md text-15 leading-relaxed text-muted-foreground">
+              Your pass is ready, and a copy is on its way to your email. Show the pass when you
+              arrive to collect your wristband — it works even if the venue network drops.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link to="/pass" className={primaryButton}>
@@ -336,8 +323,8 @@ export default function Register({ step }: { step: Step }) {
         ) : step === "identity" ? (
           duplicate ? (
             <section className="pt-8">
-              <h2 className="font-serif text-2xl">This email already has a pass.</h2>
-              <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
+              <h2 className="font-serif text-28">This email already has a pass.</h2>
+              <p className="mt-3 max-w-md text-15 leading-relaxed text-muted-foreground">
                 Sign in with {draft.email.trim()} and we&rsquo;ll take you straight to it.
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
@@ -412,7 +399,7 @@ export default function Register({ step }: { step: Step }) {
               <div className="border-border flex items-center justify-between gap-4 border-t pt-6">
                 <Link
                   to={`/events/${slug}`}
-                  className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-brand motion-reduce:transition-none"
+                  className="inline-flex min-h-11 items-center text-15 text-muted-foreground transition-colors hover:text-foreground motion-reduce:transition-none"
                 >
                   Cancel
                 </Link>
@@ -431,12 +418,12 @@ export default function Register({ step }: { step: Step }) {
                   const selected = Array.isArray(value) ? value : [];
                   return (
                     <fieldset key={field.id} className="flex flex-col gap-3 border-0 p-0 md:col-span-2">
-                      <legend className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase">
+                      <legend className="text-13 font-medium text-muted-foreground">
                         {field.label}
                       </legend>
                       <div className="grid gap-3 sm:grid-cols-2">
                         {field.options.map((option) => (
-                          <label key={option} className="flex cursor-pointer items-start gap-3 text-sm">
+                          <label key={option} className="flex cursor-pointer items-start gap-3 text-15">
                             <input
                               type="checkbox"
                               checked={selected.includes(option)}
@@ -448,10 +435,10 @@ export default function Register({ step }: { step: Step }) {
                         ))}
                       </div>
                       {field.hint && !errors[field.id] && (
-                        <p className="text-xs leading-relaxed text-muted-foreground">{field.hint}</p>
+                        <p className="text-13 leading-relaxed text-muted-foreground">{field.hint}</p>
                       )}
                       {errors[field.id] && (
-                        <p className="font-mono text-[0.625rem] tracking-[0.08em] text-destructive uppercase">
+                        <p className="text-13 font-medium text-destructive">
                           {errors[field.id]}
                         </p>
                       )}
@@ -523,22 +510,22 @@ export default function Register({ step }: { step: Step }) {
                   className={checkboxClass}
                 />
                 <span className="flex flex-col gap-1.5">
-                  <span className="text-sm text-foreground">Zone presence reporting</span>
-                  <span className="text-sm leading-relaxed text-muted-foreground">
+                  <span className="text-15 text-foreground">Zone presence reporting</span>
+                  <span className="text-15 leading-relaxed text-muted-foreground">
                     Let organizers see which zones I enter during the event, for capacity and
                     safety. Optional, and separate from my registration.
                   </span>
                 </span>
               </label>
               <details className="mt-3 pl-7">
-                <summary className="cursor-pointer font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-brand motion-reduce:transition-none">
+                <summary className="cursor-pointer text-13 font-medium text-muted-foreground  transition-colors hover:text-brand motion-reduce:transition-none">
                   What we store
                 </summary>
-                <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted-foreground">
+                <p className="mt-2 max-w-prose text-13 leading-relaxed text-muted-foreground">
                   The zone you entered, when you entered and left, and the credential that admitted
-                  you. No precise coordinates are recorded. Raw events are kept for 30 days;
-                  aggregates continue without identifiers. You can withdraw consent at any time in
-                  Account.
+                  you. No precise coordinates are recorded. These records are deleted when the
+                  event closes and its grace period ends; only counts without your identity are
+                  kept. You can withdraw consent at any time in Account.
                 </p>
               </details>
             </div>
@@ -546,7 +533,7 @@ export default function Register({ step }: { step: Step }) {
             <div className="border-border flex items-center justify-between gap-4 border-t pt-6">
               <Link
                 to={`/events/${slug}/register/identity`}
-                className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-brand motion-reduce:transition-none"
+                className="inline-flex min-h-11 items-center text-15 text-muted-foreground transition-colors hover:text-foreground motion-reduce:transition-none"
               >
                 Back
               </Link>
@@ -559,19 +546,31 @@ export default function Register({ step }: { step: Step }) {
           <form noValidate onSubmit={submitConfirm} className="flex flex-col gap-8 pt-8">
             <dl className="border-border divide-border divide-y border-y">
               {summaryRows.map((row) => (
-                <div key={row.label} className="grid grid-cols-[12rem_1fr] gap-4 py-3">
-                  <dt className="font-mono text-[0.625rem] tracking-[0.08em] text-muted-foreground uppercase">
+                <div key={row.label} className="grid gap-1 py-3 sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-4">
+                  <dt className="text-13 font-medium text-muted-foreground">
                     {row.label}
                   </dt>
-                  <dd className="text-sm break-words">{row.value}</dd>
+                  <dd className="text-15 break-words">{row.value}</dd>
                 </div>
               ))}
             </dl>
 
+            {failed ? (
+              <div role="alert" className="border border-destructive/60 p-4">
+                <p className="text-15 font-medium text-destructive">
+                  <span aria-hidden="true" className="mr-2 font-mono">✕</span>
+                  {failed === "offline" ? "You're offline, so we couldn't send your pass." : "We couldn't send your pass."}
+                </p>
+                <p className="mt-1 text-15 text-muted-foreground">
+                  Your answers are saved on this device. Try again{failed === "offline" ? " when you're back online" : ""}.
+                </p>
+              </div>
+            ) : null}
+
             <div className="flex flex-wrap items-center justify-between gap-4">
               <Link
                 to={`/events/${slug}/register/profile`}
-                className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-brand motion-reduce:transition-none"
+                className="inline-flex min-h-11 items-center text-15 text-muted-foreground transition-colors hover:text-foreground motion-reduce:transition-none"
               >
                 Back
               </Link>
@@ -582,6 +581,6 @@ export default function Register({ step }: { step: Step }) {
           </form>
         )}
       </div>
-    </main>
+    </PageShell>
   );
 }

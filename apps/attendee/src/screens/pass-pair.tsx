@@ -1,133 +1,97 @@
-import { useEffect, useState } from "react";
-import { Link, Navigate, useSearchParams } from "react-router-dom";
-import { useSession, getSession } from "../data/auth";
+import { pageTitle } from "@synan/ui/brand";
+import { useEffect, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
+import { hint } from "@synan/mock";
+import { useSession } from "../data/auth";
 import { bindBand, devCodeHint, type BindResult } from "../data/pair";
-import { persistBandForSession } from "../data/pass";
+import { portal, usePortalVersion } from "../data/mock";
 import { PageShell, Eyebrow, Panel } from "../components/page";
+import { buttonClass } from "@synan/ui/components";
 
-function SkipLink() {
-  return (
-    <a
-      href="#content"
-      className="absolute left-0 top-0 -translate-y-full bg-background px-4 py-3 text-sm text-foreground focus:translate-y-0 focus:outline-none"
-    >
-      Skip to content
-    </a>
-  );
-}
+type NdefReader = {
+  scan: (options?: { signal?: AbortSignal }) => Promise<void>;
+  addEventListener: (type: "reading", listener: (event: { serialNumber: string }) => void) => void;
+};
+
+const nfcSupported = typeof window !== "undefined" && "NDEFReader" in window;
+
+const tabClass = (active: boolean) =>
+  `relative pb-3 text-13 font-medium transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50 ${
+    active ? "text-brand" : "text-muted-foreground hover:text-foreground"
+  }`;
 
 export default function PassPair() {
   useEffect(() => {
-    document.title = "Bind band · Connexia";
+    document.title = pageTitle("Bind band");
   }, []);
 
-  const session = useSession();
-  const [searchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<"tap" | "code">("tap");
+  useSession();
+  usePortalVersion();
+  const boundUid = portal.bandUid();
+  const [activeTab, setActiveTab] = useState<"tap" | "code">(nfcSupported ? "tap" : "code");
   const [code, setCode] = useState("");
-  const [state, setState] = useState<"idle" | "loading" | "success" | "error">("idle");
-  const [errorType, setErrorType] = useState<"already_bound" | "unknown_band" | null>(null);
+  const [state, setState] = useState<"idle" | "loading" | "listening" | "success" | "error" | "denied">("idle");
   const [result, setResult] = useState<BindResult | null>(null);
 
-  // Check if already has a band bound
-  const [hasBand, setHasBand] = useState(false);
-
-  useEffect(() => {
-    if (session) {
-      // Check if already has band
-      const storedSession = getSession();
-      if (storedSession) {
-        try {
-          const sessionData = localStorage.getItem("cnx.session");
-          if (sessionData) {
-            const parsed = JSON.parse(sessionData);
-            setHasBand(!!parsed.bandUid);
-          }
-        } catch {
-          // Storage not available
-        }
-      }
-    }
-  }, [session]);
-
-  // If already has band bound, redirect to pass
-  useEffect(() => {
-    if (hasBand && session) {
-      // Give a moment for the redirect
-      const timer = setTimeout(() => {
-        window.location.href = "/pass";
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [hasBand, session]);
-
-  // Check if session exists
-  if (!session) {
-    return <Navigate to="/sign-in?next=/pass/pair" replace />;
+  function finish(outcome: BindResult) {
+    setResult(outcome);
+    setState(outcome.ok ? "success" : "error");
   }
 
-  // NFC availability check
-  const nfcSupported = "NDEFReader" in window;
-  
-  // If NFC not supported, switch to code tab
-  useEffect(() => {
-    if (!nfcSupported && activeTab === "tap") {
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (!code.trim() || state === "loading") return;
+    setState("loading");
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    finish(bindBand(code));
+  }
+
+  async function startTap() {
+    try {
+      const Reader = (window as unknown as { NDEFReader: new () => NdefReader }).NDEFReader;
+      const reader = new Reader();
+      setState("listening");
+      await reader.scan();
+      reader.addEventListener("reading", ({ serialNumber }) => {
+        const uid = serialNumber.replace(/:/g, "").toUpperCase();
+        const outcome = portal.bind({ via: "nfc", uid });
+        finish(
+          outcome.ok
+            ? { ok: true, band: { uid: outcome.uid } }
+            : { ok: false, reason: outcome.code === "CONFLICT" ? "already_bound" : "unknown_band" },
+        );
+      });
+    } catch (error) {
+      // NotAllowedError: the person (or Chrome's settings) refused NFC permission.
+      if (error instanceof DOMException && error.name === "NotAllowedError") {
+        setState("denied");
+        return;
+      }
+      setState("idle");
       setActiveTab("code");
     }
-  }, [activeTab, nfcSupported]);
+  }
 
-  const handleSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!code.trim() || state === "loading") return;
-
-    setState("loading");
-    setErrorType(null);
-
-    // Small delay to show loading state
-    await new Promise((resolve) => setTimeout(resolve, 400));
-
-    const bindResult = bindBand(code.trim(), session.email);
-    setResult(bindResult);
-
-    if (bindResult.ok) {
-      // Persist band to session
-      persistBandForSession(bindResult.band.uid);
-      setState("success");
-    } else {
-      setState("error");
-      setErrorType(bindResult.reason);
-    }
-  };
-
-  const handleTabChange = (tab: "tap" | "code") => {
-    // Prevent switching to tap if NFC not available
+  function changeTab(tab: "tap" | "code") {
     if (tab === "tap" && !nfcSupported) return;
     setActiveTab(tab);
     setState("idle");
-    setErrorType(null);
-  };
+    setResult(null);
+  }
 
-  // Handle success state
   if (state === "success" && result?.ok) {
     return (
       <PageShell>
-        <div className="max-w-[24rem]">
+        <div className="mx-auto w-full max-w-[30rem]">
           <Eyebrow>Bind band</Eyebrow>
-          <h1 className="mt-2 font-serif text-[1.75rem] leading-tight">Band bound</h1>
+          <h1 className="mt-2 font-display text-40 leading-tight">Band bound</h1>
           <Panel className="mt-8">
-            <p className="font-mono text-[0.625rem] tracking-[0.12em] uppercase text-muted-foreground">
-              Band UID
-            </p>
-            <p className="mt-2 font-mono text-[0.875rem] tracking-wider uppercase">
-              {result.band.uid}
-            </p>
-            <p className="mt-4 text-sm text-muted-foreground">This band is now you.</p>
+            <p className="text-13 font-medium text-muted-foreground">Band UID</p>
+            <p className="mt-2 font-mono text-17 tracking-wider uppercase">{result.band.uid}</p>
+            <p className="mt-4 text-15 text-muted-foreground">This band is now you.</p>
           </Panel>
           <div className="mt-8">
-            <Link
-              to="/pass"
-              className="border-border hover:bg-card/50 inline-block border px-4 py-2.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none"
-            >
+            <Link to="/pass" className={buttonClass("primary", "md")}>
               View my pass
             </Link>
           </div>
@@ -138,141 +102,133 @@ export default function PassPair() {
 
   return (
     <PageShell>
-      <div className="max-w-[28rem]">
+      <div className="mx-auto w-full max-w-[30rem]">
         <Eyebrow>Bind band</Eyebrow>
-        <h1 className="mt-2 font-serif text-[1.75rem] leading-tight">Bind your band</h1>
+        <h1 className="mt-2 font-display text-40 leading-tight">Bind your band</h1>
 
-        {hasBand && (
+        {boundUid ? (
           <Panel className="mt-6">
-            <p className="font-mono text-[0.625rem] tracking-[0.12em] uppercase text-warning">
-              Already bound
+            <p className="text-13 font-medium text-muted-foreground">Already bound</p>
+            <p className="mt-2 text-15 text-muted-foreground">
+              Band {hint(boundUid)} is bound to your pass. If it is lost, report it in Account first.
             </p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {session.name}, you already have a band bound.
-            </p>
+            <Link to="/pass" className={buttonClass("secondary", "sm", "mt-4")}>
+              Back to my pass
+            </Link>
           </Panel>
-        )}
+        ) : (
+          <>
+            <div className="mt-8 border-b border-border">
+              <div role="tablist" aria-label="Binding method" className="flex gap-6">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === "tap"}
+                  disabled={!nfcSupported}
+                  onClick={() => changeTab("tap")}
+                  className={tabClass(activeTab === "tap")}
+                >
+                  Tap
+                  {activeTab === "tap" ? <span aria-hidden="true" className="absolute inset-x-0 -bottom-px h-px bg-brand" /> : null}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === "code"}
+                  onClick={() => changeTab("code")}
+                  className={tabClass(activeTab === "code")}
+                >
+                  Desk code
+                  {activeTab === "code" ? <span aria-hidden="true" className="absolute inset-x-0 -bottom-px h-px bg-brand" /> : null}
+                </button>
+              </div>
+            </div>
 
-        <div className="border-border mt-8 border-b">
-          <nav className="flex gap-6" aria-label="Binding method">
-            <button
-              onClick={() => handleTabChange("tap")}
-              disabled={!nfcSupported}
-              className={`pb-3 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none ${
-                activeTab === "tap"
-                  ? "border-b border-brand text-brand"
-                  : "text-muted-foreground hover:text-foreground"
-              } ${!nfcSupported ? "opacity-50 cursor-not-allowed" : ""}`}
-              type="button"
-            >
-              Tap
-            </button>
-            <button
-              onClick={() => handleTabChange("code")}
-              className={`pb-3 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none ${
-                activeTab === "code"
-                  ? "border-b border-brand text-brand"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-              type="button"
-            >
-              Desk code
-            </button>
-          </nav>
-        </div>
+            {!nfcSupported ? (
+              <p className="mt-4 text-13 text-muted-foreground">
+                NFC is not available on this device — use the code from the desk.
+              </p>
+            ) : null}
 
-        {activeTab === "tap" ? (
-          <div className="mt-6">
-            {nfcSupported ? (
-              <div className="flex flex-col items-center justify-center gap-6 py-14">
-                <div className="border-border w-full max-w-[240px] aspect-square border flex items-center justify-center">
-                  <span className="font-mono text-[0.6875rem] text-muted-foreground uppercase tracking-wider">
-                    Tap band here
+            {activeTab === "tap" ? (
+              <div className="mt-6 flex flex-col items-center justify-center gap-6 py-10">
+                <div className="flex aspect-square w-full max-w-[240px] items-center justify-center border border-border">
+                  <span className="text-13 font-medium tracking-wider text-muted-foreground">
+                    {state === "listening" ? "Hold the band to the back of the phone" : "Tap band here"}
                   </span>
                 </div>
-                <p className="text-center text-sm text-muted-foreground">
-                  Hold your NFC band near the reader
-                </p>
+                {state === "denied" ? (
+                  <div role="alert" className="w-full max-w-[24rem] text-center">
+                    <p className="text-15 font-medium text-warning">
+                      <span aria-hidden="true" className="mr-2 font-mono">!</span>
+                      NFC permission was refused
+                    </p>
+                    <p className="mt-2 text-15 text-muted-foreground">
+                      Allow NFC for this site in Chrome's site settings and try again, or use the code from the desk.
+                    </p>
+                    <button type="button" onClick={() => changeTab("code")} className={buttonClass("secondary", "sm", "mt-4")}>
+                      Use a desk code
+                    </button>
+                  </div>
+                ) : null}
+                {state !== "listening" ? (
+                  <button type="button" onClick={startTap} className={buttonClass("secondary", "md")}>
+                    Start reading
+                  </button>
+                ) : null}
               </div>
             ) : (
-              <Panel className="mt-6 text-center">
-                <p className="font-mono text-[0.625rem] tracking-[0.12em] uppercase text-muted-foreground">
-                  NFC unavailable
+              <div className="mt-6">
+                <p className="text-15 text-muted-foreground">Enter the 6-character code the desk gave you.</p>
+                <p className="mt-1 text-13 font-medium tracking-wider text-muted-foreground">
+                  Mock build · try {devCodeHint}
                 </p>
-                <p className="mt-3 text-sm text-muted-foreground">
-                  NFC is not available on this device.
-                  <button
-                    onClick={() => setActiveTab("code")}
-                    className="text-foreground ml-2 underline"
-                  >
-                    Use desk code
-                  </button>
-                </p>
-              </Panel>
-            )}
-          </div>
-        ) : (
-          <div className="mt-6">
-            <p className="text-sm text-muted-foreground">
-              Enter the 6-character code from your wristband receipt.
-            </p>
-            <p className="mt-1 font-mono text-[0.625rem] text-muted-foreground uppercase tracking-wider">
-              Dev hint: {devCodeHint}
-            </p>
-            
-            <form onSubmit={handleSubmit} className="mt-6 max-w-[20rem]">
-              <label htmlFor="code" className="font-mono text-[0.6875rem] tracking-[0.12em] uppercase text-muted-foreground">
-                Desk code
-              </label>
-              <input
-                id="code"
-                type="text"
-                value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
-                maxLength={6}
-                className="border-input bg-background mt-2 w-full border px-3 py-2.5 font-mono text-[1rem] tracking-wider uppercase focus:outline-1 focus:outline-brand"
-                placeholder="K4M2PZ"
-                disabled={state === "loading"}
-                autoFocus
-              />
-              
-              {state === "error" && errorType && (
-                <div className="mt-4 min-h-4">
-                  {errorType === "already_bound" ? (
-                    <p className="text-sm text-destructive">
-                      Already bound to another attendee.
-                      <Link to="/account" className="ml-2 underline">
-                        Get help
-                      </Link>
-                    </p>
-                  ) : (
-                    <p className="text-sm text-destructive">
-                      Unknown band. Check the code and try again.
-                    </p>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setState("idle");
-                      setErrorType(null);
-                      setCode("");
-                    }}
-                    className="mt-2 font-mono text-[0.6875rem] uppercase text-muted-foreground underline"
-                  >
-                    Clear & retry
-                  </button>
-                </div>
-              )}
 
-              <button
-                type="submit"
-                className="hover:bg-card/50 border-border mt-6 h-10 w-full border font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none disabled:opacity-50"
-                disabled={!code.trim() || state === "loading"}
-              >
-                {state === "loading" ? "Checking..." : "Bind band"}
-              </button>
-            </form>
-          </div>
+                <form onSubmit={handleSubmit} className="mt-6 max-w-[20rem]">
+                  <label htmlFor="code" className="text-13 font-medium text-muted-foreground">
+                    Desk code
+                  </label>
+                  <input
+                    id="code"
+                    type="text"
+                    inputMode="text"
+                    autoComplete="one-time-code"
+                    value={code}
+                    onChange={(event) => setCode(event.target.value.toUpperCase())}
+                    maxLength={6}
+                    aria-invalid={state === "error" ? true : undefined}
+                    aria-describedby={state === "error" ? "code-error" : undefined}
+                    className="mt-2 w-full border border-input bg-background px-3 py-2.5 font-mono text-17 tracking-wider uppercase focus:border-brand"
+                    placeholder="K4M2PZ"
+                    disabled={state === "loading"}
+                  />
+
+                  {state === "error" && result && !result.ok ? (
+                    <div id="code-error" role="alert" className="mt-4">
+                      {result.reason === "already_bound" ? (
+                        <p className="text-15 text-destructive">
+                          Already bound to another attendee.{" "}
+                          <Link to="/account" className="underline underline-offset-4">
+                            Get help
+                          </Link>
+                        </p>
+                      ) : (
+                        <p className="text-15 text-destructive">Unknown band. Check the code and try again.</p>
+                      )}
+                    </div>
+                  ) : null}
+
+                  <button
+                    type="submit"
+                    className={buttonClass("primary", "md", "mt-6 w-full")}
+                    disabled={!code.trim() || state === "loading"}
+                  >
+                    {state === "loading" ? "Checking…" : "Bind band"}
+                  </button>
+                </form>
+              </div>
+            )}
+          </>
         )}
       </div>
     </PageShell>

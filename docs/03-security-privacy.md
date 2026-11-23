@@ -1,6 +1,6 @@
-# Connexia — Security and Privacy
+# Synan — Security and Privacy
 
-How Connexia is protected and what it does with personal data. Connexia runs over public networks
+How Synan is protected and what it does with personal data. Synan runs over public networks
 while controlling physical doors, so every layer is defended.
 
 Each control is marked with the phase in which it ships: **v1** (with the backend, Phases 1B and 4)
@@ -26,8 +26,8 @@ or **Hardening** (Phase 5). Phases are defined in [07-roadmap.md](07-roadmap.md)
 
 | Carrier | Mechanism | Phase |
 | --- | --- | --- |
-| **Portal QR** | A short-lived code **signed by the server** with an asymmetric key (Ed25519). It names the credential and an expiry, and is replaced on a short interval (O-07), so a screenshot or photograph expires. A scanner verifies it with the server's **public key** and holds no secret (D-12). The portal fetches a small batch of consecutive codes ahead of time, so the pass keeps rotating through a short loss of signal. | v1 |
-| **Emailed QR** | A signed, non-sequential token. Single-use: it is marked redeemed at its first use and refused afterwards (D-05). | v1 |
+| **Portal QR** | A short-lived code **signed by the server** with an asymmetric key (Ed25519). It names the credential and an expiry, and is replaced on a short interval (O-07), so a screenshot or photograph expires. A scanner verifies it with the server's **public key** and holds no secret (D-12). The portal fetches a small batch of consecutive codes ahead of time, so the pass keeps rotating through a short loss of signal. The code is compact — 125 characters: a type-and-version prefix, then key id, expiry, validity window, credential reference, and signature in binary — so the QR stays light enough to read quickly at a gate. | v1 |
+| **Emailed QR** | A signed, non-sequential token. Single-use: it is marked redeemed at its first use and refused afterwards (D-05). Same compact signed format as the portal code, with its own prefix; 144 characters. | v1 |
 | **NFC wristband — VIP and Private Invitation** | NTAG 424 DNA or MIFARE DESFire EV3. Each tap produces a rolling AES-128 Secure Unique NFC message, verified server-side, so copying the static identifier is useless. | Hardening |
 | **NFC wristband — Ordinary and Public** | Standard chip identified by UID, bound to a credential. Protected by anti-passback and impossible-travel rules rather than by chip cryptography. | v1 |
 
@@ -53,7 +53,7 @@ email. They expire the moment the RSVP is completed.
 | Signed access tokens | `POST /auth/login` and `/auth/refresh` issue short-lived signed tokens carrying role scopes. Required on every REST request. | v1 |
 | Attendee sign-in | Email link only. No attendee passwords exist. | v1 |
 | Role-based access control | Route-level middleware separates attendee, operator, and scanner endpoints. Roles are in [01 §3](01-product.md). | v1 |
-| Multi-factor authentication | Required for operators on privileged actions: manual tier change, wristband override, credential re-issue, report export. | v1 |
+| Multi-factor authentication | Required for operators on privileged actions: manual tier change, wristband override, credential re-issue and pass resend, report export. A step-up lasts 15 minutes. | v1 |
 | WebSocket ticket (P-16) | `POST /auth/ws-ticket` mints a single-use ticket valid for 30 seconds. The client passes it in the `Sec-WebSocket-Protocol` subprotocol, never in the URL, so it cannot leak into proxy logs or browser history. | v1 |
 | Per-channel authorisation | Each channel authorises independently. An attendee may join only `/stream/me`; staff join `/stream/scans` for assigned checkpoints only. | v1 |
 | Rate limiting | Per-IP and per-token limits on authentication and scan endpoints. | v1 |
@@ -103,15 +103,19 @@ result. **No coordinates are ever stored, streamed, or displayed.** Where older 
 **Identity is kept apart from movement.**
 
 - Names, emails, and registration details live in an identity vault, protected by PostgreSQL
-  row-level security and AES-256 column encryption with managed key rotation.
+  row-level security and AES-256 column encryption with managed key rotation. Row-level security is
+  in place and guards against application mistakes; isolating the vault from a compromised
+  application needs a separate database role, which is a Hardening item. The column encryption and
+  key management are **not yet built** ([07 §1.5](07-roadmap.md)).
 - At first check-in, a credential is bound to an **ephemeral attendee ID** for that event. Scan
   records, WebSocket telemetry, occupancy counters, and AI inference use only this ID.
 - Personal data is never sent into telemetry streams or to the AI model.
 
 **What operators can see.**
 
-- Occupancy per zone and per room. Aggregates are shown only once a minimum crowd size is met
-  (O-08), so one person in a quiet room is not singled out.
+- Occupancy per zone and per room, as exact counts, because capacity enforcement depends on them.
+- On **public** views — the occupancy shown on event pages — a count is shown only once a minimum
+  crowd size is met (O-08), so one person in a quiet room is not singled out.
 - Never an individual's movement over time, with one exception: an access-history audit of a specific
   credential, which is itself written to the audit log.
 
@@ -182,7 +186,7 @@ suspended credential, credential access-history lookups, report exports, and ret
 | --- | --- | --- |
 | Cloned or expired QR, or a replayed emailed QR | Deterministic HMAC and single-use check | Red denial at the scanner. Silent alert to the nearest gate's security tablet over `/stream/alerts`. |
 | Unauthorised tier entry (for example Public at a VIP gate) | Access-rule evaluation | Denied; incident logged with checkpoint and time. Repeat attempts escalate the alert severity. |
-| Repeat entry at the same perimeter | Anti-passback state | `ALREADY_INSIDE` — amber notice to the gate operator. Not an alert. |
+| Repeat entry at the same perimeter | Anti-passback state | `already_inside` — amber notice to the gate operator. Not an alert. |
 | Impossible travel | Transit-time rule; later refined by the AI model | Credential set to `suspended_review`. Floor supervisor notified with the last two checkpoints for physical verification. A supervisor clears or revokes it. |
 | Offline conflict found at sync: single-use QR used twice, pass-back across gates, capacity overrun | Server-side reconciliation of queued scans | Alert naming every scan involved. Occupancy corrected. For a doubled QR or pass-back, the credential is set to `suspended_review`. |
 | Scanner clock off by more than two minutes | Clock offset sent with each sync | Gate-health fault. Scans are still accepted and ordered by corrected time. |

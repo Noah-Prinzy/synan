@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { Wordmark } from "../brand/wordmark";
+import { Wordmark, surfaceName } from "@synan/ui/brand";
 import {
   admissions,
   credentials,
@@ -11,7 +11,9 @@ import {
   recentScans,
   zones,
 } from "../data/command";
-import type { Scan, ScanVerdict } from "../data/command";
+import type { Scan } from "../data/command";
+import { AnimatedBar } from "@synan/ui/components";
+import { ResultChip, resultLabel } from "@synan/ui/data";
 
 const sections = [
   { label: "Overview", href: "#overview" },
@@ -21,19 +23,13 @@ const sections = [
   { label: "Credentials", href: "#credentials" },
 ];
 
-const verdictTone: Record<ScanVerdict, string> = {
-  ALLOWED: "text-success",
-  DUPLICATE: "text-warning",
-  DENIED: "text-destructive",
-};
-
 export default function Command() {
   const [query, setQuery] = useState("");
   const [railOpen, setRailOpen] = useState(true);
   const needle = query.trim().toLowerCase();
   const visibleScans = needle
     ? recentScans.filter((scan) =>
-        `${scan.time} ${scan.gate} ${scan.credential} ${scan.verdict}`
+        `${scan.time} ${scan.gate} ${scan.credential} ${resultLabel(scan.result)}`
           .toLowerCase()
           .includes(needle),
       )
@@ -65,8 +61,8 @@ export default function Command() {
                 <PeakPanel />
               </aside>
             </div>
-            <footer className="border-border text-muted-foreground mt-8 flex flex-wrap items-center justify-between gap-2 border-t pt-4 font-mono text-[0.5625rem] tracking-[0.16em] uppercase">
-              <span>Connexia Command · {event.name}</span>
+            <footer className="border-border text-muted-foreground mt-8 flex flex-wrap items-center justify-between gap-2 border-t pt-4 font-mono text-11 tracking-[0.16em] uppercase">
+              <span>{surfaceName("admin")} · {event.name}</span>
               <span>Scans 4 Hz · Gates 1 Hz</span>
             </footer>
           </div>
@@ -80,9 +76,9 @@ function IndexRail({ onCollapse }: { onCollapse: () => void }) {
   return (
     <aside className="border-border sticky top-0 hidden h-dvh w-56 shrink-0 flex-col border-r lg:flex">
       <div className="flex items-center justify-between gap-3 px-5 py-4">
-        <Link to="/" aria-label="Connexia Command home" className="flex items-baseline gap-2">
-          <Wordmark className="h-5 w-auto" />
-          <span className="text-muted-foreground font-mono text-[0.5rem] tracking-[0.2em] uppercase">
+        <Link to="/" aria-label={`${surfaceName("admin")} home`} className="flex items-baseline gap-2">
+          <Wordmark className="text-17" />
+          <span className="text-muted-foreground font-mono text-11 tracking-[0.2em] uppercase">
             Command
           </span>
         </Link>
@@ -90,7 +86,7 @@ function IndexRail({ onCollapse }: { onCollapse: () => void }) {
           type="button"
           onClick={onCollapse}
           aria-label="Hide section index"
-          className="border-border text-muted-foreground hover:border-brand hover:text-brand grid size-6 shrink-0 place-items-center border font-mono text-[0.625rem] transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none"
+          className="border-border text-muted-foreground hover:border-brand hover:text-brand grid size-6 shrink-0 place-items-center border font-mono text-11 transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none"
         >
           ←
         </button>
@@ -102,13 +98,13 @@ function IndexRail({ onCollapse }: { onCollapse: () => void }) {
               <a
                 href={section.href}
                 aria-current={index === 0 ? "page" : undefined}
-                className={`flex items-baseline gap-3 px-2 py-2.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none ${
+                className={`flex items-baseline gap-3 px-2 py-2.5 font-mono text-11 tracking-[0.12em] uppercase transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none ${
                   index === 0
                     ? "text-brand"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                <span className="text-[0.5625rem] tabular-nums opacity-70">
+                <span className="text-11 tabular-nums opacity-70">
                   {(index + 1).toString().padStart(2, "0")}
                 </span>
                 {section.label}
@@ -117,7 +113,7 @@ function IndexRail({ onCollapse }: { onCollapse: () => void }) {
           ))}
         </ul>
       </nav>
-      <p className="text-muted-foreground border-border border-t px-5 py-3 font-mono text-[0.5rem] tracking-[0.16em] uppercase">
+      <p className="text-muted-foreground border-border border-t px-5 py-3 font-mono text-11 tracking-[0.16em] uppercase">
         {event.name}
       </p>
     </aside>
@@ -141,11 +137,11 @@ function TopBar({
         <div className="flex items-center gap-6 py-3.5">
           <Link
             to="/"
-            aria-label="Connexia Command home"
+            aria-label={`${surfaceName("admin")} home`}
             className={`flex shrink-0 items-baseline gap-3 ${railOpen ? "lg:hidden" : ""}`}
           >
-            <Wordmark className="h-6 w-auto" />
-            <span className="text-muted-foreground hidden font-mono text-[0.5625rem] tracking-[0.2em] uppercase sm:inline">
+            <Wordmark className="text-21" />
+            <span className="text-muted-foreground hidden font-mono text-11 tracking-[0.2em] uppercase sm:inline">
               Command
             </span>
           </Link>
@@ -153,7 +149,7 @@ function TopBar({
             <button
               type="button"
               onClick={onOpenRail}
-              className="border-border text-muted-foreground hover:border-brand hover:text-brand hidden border px-2.5 py-1.5 font-mono text-[0.625rem] tracking-[0.12em] uppercase transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] lg:block motion-reduce:transition-none"
+              className="border-border text-muted-foreground hover:border-brand hover:text-brand hidden border px-2.5 py-1.5 font-mono text-11 tracking-[0.12em] uppercase transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] lg:block motion-reduce:transition-none"
             >
               Index
             </button>
@@ -170,14 +166,14 @@ function TopBar({
               onChange={(e) => onQueryChange(e.target.value)}
               placeholder="Filter scans, gates…"
               aria-controls="recent-scans"
-              className="border-border placeholder:text-muted-foreground focus:border-brand hidden w-56 border bg-transparent px-3 py-1.5 font-mono text-[0.6875rem] xl:block"
+              className="border-border placeholder:text-muted-foreground focus:border-brand hidden w-56 border bg-transparent px-3 py-1.5 font-mono text-11 xl:block"
             />
             <span
               role="img"
-              aria-label="Signed in as Noah Prins"
-              className="border-border grid size-8 shrink-0 place-items-center border font-mono text-[0.625rem] tracking-[0.08em]"
+              aria-label="Signed in as Operator One"
+              className="border-border grid size-8 shrink-0 place-items-center border font-mono text-11 tracking-[0.08em]"
             >
-              NP
+              OP
             </span>
           </div>
         </div>
@@ -195,7 +191,7 @@ function SectionNav({ className = "" }: { className?: string }) {
           key={section.href}
           href={section.href}
           aria-current={index === 0 ? "page" : undefined}
-          className={`shrink-0 border-b px-0.5 py-1.5 font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none ${
+          className={`shrink-0 border-b px-0.5 py-1.5 font-mono text-11 tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none ${
             index === 0
               ? "border-brand text-brand"
               : "text-muted-foreground border-transparent hover:text-foreground"
@@ -215,14 +211,13 @@ function HeroPanel() {
   return (
     <section aria-labelledby="admissions-title" className="border-border bg-card/30 border">
       <header className="border-border flex flex-wrap items-center justify-between gap-3 border-b px-5 py-3.5">
-        <span className="flex items-center gap-2 font-mono text-[0.6875rem] tracking-[0.14em] uppercase">
+        <span className="flex items-center gap-2 font-mono text-11 tracking-[0.14em] uppercase">
           <span className="relative flex size-1.5" aria-hidden="true">
-            <span className="bg-success absolute inline-flex h-full w-full animate-ping opacity-50 motion-reduce:animate-none" />
             <span className="bg-success relative inline-flex size-1.5" />
           </span>
           Live · {event.name}
         </span>
-        <span className="text-muted-foreground font-mono text-[0.625rem] tracking-[0.12em] uppercase">
+        <span className="text-muted-foreground font-mono text-11 tracking-[0.12em] uppercase">
           Updated {event.updatedSeconds}s ago
         </span>
       </header>
@@ -269,10 +264,10 @@ function HeroPanel() {
 
         <figure className="mt-8">
           <figcaption className="flex items-baseline justify-between gap-3">
-            <span className="text-muted-foreground font-mono text-[0.625rem] tracking-[0.14em] uppercase">
+            <span className="text-muted-foreground font-mono text-11 tracking-[0.14em] uppercase">
               Checked in by hour
             </span>
-            <span className="text-muted-foreground font-mono text-[0.625rem] tracking-[0.12em] uppercase">
+            <span className="text-muted-foreground font-mono text-11 tracking-[0.12em] uppercase">
               Total {event.admitted.toLocaleString("en-US")}
             </span>
           </figcaption>
@@ -289,14 +284,14 @@ function HeroPanel() {
                     <div
                       className={`w-full transition-colors motion-reduce:transition-none ${
                         hour.current
-                          ? "bg-brand"
+                          ? "bg-foreground"
                           : "bg-foreground/15 hover:bg-foreground/30"
                       }`}
                       style={{ height: `${height}%` }}
                     />
                   </div>
                   <span
-                    className={`pt-2 text-center font-mono text-[0.5625rem] tracking-[0.08em] ${
+                    className={`pt-2 text-center font-mono text-11 tracking-[0.08em] ${
                       hour.current ? "text-foreground" : "text-muted-foreground"
                     }`}
                   >
@@ -329,13 +324,13 @@ function Stat({
 }) {
   return (
     <div className={`bg-background px-4 py-4 ${className}`}>
-      <dt className="text-muted-foreground font-mono text-[0.5625rem] tracking-[0.16em] uppercase">
+      <dt className="text-muted-foreground font-mono text-11 tracking-[0.16em] uppercase">
         {label}
       </dt>
-      <dd className="mt-2 font-mono text-2xl leading-none tracking-tight tabular-nums md:text-[1.75rem]">
+      <dd className="mt-2 font-mono text-2xl leading-none tracking-tight tabular-nums md:text-28">
         {value}
       </dd>
-      <dd className="text-muted-foreground mt-2 font-mono text-[0.625rem]">{meta}</dd>
+      <dd className="text-muted-foreground mt-2 font-mono text-11">{meta}</dd>
     </div>
   );
 }
@@ -354,11 +349,11 @@ function ScansPanel({
       <header className="border-border flex items-center justify-between gap-3 border-b px-5 py-3.5">
         <h2
           id="scans-title"
-          className="text-muted-foreground font-mono text-[0.6875rem] tracking-[0.14em] uppercase"
+          className="text-muted-foreground font-mono text-11 tracking-[0.14em] uppercase"
         >
           Recent scans
         </h2>
-        <span className="text-muted-foreground flex items-center gap-1.5 font-mono text-[0.5625rem] tracking-[0.14em] uppercase">
+        <span className="text-muted-foreground flex items-center gap-1.5 font-mono text-11 tracking-[0.14em] uppercase">
           <span className="bg-success size-1" aria-hidden="true" />
           Live · 4 Hz
         </span>
@@ -371,20 +366,16 @@ function ScansPanel({
               key={`${scan.time}-${scan.credential}`}
               className="hover:bg-card/60 grid grid-cols-[3.6rem_minmax(0,1fr)_auto] items-baseline gap-3 px-5 py-3 transition-colors motion-reduce:transition-none"
             >
-              <span className="text-muted-foreground font-mono text-[0.625rem] tabular-nums">
+              <span className="text-muted-foreground font-mono text-11 tabular-nums">
                 {scan.time}
               </span>
               <span className="truncate text-sm">
                 {scan.gate}{" "}
-                <span className="text-muted-foreground font-mono text-[0.625rem]">
+                <span className="text-muted-foreground font-mono text-11">
                   · {scan.credential}
                 </span>
               </span>
-              <span
-                className={`font-mono text-[0.5625rem] tracking-[0.12em] ${verdictTone[scan.verdict]}`}
-              >
-                {scan.verdict}
-              </span>
+              <ResultChip result={scan.result} />
             </li>
           ))}
         </ul>
@@ -399,7 +390,7 @@ function ScansPanel({
 
       <p
         role="status"
-        className="border-border text-muted-foreground border-t px-5 py-3 font-mono text-[0.625rem]"
+        className="border-border text-muted-foreground border-t px-5 py-3 font-mono text-11"
       >
         Showing {scans.length} of {total} scans
       </p>
@@ -423,12 +414,12 @@ function Panel({
       <header className="border-border flex items-center justify-between gap-3 border-b px-5 py-3.5">
         <h2
           id={`${id}-title`}
-          className="text-muted-foreground font-mono text-[0.6875rem] tracking-[0.14em] uppercase"
+          className="text-muted-foreground font-mono text-11 tracking-[0.14em] uppercase"
         >
           {title}
         </h2>
         {aside ? (
-          <span className="text-muted-foreground font-mono text-[0.5625rem] tracking-[0.12em] uppercase">
+          <span className="text-muted-foreground font-mono text-11 tracking-[0.12em] uppercase">
             {aside}
           </span>
         ) : null}
@@ -449,19 +440,19 @@ function ZonesPanel() {
               <div className="flex items-baseline justify-between gap-3">
                 <span className="truncate text-sm">{zone.name}</span>
                 <span
-                  className={`font-mono text-[0.6875rem] tabular-nums ${
+                  className={`font-mono text-11 tabular-nums ${
                     hot ? "text-warning" : "text-muted-foreground"
                   }`}
                 >
                   {zone.pct}%
                 </span>
               </div>
-              <div className="mt-2 h-1 w-full bg-foreground/10" aria-hidden="true">
-                <div
-                  className={`h-full ${hot ? "bg-warning" : "bg-foreground/60"}`}
-                  style={{ width: `${zone.pct}%` }}
-                />
-              </div>
+              <AnimatedBar
+                value={zone.pct}
+                tone={hot ? "warning" : "neutral"}
+                label={`${zone.name} occupancy`}
+                className="mt-2 h-1"
+              />
             </li>
           );
         })}
@@ -487,7 +478,7 @@ function GatesPanel() {
                 <span className="truncate text-sm">{gate.name}</span>
               </span>
               <span
-                className={`font-mono text-[0.625rem] tabular-nums ${
+                className={`font-mono text-11 tabular-nums ${
                   degraded ? "text-warning" : "text-muted-foreground"
                 }`}
               >
@@ -534,12 +525,12 @@ function PeakPanel() {
   return (
     <section
       aria-labelledby="peak-title"
-      className="border-border from-brand/10 bg-linear-to-b to-transparent border"
+      className="border-border border"
     >
       <header className="border-border border-b px-5 py-3.5">
         <h2
           id="peak-title"
-          className="text-muted-foreground font-mono text-[0.6875rem] tracking-[0.14em] uppercase"
+          className="text-muted-foreground font-mono text-11 tracking-[0.14em] uppercase"
         >
           Peak window
         </h2>
@@ -552,7 +543,7 @@ function PeakPanel() {
           {peak.zone} holds {peak.pct}% for {peak.minutes} minutes. Two gates opened on
           the west side.
         </p>
-        <div className="border-border text-muted-foreground mt-5 flex items-center justify-between border-t pt-3 font-mono text-[0.5625rem] tracking-[0.14em] uppercase">
+        <div className="border-border text-muted-foreground mt-5 flex items-center justify-between border-t pt-3 font-mono text-11 tracking-[0.14em] uppercase">
           <span>Capacity {peak.pct}%</span>
           <span className="text-foreground">+2 gates</span>
         </div>

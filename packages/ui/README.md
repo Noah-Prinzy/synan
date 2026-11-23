@@ -1,6 +1,6 @@
-# @connexia/ui
+# @synan/ui
 
-Shared design tokens, motion primitives, and components for the Connexia apps.
+Shared design tokens, motion primitives, and components for the Synan apps.
 
 This README covers usage only. The design rules live in
 [docs/05-design-system.md](../../docs/05-design-system.md); build status lives in
@@ -12,19 +12,19 @@ The package is available to every app in the workspace through pnpm.
 
 ```ts
 // Components
-import { Button, Input, Card, Badge, Separator } from "@connexia/ui/components";
-import { AnimatedCounter, AnimatedBar, AnimatedUnderline, MorphSkeleton } from "@connexia/ui/components";
+import { Button, Input, Card, Badge, Separator } from "@synan/ui/components";
+import { AnimatedCounter, AnimatedBar, AnimatedUnderline, MorphSkeleton } from "@synan/ui/components";
 
 // Tokens
-import { colors, spacing, typographyAttendee, typographyAdmin, motion } from "@connexia/ui/tokens";
+import { colors, spacing, typographyAttendee, typographyAdmin, motion } from "@synan/ui/tokens";
 
 // Motion primitives (cubic-bezier only)
-import { fadeIn, scaleIn, transitions, easing } from "@connexia/ui/motion";
+import { fadeIn, scaleIn, transitions, easing } from "@synan/ui/motion";
 ```
 
 ```css
 /* Tokens as CSS custom properties, plus animation classes */
-@import "@connexia/ui/styles";
+@import "@synan/ui/styles";
 ```
 
 ## Layout

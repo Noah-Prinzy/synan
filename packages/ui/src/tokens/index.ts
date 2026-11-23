@@ -1,7 +1,7 @@
 /**
- * Connexia Design Tokens
+ * Synan Design Tokens
  * 
- * This file contains all design tokens for the Connexia UI system.
+ * This file contains all design tokens for the Synan UI system.
  * These tokens are used across all apps (attendee, admin, scanner).
  * 
  * NOTE: This package intentionally deviates from some parts of the frontend plan
@@ -16,7 +16,7 @@
  * - Reduced motion support
  * 
  * Usage:
- *   import { colors, spacing, typographyAttendee, typographyAdmin, motion } from '@connexia/ui';
+ *   import { colors, spacing, typographyAttendee, typographyAdmin, motion } from '@synan/ui';
  */
 
 // ============================================================================

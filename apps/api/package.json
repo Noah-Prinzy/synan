@@ -1,0 +1,33 @@
+{
+  "name": "@synan/api",
+  "version": "0.1.0",
+  "description": "API: Express REST + ws WebSocket server (Phase 1B skeleton)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:pg": "vitest run --mode pglite",
+    "dev:pg": "tsx watch src/main.ts --repo=pglite"
+  },
+  "dependencies": {
+    "@synan/contracts": "workspace:*",
+    "@synan/db": "workspace:*",
+    "@electric-sql/pglite": "^0.5.17",
+    "drizzle-orm": "^0.45.4",
+    "express": "^5.1.0",
+    "jose": "^6.1.0",
+    "ws": "^8.18.3",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.4"
+  }
+}

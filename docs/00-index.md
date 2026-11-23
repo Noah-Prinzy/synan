@@ -1,6 +1,9 @@
-# Connexia Documentation — Index, Rules, Decisions
+# Synan Documentation — Index, Rules, Decisions
 
 This folder is the specification. Seven documents, one topic each. Start here.
+
+Synan was called Connexia until 2026-11-23 (D-18). The archived source PDFs and the repository
+folder still carry the old name.
 
 ---
 
@@ -8,13 +11,19 @@ This folder is the specification. Seven documents, one topic each. Start here.
 
 | File | Topic | Read it when you need |
 | --- | --- | --- |
-| [01-product.md](01-product.md) | What Connexia is and how it behaves | scope, the end-to-end flow, surfaces, gate devices, roles, attendee tiers, credentials, the scan decision and occupancy rules, offline behaviour, event lifecycle |
+| [01-product.md](01-product.md) | What Synan is and how it behaves | scope, the end-to-end flow, surfaces, gate devices, roles, attendee tiers, credentials, the scan decision and occupancy rules, offline behaviour, event lifecycle |
 | [02-architecture.md](02-architecture.md) | How it is built | the full stack, repo layout, data model, REST and WebSocket contracts, mock strategy, performance targets |
 | [03-security-privacy.md](03-security-privacy.md) | How it is protected | threat model, credential cryptography, authentication, privacy, retention and purge, audit, response matrix |
 | [04-edge-ai.md](04-edge-ai.md) | Local intelligence | models, the four intelligence modules, guardrails, where AI appears in the UI |
 | [05-design-system.md](05-design-system.md) | How it looks and moves | principles, colour, type, form, motion, identity, components, reference library |
 | [06-screens.md](06-screens.md) | Every route and screen | Attendee Portal, Admin Command, Gate Scanner |
 | [07-roadmap.md](07-roadmap.md) | Build order and live status | phases, acceptance gates, what is built today, risks |
+
+One reference file sits beside them:
+
+| File | What it is |
+| --- | --- |
+| [design_base.md](design_base.md) | The owner's collection of design resources: inspiration galleries, component libraries, design prompts and systems, skills, tools, icons, fonts. A link list, not specification. What may be imported from it is governed by [05 §10](05-design-system.md). It keeps its original name by the owner's choice. |
 
 `archive/` holds the original source material. It is read-only and **not** the specification:
 
@@ -23,7 +32,7 @@ This folder is the specification. Seven documents, one topic each. Start here.
 | `archive/technical-blueprint.pdf` | Original architecture blueprint (5 pages; pages 4–5 duplicate §4.2–§6) |
 | `archive/ai-data-privacy-blueprint.pdf` | Edge AI and data privacy addendum (3 pages) |
 | `archive/multi-tier-access-security-v2.1.pdf` | Multi-tier access and breach mitigation spec, v2.1 (4 pages) |
-| `archive/inspiration-clip.mp4` | Visual inspiration clip |
+| `archive/inspiration-clip.mp4` | Recording of a sample site whose interface is the primary visual reference for the Attendee Portal |
 
 Where an archived file and a numbered document disagree, the numbered document wins.
 
@@ -103,6 +112,8 @@ Decisions taken by the project owner to reconcile sources that disagreed. Each r
 | D-15 | 2026-11-23 | Build every app on mocks before any backend? | **No. A thin real backend follows the Attendee Portal** (Phase 1B); endpoints then switch over one at a time. | [07 §2](07-roadmap.md) |
 | D-16 | 2026-11-23 | What will the AI learn from, if raw scans are purged? | **Per-gate, per-minute scan rates, recorded from the first real scan** and kept indefinitely. | [02 §4.5](02-architecture.md), [04](04-edge-ai.md) |
 | D-17 | 2026-11-23 | Which supporting tools fill the gaps in the stack? | TanStack Query, `ws`, `jose`, Drizzle, pg-boss, PostgreSQL `LISTEN`/`NOTIFY`, `vite-plugin-pwa` with IndexedDB, Vitest and Playwright. **No Redis or message broker in version 1.** | [02 §2](02-architecture.md) |
+| D-18 | 2026-11-23 | What is the product called? | **Synan**, from the Greek *synántisi*, a meeting or gathering. It replaces the working name Connexia everywhere, including the package scope (`@synan/*`). Kairos was rejected: it is already an identity and access company. A formal trademark search and domain purchase are still to be done. | Everywhere |
+| D-19 | 2026-11-23 | What should the brand feel like, and how is the Attendee Portal structured? | **Hospitable and modern, not security-flavoured.** A full rebrand: logo, colour, and type are all replaced, chosen by the owner from a brand board of options. The Attendee Portal follows **Direction A**, the structure of the owner's sample site, without copying that site's identity. Once an option is chosen, the other options' mock-up files are deleted. | [05 §2.1, §6](05-design-system.md), [06 §1](06-screens.md) |
 
 ---
 
@@ -121,11 +132,19 @@ Tracked here so they are not scattered. None blocks frontend work unless marked.
 | O-07 | How long a signed portal QR is valid, and how far ahead the portal fetches codes | Each code valid 60 seconds; the portal holds 15 minutes of codes in advance. The mechanism is settled (D-12); these two numbers need a security review before Phase 3. |
 | O-13 | Transactional email provider | Undecided. Chosen in Phase 4. |
 | O-14 | Which Android device model is the standard gate device | Undecided. Must be in hand before Phase 3. |
-| O-08 | Minimum crowd size before a zone aggregate is displayed (k-anonymity) | k = 5. Confirm with legal. |
+| O-08 | Minimum crowd size before a zone aggregate is displayed (k-anonymity) | k = 5, applied to public views only; operators see exact counts. Confirm with legal. |
 | O-09 | Schema for staff credentials (speakers, crew, security) | Same credential and carrier model as attendees, held by a staff user instead of a registration. Finalise in Phase 4. |
 | O-10 | Kiosk onboarding for the Public tier: own device mode, or a route in the Attendee Portal? | A locked route in the Attendee Portal. Design not started. |
 | O-11 | Do breach alerts keep the credential reference after the purge? | Yes, for 12 months, as a security record. Confirm with legal. |
 | O-12 | Edge inference hardware per venue | Undecided. Sized in Phase 6. |
+| O-15 | Bundle budget for the attendee pass screen. 90 KB cannot be met: React and the router alone are 81 KB | 110 KB, provisional. The alternative is a lighter framework for the Attendee Portal. Owner to decide. |
+| O-16 | Should a repeat read of a spent emailed QR at the same gate be ignored as a duplicate, rather than shown as `pass_spent`? | No: the specified order stands for now. |
+| O-17 | How fixed readers authenticate, since they have no signed-in user | Undecided. Needed before fixed readers are used. |
+| O-18 | Should a revoked or suspended credential be refused at an exit gate? | Yes, as built. Confirm with operations: it may be better to let the person leave and raise an alert. |
+| O-19 | Should event pages show live occupancy to visitors who are not signed in? | Not today: the live channel needs a signed-in user. |
+| O-20 | Will events have photographs, and who supplies them? | Unknown. Screens are built to look intentional with or without an image. |
+| O-21 | Does leaving through a perimeter exit remove a person from the room they were last counted in? | Not today. |
+| O-22 | Missing endpoints: MFA enrolment, and a scanner heartbeat | To be added to [02 §5–§6](02-architecture.md) in Phase 4. |
 
 ---
 
@@ -136,3 +155,5 @@ Tracked here so they are not scattered. None blocks frontend work unless marked.
 | 2026-11-22 | Gap patches P-01…P-17 drafted and ratified against the Technical Blueprint. Frontend plan v1.0 written. |
 | 2026-11-23 | Documentation consolidated into seven topic documents. The three blueprint PDFs, the gap register, the frontend plan, the design bookmarks, and the `packages/ui` planning notes were merged and reconciled under decisions D-01…D-08. Originals moved to `archive/`. |
 | 2026-11-23 | Decisions D-09…D-17 adopted after a full review of how the system functions: gate devices, occupancy correction, the QR's narrowed role, signed QR codes, offline conflict handling, clock offsets, an early backend skeleton, gate-rate history for AI, and the supporting stack. The end-to-end flow was added to the product document. |
+| 2026-11-23 | `design_base.md` restored as its own file at the owner's request; the bookmark list was moved out of 05 §10.3, which now points to it. |
+| 2026-11-23 | Renamed to Synan (D-18) and rebrand direction set (D-19). First build pass recorded: the database package, the contracts package, the backend skeleton, the mock package, and the scanner scaffold exist and are tested; schema rules, build clarifications, and new open questions O-15…O-22 folded into 01, 02, 03, 05, and 06. Status moved to [07 §1](07-roadmap.md). |

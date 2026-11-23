@@ -1,0 +1,22 @@
+{
+  "name": "@synan/mock",
+  "version": "0.1.0",
+  "description": "Deterministic mock layer for the Synan apps: seeded fixtures, MockRealtime scenarios, controllable clock",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./seed": "./src/seed.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@synan/contracts": "workspace:*",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}

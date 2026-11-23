@@ -1,7 +1,7 @@
 /**
- * Connexia Motion Primitives
+ * Synan Motion Primitives
  * 
- * A collection of reusable animation primitives for the Connexia UI system.
+ * A collection of reusable animation primitives for the Synan UI system.
  * 
  * IMPORTANT: This package respects the frontend plan constraints:
  * - NO bounce, NO spring, NO parallax
@@ -12,7 +12,7 @@
  * No spring physics are used anywhere.
  * 
  * Usage:
- *   import { fadeIn, scaleIn, transitions, easing } from '@connexia/ui/motion';
+ *   import { fadeIn, scaleIn, transitions, easing } from '@synan/ui/motion';
  */
 
 import type { HTMLAttributes, ReactNode } from 'react';
@@ -24,7 +24,7 @@ import { motion, type Variants, type Transition, type HTMLMotionProps } from 'mo
 // ============================================================================
 
 /**
- * Connexia's default easing curve from the docs/05-design-system.md §5
+ * Synan's default easing curve from the docs/05-design-system.md §5
  */
 export const easeDefault = 'cubic-bezier(0.2, 0, 0, 1)';
 
@@ -33,7 +33,7 @@ export const easeDefault = 'cubic-bezier(0.2, 0, 0, 1)';
  * All are cubic-bezier - NO spring
  */
 export const easing = {
-  /** Default Connexia easing - from frontend plan */
+  /** Default Synan easing - from frontend plan */
   default: 'cubic-bezier(0.2, 0, 0, 1)',
   
   /** Fluid easing for smooth transitions */
@@ -287,21 +287,6 @@ export const spin: Variants = {
   },
 };
 
-/**
- * Shake animation for errors
- * Uses cubic-bezier, not spring
- */
-export const shake: Variants = {
-  initial: { x: 0 },
-  animate: {
-    x: [0, -5, 5, -5, 5, 0],
-    transition: { 
-      duration: 0.3,
-      ease: easing.default,
-    }
-  },
-};
-
 // ============================================================================
 // STAGGER CONFIGURATIONS
 // ============================================================================
@@ -344,30 +329,6 @@ export function staggerCustom(delay: number = 0.04) {
 // ============================================================================
 // HOVER ANIMATIONS
 // ============================================================================
-
-/**
- * Subtle scale on hover
- */
-export const hoverScale = {
-  whileHover: { scale: 1.01 },
-  whileTap: { scale: 0.99 },
-};
-
-/**
- * Lift effect on hover (subtle)
- */
-export const hoverLift = {
-  whileHover: { y: -2 },
-  whileTap: { y: 0 },
-};
-
-/**
- * Subtle translate on hover
- */
-export const hoverTranslateY = {
-  whileHover: { y: -2 },
-  whileTap: { y: 0 },
-};
 
 /**
  * Color change on hover

@@ -10,19 +10,21 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean;
 }
 
+// Labels are the UI sans in sentence case; mono is for data only. Both sizes meet the
+// 44px touch target. The primary fill is the `--action` token (neutral by rule).
 const base =
-  "inline-flex items-center justify-center gap-2 border font-mono uppercase tracking-[0.12em] transition-[color,background-color,border-color] duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none";
+  "inline-flex items-center justify-center gap-2 border font-sans font-medium transition-[color,background-color,border-color] duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none";
 
 const variants: Record<ButtonVariant, string> = {
-  primary: "border-foreground bg-foreground text-background hover:bg-background hover:text-foreground",
-  secondary: "border-border text-foreground hover:border-brand hover:text-brand",
+  primary: "border-action bg-action text-action-foreground hover:bg-transparent hover:text-foreground",
+  secondary: "border-border text-foreground hover:border-foreground",
   quiet: "border-transparent text-muted-foreground hover:text-foreground",
   danger: "border-destructive/60 text-destructive hover:border-destructive",
 };
 
 const sizes: Record<ButtonSize, string> = {
-  sm: "px-3 py-2 text-[0.625rem]",
-  md: "px-4 py-3 text-[0.6875rem]",
+  sm: "min-h-11 px-4 text-13",
+  md: "min-h-12 px-5 text-15",
 };
 
 /** Shared class recipe so links can be styled as buttons. */
@@ -51,10 +53,7 @@ export function Button({
       className={cn(base, variants[variant], sizes[size], className)}
     >
       {loading ? (
-        <span
-          aria-hidden="true"
-          className="size-2 animate-spin border border-current motion-reduce:animate-none"
-        />
+        <span aria-hidden="true" className="size-2 animate-spin border border-current motion-reduce:animate-none" />
       ) : null}
       {children}
     </button>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="512" height="512">
+  <title>Synan app icon — open-door</title>
+  <rect width="32" height="32" fill="#14100D"/>
+  <g transform="translate(4.5 4.5) scale(0.72)">
+  <path d="M11 3.5 H27.5 V28.5 H11 Z" fill="none" stroke="#F6EFE6" stroke-width="3"/>
+  <path d="M11 3.5 L3 7 V31 L11 28.5 Z" fill="#E58CC0"/>
+  </g>
+</svg>

@@ -1,31 +1,24 @@
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
-import SiteHeader from "../components/site-header";
-
-function SkipLink() {
-  return (
-    <a
-      href="#content"
-      className="absolute top-0 -left-[9999px] focus:left-4 focus:top-4 focus:z-50 focus:block focus:border focus:border-brand focus:bg-background focus:px-3 focus:py-2 focus:font-mono focus:text-[0.6875rem] focus:tracking-[0.12em] focus:text-brand focus:uppercase focus:underline focus:underline-offset-2"
-    >
-      Skip to content
-    </a>
-  );
-}
+import { pageTitle } from "@synan/ui/brand";
+import { buttonClass } from "@synan/ui/components";
+import { PageShell } from "../components/page";
 
 export default function NotFound() {
+  useEffect(() => {
+    document.title = pageTitle("Not found");
+  }, []);
+
   return (
-    <main className="bg-background text-foreground flex min-h-dvh flex-col">
-      <SkipLink />
-      <SiteHeader />
-      <div id="content" className="flex flex-1 flex-col items-start justify-center gap-4 mx-auto w-full max-w-[1600px] px-6 md:px-10 xl:px-16">
-        <p className="text-muted-foreground font-mono text-[0.6875rem] tracking-[0.14em] uppercase">
-          404
-        </p>
-        <h1 className="font-serif text-3xl font-normal">This page doesn&apos;t exist.</h1>
-        <Link to="/" className="text-sm underline underline-offset-4">
+    <PageShell>
+      <div className="flex flex-col items-start gap-4 py-10">
+        <p className="font-mono text-15 text-muted-foreground">404</p>
+        <h1 className="font-display text-40">This page doesn&apos;t exist.</h1>
+        <p className="text-17 text-muted-foreground">The link may be old, or mistyped.</p>
+        <Link to="/" className={buttonClass("secondary", "md", "mt-4")}>
           Back to events
         </Link>
       </div>
-    </main>
+    </PageShell>
   );
 }

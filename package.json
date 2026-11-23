@@ -1,11 +1,11 @@
 {
-  "name": "connexia",
+  "name": "synan",
   "private": true,
   "packageManager": "pnpm@10.32.1",
   "scripts": {
-    "dev:attendee": "pnpm --filter @connexia/attendee dev",
-    "dev:admin": "pnpm --filter @connexia/admin dev",
-    "dev:scanner": "pnpm --filter @connexia/scanner dev",
+    "dev:attendee": "pnpm --filter @synan/attendee dev",
+    "dev:admin": "pnpm --filter @synan/admin dev",
+    "dev:scanner": "pnpm --filter @synan/scanner dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck"
   },

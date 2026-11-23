@@ -1,7 +1,7 @@
 /**
- * Connexia Design Tokens - CSS Variables
+ * Synan Design Tokens - CSS Variables
  * 
- * This file contains all CSS custom properties for the Connexia design system.
+ * This file contains all CSS custom properties for the Synan design system.
  * Import this file in your app's CSS to use the tokens.
  * 
  * NOTE: This package intentionally deviates from some parts of the frontend plan
@@ -16,7 +16,7 @@
  * - Reduced motion support
  * 
  * Usage:
- *   @import '@connexia/ui/styles';
+ *   @import '@synan/ui/styles';
  *   
  *   .my-element {
  *     color: var(--color-foreground);

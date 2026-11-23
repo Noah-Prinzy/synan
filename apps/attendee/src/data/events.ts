@@ -1,240 +1,129 @@
-export type EventState = "live" | "upcoming";
+/**
+ * Event view models for A1 and A2, adapted from contract shapes served by
+ * @synan/mock (EventDetail + public RoomOccupancy). Screens consume these, so
+ * when the transport becomes real only this file changes.
+ */
+import type { EventState as ContractEventState, PortalEvent, RoomOccupancy } from "@synan/mock";
+import { portal } from "./mock";
+
+export type EventState = "live" | "upcoming" | "closed";
 
 export type EventSummary = {
   slug: string;
   title: string;
   startsAt: string;
+  endsAt: string;
   timezone: string;
   venue: string;
   city: string;
   state: EventState;
+  /** Public on-site count; 0 when not shown (not live, or under the k-anonymity minimum). */
   admitted: number;
+  /** False when the server withholds the count (EventSummary.on_site is null). */
+  admittedShown: boolean;
   capacity: number;
   nearby: boolean;
+  /** Event photograph, when the organiser supplied one. */
+  image: string | null;
+  sessionCount: number;
 };
 
 export type EventDetail = EventSummary & {
   description: string;
   membership: "none" | "registered" | "checked-in";
-  closed?: boolean;
+  closed: boolean;
   sessions: {
     id: string;
     day: string;
     room: string;
     title: string;
+    startsIso: string;
+    endsIso: string;
+    /** HH:MM in the event's time zone */
     startsAt: string;
     endsAt: string;
+    /** The session's room, live. Null when the room has no public count. */
     occupancy: number;
     capacity: number;
   }[];
 };
 
-export const eventDetails: EventDetail[] = [
-  {
-    slug: "nexus-summit-2026",
-    title: "Nexus Summit 2026",
-    startsAt: "2026-11-22T09:00:00+03:00",
-    timezone: "Africa/Kampala",
-    venue: "Nexus Hall",
-    city: "Kampala",
-    state: "live",
-    admitted: 864,
-    capacity: 1200,
-    nearby: true,
-    description:
-      "The Nexus Summit brings together leaders in technology, policy, and social impact to explore the future of connected systems across Africa. Over two days, we share strategies for building resilient, inclusive infrastructure.",
-    membership: "none",
-    closed: false,
-    sessions: [
-      {
-        id: "s1",
-        day: "Sun 22 Nov",
-        room: "Main Hall",
-        title: "Keynote: The Next Decade of Connectivity",
-        startsAt: "09:00",
-        endsAt: "10:00",
-        occupancy: 42,
-        capacity: 100,
-      },
-      {
-        id: "s2",
-        day: "Sun 22 Nov",
-        room: "Main Hall",
-        title: "Panel: Policy Frameworks for Innovation",
-        startsAt: "10:15",
-        endsAt: "11:15",
-        occupancy: 65,
-        capacity: 100,
-      },
-      {
-        id: "s3",
-        day: "Sun 22 Nov",
-        room: "Workshop A",
-        title: "Building Scalable Infrastructure",
-        startsAt: "11:30",
-        endsAt: "12:30",
-        occupancy: 78,
-        capacity: 80,
-      },
-      {
-        id: "s4",
-        day: "Sun 22 Nov",
-        room: "Main Hall",
-        title: "Closing: The Path Forward",
-        startsAt: "14:00",
-        endsAt: "15:30",
-        occupancy: 88,
-        capacity: 100,
-      },
-    ],
-  },
-  {
-    slug: "security-operations-forum",
-    title: "Security Operations Forum",
-    startsAt: "2026-11-22T14:00:00+03:00",
-    timezone: "Africa/Kampala",
-    venue: "Serena Conference Centre",
-    city: "Kampala",
-    state: "live",
-    admitted: 268,
-    capacity: 300,
-    nearby: true,
-    description:
-      "A focused forum for security professionals managing live events and large gatherings. Share best practices, threat assessment, and real-time response strategies.",
-    membership: "checked-in",
-    closed: false,
-    sessions: [
-      {
-        id: "s1",
-        day: "Sun 22 Nov",
-        room: "Grand Ballroom",
-        title: "Threat Landscape Overview",
-        startsAt: "14:00",
-        endsAt: "14:45",
-        occupancy: 72,
-        capacity: 100,
-      },
-      {
-        id: "s2",
-        day: "Sun 22 Nov",
-        room: "Grand Ballroom",
-        title: "Incident Response Workshop",
-        startsAt: "15:00",
-        endsAt: "16:30",
-        occupancy: 93,
-        capacity: 100,
-      },
-      {
-        id: "s3",
-        day: "Sun 22 Nov",
-        room: "Breakout Room 1",
-        title: "Access Control Strategies",
-        startsAt: "16:45",
-        endsAt: "17:45",
-        occupancy: 58,
-        capacity: 80,
-      },
-    ],
-  },
-  {
-    slug: "design-week-kampala",
-    title: "Design Week Kampala",
-    startsAt: "2026-11-25T10:00:00+03:00",
-    timezone: "Africa/Kampala",
-    venue: "Innovation Village",
-    city: "Kampala",
-    state: "upcoming",
-    admitted: 0,
-    capacity: 400,
-    nearby: true,
-    description:
-      "A celebration of design innovation in Kampala. Explore exhibitions, workshops, and talks from local and international designers pushing the boundaries of creative practice.",
-    membership: "none",
-    closed: false,
-    sessions: [
-      {
-        id: "s1",
-        day: "Wed 25 Nov",
-        room: "Gallery Space",
-        title: "Opening Exhibition Tour",
-        startsAt: "10:00",
-        endsAt: "11:30",
-        occupancy: 0,
-        capacity: 150,
-      },
-      {
-        id: "s2",
-        day: "Wed 25 Nov",
-        room: "Workshop Studio",
-        title: "Design Thinking Workshop",
-        startsAt: "12:00",
-        endsAt: "14:00",
-        occupancy: 0,
-        capacity: 50,
-      },
-    ],
-  },
-];
+function viewState(state: ContractEventState): EventState {
+  if (state === "live") return "live";
+  if (state === "closed" || state === "archived") return "closed";
+  return "upcoming";
+}
 
-export const events: EventSummary[] = [
-  {
-    slug: "nexus-summit-2026",
-    title: "Nexus Summit 2026",
-    startsAt: "2026-11-22T09:00:00+03:00",
-    timezone: "Africa/Kampala",
-    venue: "Nexus Hall",
-    city: "Kampala",
-    state: "live",
-    admitted: 864,
-    capacity: 1200,
-    nearby: true,
-  },
-  {
-    slug: "security-operations-forum",
-    title: "Security Operations Forum",
-    startsAt: "2026-11-22T14:00:00+03:00",
-    timezone: "Africa/Kampala",
-    venue: "Serena Conference Centre",
-    city: "Kampala",
-    state: "live",
-    admitted: 268,
-    capacity: 300,
-    nearby: true,
-  },
-  {
-    slug: "design-week-kampala",
-    title: "Design Week Kampala",
-    startsAt: "2026-11-25T10:00:00+03:00",
-    timezone: "Africa/Kampala",
-    venue: "Innovation Village",
-    city: "Kampala",
-    state: "upcoming",
-    admitted: 0,
-    capacity: 400,
-    nearby: true,
-  },
-  {
-    slug: "founders-night",
-    title: "Founders Night",
-    startsAt: "2026-11-28T18:30:00+03:00",
-    timezone: "Africa/Kampala",
-    venue: "The Alchemist",
-    city: "Kampala",
-    state: "upcoming",
-    admitted: 0,
-    capacity: 260,
-    nearby: false,
-  },
-  {
-    slug: "civic-tech-assembly",
-    title: "Civic Tech Assembly",
-    startsAt: "2026-12-03T09:00:00+03:00",
-    timezone: "Africa/Kampala",
-    venue: "National Theatre",
-    city: "Kampala",
-    state: "upcoming",
-    admitted: 0,
-    capacity: 500,
-    nearby: false,
-  },
-];
+function totals(rooms: RoomOccupancy[], event: PortalEvent) {
+  const capacity = event.detail.rooms.reduce((sum, room) => sum + room.capacity, 0);
+  const admitted = rooms.reduce((sum, room) => sum + (room.occupancy ?? 0), 0);
+  return { capacity, admitted };
+}
+
+function summary(event: PortalEvent): EventSummary {
+  const { detail, extras } = event;
+  const { capacity } = totals(portal.occupancy(detail.id), event);
+  const admitted = detail.on_site ?? 0;
+  return {
+    slug: detail.slug,
+    title: detail.title,
+    startsAt: detail.starts_at,
+    endsAt: detail.ends_at,
+    timezone: detail.timezone,
+    venue: detail.venue.name,
+    city: detail.venue.city ?? extras.city,
+    state: viewState(detail.state),
+    admitted,
+    admittedShown: detail.on_site !== null,
+    capacity,
+    nearby: extras.nearby,
+    image: extras.image ?? null,
+    sessionCount: detail.sessions.length,
+  };
+}
+
+/** A1: listed, published or live events, soonest first. */
+export function getEvents(): EventSummary[] {
+  return portal
+    .listEvents()
+    .filter((event) => event.detail.state === "published" || event.detail.state === "live")
+    .sort((a, b) => a.detail.starts_at.localeCompare(b.detail.starts_at))
+    .map(summary);
+}
+
+/** A2: any event by slug, including unlisted ones reached by link. */
+export function getEventDetail(slug: string | undefined): EventDetail | undefined {
+  const event = slug ? portal.getEvent(slug) : undefined;
+  if (!event) return undefined;
+  const { detail } = event;
+  const rooms = new Map(detail.rooms.map((room) => [room.room_id, room]));
+  const live = new Map(portal.occupancy(detail.id).map((room) => [room.room_id, room]));
+  const time = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: detail.timezone });
+  const day = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: detail.timezone });
+  const registration = portal.registration(detail.id);
+  const membership = !registration ? "none" : registration.checked_in ? "checked_in" : "registered";
+
+  return {
+    ...summary(event),
+    description: detail.description ?? "",
+    membership: membership === "checked_in" ? "checked-in" : membership,
+    closed: detail.state === "closed" || detail.state === "archived",
+    sessions: [...detail.sessions]
+      .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
+      .map((session) => {
+        const room = rooms.get(session.room_id);
+        return {
+          id: session.id,
+          day: day.format(new Date(session.starts_at)),
+          room: room?.name ?? "",
+          title: session.title,
+          startsIso: session.starts_at,
+          endsIso: session.ends_at,
+          startsAt: time.format(new Date(session.starts_at)),
+          endsAt: time.format(new Date(session.ends_at)),
+          occupancy: live.get(session.room_id)?.occupancy ?? 0,
+          capacity: room?.capacity ?? 0,
+        };
+      }),
+  };
+}

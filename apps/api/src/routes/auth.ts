@@ -1,0 +1,60 @@
+import type { Express } from "express";
+import { ContractError } from "@synan/contracts/errors";
+import { endpoints, WS_SUBPROTOCOL, WS_TICKET_PREFIX } from "@synan/contracts/rest";
+import type { AppContext } from "../app.js";
+import { mount } from "../http/route.js";
+import { authoriseChannel } from "../realtime/ws-server.js";
+
+export function authRoutes(x: Express, app: AppContext) {
+  mount(x, app, endpoints.login, async ({ body }) => {
+    // Per-account limit on failed attempts, on top of the per-IP limit: slows password guessing
+    // against one operator from many IPs. Successful logins do not count.
+    const key = `login-fail:${body.email.toLowerCase()}`;
+    if (app.rateLimiter.blocked(key, 5, 15 * 60_000) !== null) throw new ContractError("RATE_LIMITED");
+    try {
+      const tokens = await app.auth.login(body.email, body.password);
+      app.rateLimiter.clear(key);
+      return tokens;
+    } catch (e) {
+      if (e instanceof ContractError && e.code === "INVALID_CREDENTIALS") app.rateLimiter.hit(key, 5, 15 * 60_000);
+      throw e;
+    }
+  });
+
+  mount(x, app, endpoints.refresh, async ({ body }) => app.auth.refresh(body.refresh_token));
+
+  mount(x, app, endpoints.emailLink, async ({ body }) => {
+    const retry = app.rateLimiter.hit(`link:${body.email.toLowerCase()}`, 3, 15 * 60_000);
+    if (retry === null) await app.auth.requestEmailLink(body.email, body.return_to);
+    // Same answer whether the address exists, was limited, or was sent.
+    return { accepted: true as const };
+  });
+
+  mount(x, app, endpoints.verify, async ({ body }) => app.auth.verifyEmailLink(body.token));
+
+  mount(x, app, endpoints.mfaVerify, async ({ body, ctx }) => app.auth.mfaVerify(ctx!, body.code));
+
+  mount(x, app, endpoints.wsTicket, async ({ body, ctx }) => {
+    // Authorise the channel at mint time; the upgrade re-checks against the stored grant.
+    await authoriseChannel(app, ctx!, body.channel, body.event_id ?? null, body.checkpoint_id ?? null);
+    const { ticket, expiresAt } = app.auth.mintWsTicket({
+      ctx: ctx!,
+      channel: body.channel,
+      eventId: body.event_id ?? null,
+      checkpointId: body.checkpoint_id ?? null,
+    });
+    return {
+      ticket,
+      expires_at: new Date(expiresAt).toISOString(),
+      protocols: [WS_SUBPROTOCOL, `${WS_TICKET_PREFIX}${ticket}`] as [typeof WS_SUBPROTOCOL, string],
+      channel: body.channel,
+    };
+  });
+
+  mount(x, app, endpoints.signingKeys, async () => ({ keys: app.keys.publicKeys() }));
+
+  mount(x, app, endpoints.time, async () => {
+    const now = app.clock.now();
+    return { server_time: new Date(now).toISOString(), epoch_ms: now };
+  });
+}

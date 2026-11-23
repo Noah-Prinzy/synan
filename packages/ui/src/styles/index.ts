@@ -1,10 +1,10 @@
 /**
- * Connexia Styles
+ * Synan Styles
  * 
  * Export all style-related files.
  * 
  * Usage:
- *   import '@connexia/ui/styles';
+ *   import '@synan/ui/styles';
  */
 
 // Import CSS files

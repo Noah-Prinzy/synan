@@ -1,4 +1,4 @@
-# Connexia — Screens
+# Synan — Screens
 
 Every route and screen on the three surfaces. Behaviour behind the screens is in
 [01-product.md](01-product.md); the visual language is in [05-design-system.md](05-design-system.md);
@@ -11,6 +11,11 @@ Screen IDs (`A1`, `D1`, `S1`) are stable and are used in the roadmap and in code
 ## 1. Attendee Portal
 
 Editorial, mobile-first, dark neutral. Discovery is public; everything else is authenticated.
+
+The structure of this surface is Direction A ([05 §2.1](05-design-system.md), D-19): a hairline
+page frame, navigation in ruled cells, a scroll-following side list on the event page, and a footer
+of ruled link columns. Where a screen description below still mentions tabs or a plain card grid,
+Direction A takes precedence; each description is rewritten as its screen is rebuilt.
 
 This surface uses the redesigned layouts (D-01): hero sections, card grids, tabs, and imagery are
 allowed here and nowhere else. The hard rules in [05 §1](05-design-system.md) still apply — square
@@ -93,9 +98,11 @@ The single most important attendee screen. One hairline card, centred, max 600:
   venue the band is the key (D-11).
 - Wristband row: `Bound · uid 04A2…9F` with a green dot, or `Not bound — bind at the desk` with the
   nearest desk location.
-- Actions as a three-up icon grid: `Add to Wallet`, `Email me a copy`, `Brightness up` (forces max
-  brightness while the pass is shown — needed at real gates). The emailed copy is single-use at the
-  first gate, and the screen says so.
+- Actions as a three-up icon grid: `Add to Wallet`, `Email me a copy`, `Keep screen on` (stops the
+  phone dimming or locking while the pass is shown; a web page cannot set brightness itself). The
+  emailed copy is single-use, and the screen says so.
+- `NOT YET BOUND` is shown as a neutral state, not a warning: having no wristband before arriving is
+  normal.
 - Live region: if the credential is revoked while the screen is open, the QR is replaced in place by a
   stop-coloured panel. This is driven by `stream/me` (P-16).
 
@@ -111,7 +118,8 @@ confirmation panel with the band UID and a `this band is now you` line. Failure 
 device → use the desk`.
 
 **A6 · My agenda `/agenda`**
-Chronological list of the attendee's sessions, grouped `Now · Next · Later`. Each row: time (mono), title,
+Chronological list of the attendee's sessions, grouped `Now · Next · Later`, with sessions that have
+ended kept under `Earlier` and each day labelled. Each row: time (mono), title,
 room, and a live `space left` indicator sourced from telemetry. `Now` rows get a 2px foreground left rule.
 Tapping opens the event detail scrolled to the session.
 
@@ -284,7 +292,7 @@ The log shows the current event's scans. After the post-event purge it is empty 
 design, and says so ([03 §6](03-security-privacy.md)).
 
 **D10 · Security alerts `/admin/alerts`**
-Inbox with severity bands (`critical / high / low`). Each row: kind, zone/room, time, age, state
+Inbox with severity bands (`critical / high / medium / low`). Each row: kind, zone/room, time, age, state
 (`open / acked / resolved`), assignee. Detail sheet shows the triggering scan, the credential, the rule
 that fired, and a resolution note field. Resolution is required before an alert leaves the list.
 An impossible-travel alert shows the last two checkpoints and offers `Clear credential` or `Revoke`;
@@ -366,6 +374,9 @@ reason.
   - `DENIED` — stop, reason code in words (`Restricted room`, `Capacity reached`, `Band revoked`,
     `Under review`, `Pass already used`, `Use your wristband`, `Unknown band`), name if known, and
     `Call supervisor`.
+  - The words above illustrate the layout. The exact label and instruction for every result are
+    taken from the contracts' scan-result copy, which is the single source of that wording
+    ([02 §7](02-architecture.md)).
 - Haptics + distinct tones per verdict (site-configurable, default on).
 - `123` (manual UID) and `NFC` toggles in thumb reach. Torch toggle at the top right.
 - Offline: the verdict panel gains a `LOCAL` tag and the count of queued scans appears in the header.

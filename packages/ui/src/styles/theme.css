@@ -1,0 +1,157 @@
+/*
+ * Synan theme — the one place a palette value is declared (docs/05 §3, §8).
+ *
+ * Import once per app, after Tailwind:
+ *
+ *   @import "tailwindcss";
+ *   @import "@synan/ui/theme.css";
+ *   @source "../../../packages/ui/src";
+ *
+ * Colour and radius are the shadcn preset b3rmZc8LB2 (nova / neutral / radius none),
+ * dark only, plus our three signals. Dark is the only shipped mode, so the values
+ * sit on :root and .dark alike. Fonts are imported by each app (Fontsource).
+ */
+
+@custom-variant dark (&:is(.dark *));
+
+:root,
+.dark {
+  --background: oklch(0.145 0 0); /* #0A0A0A */
+  --foreground: oklch(0.985 0 0); /* #FAFAFA */
+  --card: oklch(0.205 0 0); /* #171717 */
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0); /* #262626 */
+  --muted-foreground: oklch(0.708 0 0); /* #A1A1A1 */
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: var(--brand);
+  --radius: 0;
+
+  /* One accent, never a fill (D-01). */
+  --brand: #0aa7c2;
+
+  /* Signals — the only semantic chroma. */
+  --success: #43c07a; /* admitted / healthy */
+  --warning: #e7b643; /* already inside / degraded / near capacity */
+  --destructive: #ff6467; /* denied / breach / offline */
+
+  /* The QR field is the one exception to the dark ground (docs/05 §3). */
+  --qr-field: #ffffff;
+  --qr-ink: #0a0a0a;
+
+  /* Scrim behind dialogs and sheets. */
+  --scrim: oklch(0 0 0 / 60%);
+
+  /* The one filled action per screen (docs/05 §9.2). Neutral by rule: the brand
+     colour is never a fill unless an identity's approved rule change says so. */
+  --action: var(--foreground);
+  --action-foreground: var(--background);
+
+  /* Type families. An identity overrides these three; components never name a face.
+     Interim: the faces in docs/05 §4. */
+  --type-display: "Fraunces Variable", ui-serif, Georgia, serif;
+  --type-ui: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --type-data: "JetBrains Mono Variable", ui-monospace, monospace;
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-qr-field: var(--qr-field);
+  --color-qr-ink: var(--qr-ink);
+  --color-scrim: var(--scrim);
+
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+
+  --color-action: var(--action);
+  --color-action-foreground: var(--action-foreground);
+
+  /* `font-display` for titles, `font-sans` for everything interactive and all labels,
+     `font-mono` for data only (dates, counts, ids). `font-serif` is kept as an alias. */
+  --font-display: var(--type-display);
+  --font-serif: var(--type-display);
+  --font-sans: var(--type-ui);
+  --font-mono: var(--type-data);
+
+  /* The fixed type scale, docs/05 §4: 11 / 12 / 13 / 15 / 17 / 21 / 28 / 40 / 56.
+     `text-11` … `text-56`. 96 is the scanner verdict word (docs/05 §2). */
+  --text-11: 0.6875rem;
+  --text-12: 0.75rem;
+  --text-13: 0.8125rem;
+  --text-15: 0.9375rem;
+  --text-17: 1.0625rem;
+  --text-21: 1.3125rem;
+  --text-28: 1.75rem;
+  --text-40: 2.5rem;
+  --text-56: 3.5rem;
+  --text-96: 6rem;
+
+  /* Motion, docs/05 §5. `duration-state`, `ease-standard`. */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --duration-state: 120ms;
+  --duration-panel: 180ms;
+  --duration-entrance: 240ms;
+}
+
+html {
+  font-family: var(--type-ui);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--brand) 30%, transparent);
+  color: var(--foreground);
+}
+
+/* Brand thread: the accent at the page edge, never a surface. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: color-mix(in srgb, var(--brand) 55%, transparent);
+  pointer-events: none;
+  z-index: 60;
+}
+
+/* Keyboard focus: brand ring, 1px, offset so it never sits on a hairline. In the base
+   layer, so a component's own focus utilities (or outline-none on a scroll target)
+   can override it. */
+@layer base {
+  :focus-visible {
+    outline: 1px solid var(--brand);
+    outline-offset: 2px;
+  }
+}

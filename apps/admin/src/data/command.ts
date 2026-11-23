@@ -1,10 +1,12 @@
-export type ScanVerdict = "ALLOWED" | "DUPLICATE" | "DENIED";
+import type { ScanResult } from "@synan/contracts/enums";
+
+// TODO(mock): these fixtures move behind @synan/mock when the admin screens are built (Phase 2).
 export type GateState = "online" | "degraded";
 
 export interface Scan {
   time: string;
   gate: string;
-  verdict: ScanVerdict;
+  result: ScanResult;
   credential: string;
 }
 
@@ -48,13 +50,13 @@ export const admissions: HourlyAdmission[] = [
 ];
 
 export const recentScans: Scan[] = [
-  { time: "18:44:12", gate: "Gate 2", verdict: "ALLOWED", credential: "CNX·8F2A" },
-  { time: "18:44:09", gate: "Gate 1", verdict: "ALLOWED", credential: "CNX·1C7D" },
-  { time: "18:44:07", gate: "Gate 2", verdict: "DUPLICATE", credential: "CNX·4E90" },
-  { time: "18:44:03", gate: "Gate 3", verdict: "ALLOWED", credential: "CNX·B215" },
-  { time: "18:43:58", gate: "Gate 1", verdict: "DENIED", credential: "CNX·0D44" },
-  { time: "18:43:55", gate: "Gate 2", verdict: "ALLOWED", credential: "CNX·77A6" },
-  { time: "18:43:51", gate: "Gate 1", verdict: "ALLOWED", credential: "CNX·E3C1" },
+  { time: "18:44:12", gate: "Gate 2", result: "admitted", credential: "SYN·8F2A" },
+  { time: "18:44:09", gate: "Gate 1", result: "admitted", credential: "SYN·1C7D" },
+  { time: "18:44:07", gate: "Gate 2", result: "already_inside", credential: "SYN·4E90" },
+  { time: "18:44:03", gate: "Gate 3", result: "admitted", credential: "SYN·B215" },
+  { time: "18:43:58", gate: "Gate 1", result: "denied_room", credential: "SYN·0D44" },
+  { time: "18:43:55", gate: "Gate 2", result: "admitted", credential: "SYN·77A6" },
+  { time: "18:43:51", gate: "Gate 1", result: "admitted", credential: "SYN·E3C1" },
 ];
 
 export const zones: Zone[] = [

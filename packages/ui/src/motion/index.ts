@@ -1,10 +1,10 @@
 /**
- * Connexia Motion Library
+ * Synan Motion Library
  *
  * Export all motion primitives, utilities, and components.
  *
  * Usage:
- *   import { fadeIn, scaleIn, transitions, easing } from '@connexia/ui/motion';
+ *   import { fadeIn, scaleIn, transitions, easing } from '@synan/ui/motion';
  */
 
 export * from './primitives';

@@ -1,134 +1,78 @@
-import { eventDetails } from "./events";
+/**
+ * A6 view model: the attendee's sessions (GET /me/sessions) grouped Now · Next · Later
+ * · Earlier against the mock clock, with each room's live count (public telemetry).
+ */
+import { dayKey } from "./format";
+import { clock, portal } from "./mock";
 
 export interface AgendaSession {
   id: string;
   eventSlug: string;
   eventTitle: string;
-  day: string;
+  timezone: string;
   room: string;
   title: string;
   startsAt: string;
   endsAt: string;
+  /** Local calendar day, for day labels. */
+  day: string;
   capacity: number;
-  admitted: number;
+  admitted: number | null;
 }
 
-/** Session times are wall-clock strings; anchor them to the event's date and offset. */
-function toIso(eventStartsAt: string, wallClock: string): string {
-  const date = eventStartsAt.slice(0, 10);
-  const offset = eventStartsAt.length > 19 ? eventStartsAt.slice(19) : "Z";
-  return `${date}T${wallClock}:00${offset}`;
-}
-
-// Create agenda sessions from eventDetails
-function buildAgendaSessions(): AgendaSession[] {
-  const sessions: AgendaSession[] = [];
-  
-  for (const event of eventDetails) {
-    for (const session of event.sessions) {
-      sessions.push({
-        id: `${event.slug}-${session.id}`,
-        eventSlug: event.slug,
-        eventTitle: event.title,
-        day: session.day,
-        room: session.room,
-        title: session.title,
-        startsAt: toIso(event.startsAt, session.startsAt),
-        endsAt: toIso(event.startsAt, session.endsAt),
-        capacity: session.capacity,
-        admitted: Math.floor(session.occupancy * session.capacity / 100),
-      });
-    }
-  }
-  
-  return sessions;
-}
-
-const agendaSessions = buildAgendaSessions();
-
-// Group sessions by time relative to now
-export type AgendaGroup = "NOW" | "NEXT" | "LATER";
+export type AgendaGroup = "NOW" | "NEXT" | "LATER" | "EARLIER";
 
 export interface AgendaGroupItem {
   group: AgendaGroup;
   sessions: AgendaSession[];
 }
 
-function getNowIso(): string {
-  return new Date().toISOString();
+function mySessions(): AgendaSession[] {
+  const event = portal.passEvent();
+  const rooms = new Map(event.detail.rooms.map((room) => [room.room_id, room]));
+  const live = new Map(portal.occupancy(event.detail.id).map((room) => [room.room_id, room]));
+  return portal.sessions().map((session) => ({
+    id: session.id,
+    eventSlug: event.detail.slug,
+    eventTitle: event.detail.title,
+    timezone: event.detail.timezone,
+    room: rooms.get(session.room_id)?.name ?? "",
+    title: session.title,
+    startsAt: session.starts_at,
+    endsAt: session.ends_at,
+    day: dayKey(session.starts_at, event.detail.timezone),
+    capacity: rooms.get(session.room_id)?.capacity ?? 0,
+    admitted: live.get(session.room_id)?.occupancy ?? null,
+  }));
 }
 
-function isSessionActive(session: AgendaSession, nowIso: string): boolean {
-  // Sessions are in Africa/Kampala timezone (+03:00)
-  // Convert to UTC for comparison
-  const startUtc = new Date(session.startsAt).toISOString();
-  const endUtc = new Date(session.endsAt).toISOString();
-  return nowIso >= startUtc && nowIso <= endUtc;
+/**
+ * Now: running at `now`. Next: the earliest one not yet started. Later: the rest still
+ * ahead. Earlier: sessions that have ended, most recent first (owner decision).
+ */
+export function groupAgenda(now: number = clock.now()): AgendaGroupItem[] {
+  const groups: Record<AgendaGroup, AgendaSession[]> = { NOW: [], NEXT: [], LATER: [], EARLIER: [] };
+  for (const session of mySessions()) {
+    const start = Date.parse(session.startsAt);
+    const end = Date.parse(session.endsAt);
+    if (end <= now) groups.EARLIER.unshift(session);
+    else if (start <= now) groups.NOW.push(session);
+    else if (groups.NEXT.length === 0) groups.NEXT.push(session);
+    else groups.LATER.push(session);
+  }
+  return (["NOW", "NEXT", "LATER", "EARLIER"] as const)
+    .filter((group) => groups[group].length > 0)
+    .map((group) => ({ group, sessions: groups[group] }));
 }
 
-function isSessionUpcoming(session: AgendaSession, nowIso: string): boolean {
-  const startUtc = new Date(session.startsAt).toISOString();
-  return nowIso < startUtc;
-}
-
-export function groupAgenda(now?: Date): AgendaGroupItem[] {
-  const nowIso = now ? now.toISOString() : getNowIso();
-  
-  const nowSessions: AgendaSession[] = [];
-  const nextSessions: AgendaSession[] = [];
-  const laterSessions: AgendaSession[] = [];
-  
-  // Sort by startsAt
-  const sortedSessions = [...agendaSessions].sort(
-    (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
-  );
-  
-  for (const session of sortedSessions) {
-    if (isSessionActive(session, nowIso)) {
-      nowSessions.push(session);
-    } else if (isSessionUpcoming(session, nowIso)) {
-      // Next session is the earliest upcoming
-      if (nextSessions.length === 0) {
-        nextSessions.push(session);
-      } else {
-        laterSessions.push(session);
-      }
-    } else {
-      laterSessions.push(session);
-    }
-  }
-  
-  const groups: AgendaGroupItem[] = [];
-  
-  if (nowSessions.length > 0) {
-    groups.push({ group: "NOW", sessions: nowSessions });
-  }
-  if (nextSessions.length > 0) {
-    groups.push({ group: "NEXT", sessions: nextSessions });
-  }
-  if (laterSessions.length > 0) {
-    groups.push({ group: "LATER", sessions: laterSessions });
-  }
-  
-  return groups;
-}
-
-// Get all sessions for display (chronological)
-export function getAllSessions(): AgendaSession[] {
-  return [...agendaSessions].sort(
-    (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
-  );
-}
-
-// Get space left info
-export function getSpaceLeft(session: AgendaSession): { count: number; label: string; tone: "warning" | "destructive" | "muted" } {
-  const spaceLeft = session.capacity - session.admitted;
-  
-  if (spaceLeft === 0) {
-    return { count: 0, label: "Full", tone: "destructive" };
-  } else if (spaceLeft <= session.capacity * 0.15) {
-    return { count: spaceLeft, label: "Near full", tone: "warning" };
-  } else {
-    return { count: spaceLeft, label: "Space left", tone: "muted" };
-  }
+export function getSpaceLeft(session: AgendaSession): {
+  count: number | null;
+  label: string;
+  tone: "warning" | "destructive" | "muted";
+} {
+  if (session.admitted === null) return { count: null, label: "Not open yet", tone: "muted" };
+  const spaceLeft = Math.max(0, session.capacity - session.admitted);
+  if (spaceLeft === 0) return { count: 0, label: "Full", tone: "destructive" };
+  if (spaceLeft <= session.capacity * 0.15) return { count: spaceLeft, label: `${spaceLeft} left`, tone: "warning" };
+  return { count: spaceLeft, label: `${spaceLeft} left`, tone: "muted" };
 }

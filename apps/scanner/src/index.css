@@ -1,0 +1,14 @@
+@import "tailwindcss";
+@import "@synan/ui/theme.css";
+@import "@synan/ui/motion.css";
+@source "../../../packages/ui/src";
+@import "@fontsource-variable/fraunces";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/jetbrains-mono";
+
+/* The palette lives in packages/ui/src/styles/theme.css. The scanner is an instrument:
+   one decision at a time, no decoration (docs/05 §2). */
+html,
+body {
+  overscroll-behavior: none;
+}

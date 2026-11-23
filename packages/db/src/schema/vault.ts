@@ -1,0 +1,50 @@
+/**
+ * Identity vault — docs/03-security-privacy.md §5. A separate Postgres schema, `pii_vault`, with
+ * row-level security ENABLED and FORCED on every table (policies in migration 0002).
+ *
+ * Every query touching these tables must run inside `withVaultScope()` (src/client.ts), which sets
+ * `app.vault_scope` (and `app.attendee_id` for the `attendee` scope) for the transaction.
+ * Without it, reads return zero rows and writes are rejected.
+ *
+ * `ephemeral_ids` also lives in this schema but is declared in ./operations.ts to avoid an import
+ * cycle (it references credentials).
+ */
+import { sql } from "drizzle-orm";
+import { index, jsonb, pgSchema, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { users } from "./people";
+
+const tstz = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
+
+export const piiVault = pgSchema("pii_vault");
+
+/**
+ * One row per person. A Public-tier attendee has no email and no name (02 §4.2).
+ *
+ * `email` and `full_name` hold AES-256-GCM envelopes (`ev1.<kid>.<iv>.<ct>`, src/crypto) bound to
+ * this row and column; `profile_jsonb` holds `{"$enc": "ev1.…"}`. The database never sees a key.
+ * Write and read them only through src/secrets.ts. `email_hash` is the keyed blind index
+ * (HMAC-SHA-256 under a separate key, 64 hex) used for lookup and de-duplication without decrypting.
+ */
+export const attendees = piiVault.table(
+  "attendees",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Optional link to a users row (an attendee who is also staff). */
+    user_id: uuid("user_id").references(() => users.id),
+    email: text("email"),
+    email_hash: text("email_hash"),
+    full_name: text("full_name"),
+    /** Answers to the event-defined profile fields. */
+    profile_jsonb: jsonb("profile_jsonb").notNull().default(sql`'{}'::jsonb`),
+    created_at: tstz("created_at").notNull().defaultNow(),
+    updated_at: tstz("updated_at").notNull().defaultNow(),
+    /** Set by erasure: identifying columns are nulled, the row stays so registrations keep integrity. */
+    erased_at: tstz("erased_at"),
+  },
+  (t) => [
+    uniqueIndex("attendees_email_hash_uq")
+      .on(t.email_hash)
+      .where(sql`${t.email_hash} IS NOT NULL`),
+    index("attendees_user_idx").on(t.user_id),
+  ],
+);

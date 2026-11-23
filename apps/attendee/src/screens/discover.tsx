@@ -1,46 +1,25 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { PageShell, Eyebrow } from "../components/page";
-import { events, type EventSummary } from "../data/events";
-import {
-  AnimatedBar,
-  AnimatedUnderline,
-  Badge,
-  Button,
-  Card,
-  buttonClass,
-} from "@connexia/ui/components";
+import { pageTitle } from "@synan/ui/brand";
+import { AnimatedBar, Badge, buttonClass } from "@synan/ui/components";
+import { PageShell } from "../components/page";
+import { ErrorState, OfflineState, SkeletonCells, StateBlock } from "../components/states";
+import { getEvents, type EventSummary } from "../data/events";
+import { dateParts, formatDay, formatTime, relativeDays, zoneLabel } from "../data/format";
+import { clock, useResource } from "../data/mock";
 
-type Filter = "all" | "live" | "upcoming" | "near";
+type Filter = "all" | "live" | "upcoming";
 
+// "Near me" is left out until the owner decides how proximity works.
 const filters: { id: Filter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "live", label: "Live" },
   { id: "upcoming", label: "Upcoming" },
-  { id: "near", label: "Near me" },
 ];
 
-function dateParts(event: EventSummary) {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    weekday: "short",
-    day: "2-digit",
-    month: "short",
-    timeZone: event.timezone,
-  }).formatToParts(new Date(event.startsAt));
-  const pick = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value ?? "";
-  return { weekday: pick("weekday"), day: pick("day"), month: pick("month") };
-}
-
-function occupancy(event: EventSummary): number {
-  if (event.state !== "live" || event.capacity === 0) return 0;
+function occupancyPct(event: EventSummary): number {
+  if (event.state !== "live" || !event.admittedShown || event.capacity === 0) return 0;
   return Math.round((event.admitted / event.capacity) * 100);
-}
-
-function occupancyTone(pct: number): "success" | "warning" | "destructive" {
-  if (pct >= 100) return "destructive";
-  if (pct >= 85) return "warning";
-  return "success";
 }
 
 function barTone(pct: number): "neutral" | "warning" | "destructive" {
@@ -49,199 +28,268 @@ function barTone(pct: number): "neutral" | "warning" | "destructive" {
   return "neutral";
 }
 
-function FeaturedEvent({ event }: { event: EventSummary }) {
-  const pct = occupancy(event);
-  const { weekday, day, month } = dateParts(event);
-
+/** Static construction lines (Direction A frame). Decorative, so hidden from assistive tech. */
+function ColumnGuides() {
   return (
-    <section aria-labelledby="featured-heading" className="border-b border-border pb-10 md:pb-14">
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-end lg:gap-16">
-        <div>
-          <div className="flex flex-wrap items-center gap-3">
-            <Badge tone="success" dot pulse>
-              Live now
-            </Badge>
-            <Eyebrow>
-              {weekday} {day} {month} · {event.city}
-            </Eyebrow>
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0 hidden md:block">
+      <span className="absolute inset-y-0 left-1/4 w-px bg-border" />
+      <span className="absolute inset-y-0 left-3/4 w-px bg-border" />
+      <svg className="absolute top-0 left-0 h-full w-1/4 text-border" preserveAspectRatio="none" viewBox="0 0 100 100">
+        <path d="M0 100 A100 100 0 0 1 100 0" fill="none" stroke="currentColor" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+      </svg>
+    </div>
+  );
+}
+
+function Cell({ label, children, index }: { label: string; children: React.ReactNode; index: number }) {
+  return (
+    <div
+      className="enter flex min-h-28 flex-col justify-between gap-3 border-b border-border px-4 py-5 sm:px-6 md:border-b-0 md:px-8 [&:nth-child(odd)]:border-r md:[&:not(:last-child)]:border-r"
+      style={{ ["--i" as string]: index + 3 }}
+    >
+      <p className="text-13 font-medium text-muted-foreground">{label}</p>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+export function Featured({ event }: { event: EventSummary }) {
+  const live = event.state === "live";
+  const pct = occupancyPct(event);
+  return (
+    <section aria-labelledby="featured-title" className="border-b border-border">
+      <div className="relative overflow-hidden px-4 py-16 text-center sm:px-6 md:py-24">
+        <ColumnGuides />
+        <div className="relative">
+          <div className="enter flex justify-center">
+            {live ? (
+              <Badge tone="success" dot pulse>
+                Live now
+              </Badge>
+            ) : (
+              <Badge tone="neutral">Next up · {relativeDays(event.startsAt, clock.now())}</Badge>
+            )}
           </div>
-
-          <h2 id="featured-heading" className="mt-5 max-w-[18ch] font-serif text-4xl leading-[1.05] font-normal md:text-6xl xl:text-7xl">
-            <Link
-              to={`/events/${event.slug}`}
-              className="transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] hover:text-brand focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand motion-reduce:transition-none"
-            >
-              {event.title}
-            </Link>
-          </h2>
-
-          <p className="mt-4 text-sm text-muted-foreground">
-            {event.venue} · {event.city}
-          </p>
-
-          <div className="mt-8">
+          <h1
+            id="featured-title"
+            className="enter mx-auto mt-6 max-w-[16ch] font-display text-40 leading-[1.05] md:text-56"
+            style={{ ["--i" as string]: 1 }}
+          >
+            {event.title}
+          </h1>
+          <div className="enter mt-8 flex justify-center" style={{ ["--i" as string]: 2 }}>
             <Link to={`/events/${event.slug}`} className={buttonClass("primary", "md")}>
               View event
             </Link>
           </div>
         </div>
-
-        <Card className="bg-transparent">
-          <div className="px-5 pt-4 pb-5">
-            <Eyebrow>Admitted</Eyebrow>
-            <p className="mt-2 font-serif text-5xl leading-none tabular-nums">
-              {event.admitted.toLocaleString("en-GB")}
-              <span className="ml-2 font-mono text-xs text-muted-foreground">
-                / {event.capacity.toLocaleString("en-GB")}
-              </span>
-            </p>
-            <div className="mt-6">
-              <AnimatedBar value={pct} tone={barTone(pct)} label={`${pct}% of capacity admitted`} />
-            </div>
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <span className="font-mono text-[0.6875rem] tabular-nums text-muted-foreground">
-                {pct}% of capacity
-              </span>
-              <Badge tone={occupancyTone(pct)} dot>
-                {pct >= 85 ? "Near capacity" : "Within capacity"}
-              </Badge>
-            </div>
-          </div>
-        </Card>
+      </div>
+      <div className="grid grid-cols-2 border-t border-border md:grid-cols-4">
+        <Cell label="When" index={0}>
+          <p className="font-mono text-17">{formatDay(event.startsAt, event.timezone)}</p>
+          <p className="mt-1 text-13 text-muted-foreground">
+            <span className="font-mono">{formatTime(event.startsAt, event.timezone)}</span> · {zoneLabel(event.timezone, event.startsAt)}
+          </p>
+        </Cell>
+        <Cell label="Where" index={1}>
+          <p className="text-17">{event.venue}</p>
+          <p className="mt-1 text-13 text-muted-foreground">{event.city}</p>
+        </Cell>
+        <Cell label={live && event.admittedShown ? "Here now" : "Capacity"} index={2}>
+          {live && event.admittedShown ? (
+            <>
+              <p className="text-17">
+                <span className="font-mono">{event.admitted.toLocaleString("en-GB")}</span>
+                <span className="text-muted-foreground"> of </span>
+                <span className="font-mono">{event.capacity.toLocaleString("en-GB")}</span>
+              </p>
+              <AnimatedBar value={pct} tone={barTone(pct)} label={`${pct}% of capacity`} className="mt-3" />
+            </>
+          ) : (
+            <p className="font-mono text-17">{event.capacity.toLocaleString("en-GB")}</p>
+          )}
+        </Cell>
+        <Cell label="Programme" index={3}>
+          <p className="text-17">
+            <span className="font-mono">{event.sessionCount}</span> sessions
+          </p>
+          <Link to={`/events/${event.slug}#schedule`} className="mt-1 inline-flex min-h-11 items-center text-13 underline underline-offset-4">
+            See the schedule
+          </Link>
+        </Cell>
       </div>
     </section>
   );
 }
 
-function EventCard({ event }: { event: EventSummary }) {
-  const { weekday, day, month } = dateParts(event);
-  const pct = occupancy(event);
-
+/**
+ * The image slot. With a photograph: the photo, cropped to the slot. Without one: a
+ * typographic plate — the date as the picture, on the frame's construction lines — so
+ * an event without a photo looks intended, not missing.
+ */
+function EventPlate({ event }: { event: EventSummary }) {
+  const { weekday, day, month } = dateParts(event.startsAt, event.timezone);
+  if (event.image) {
+    return <img src={event.image} alt="" className="aspect-[16/10] w-full border-b border-border object-cover" loading="lazy" />;
+  }
+  const live = event.state === "live";
   return (
-    <Card className="group h-full transition-colors duration-[180ms] ease-[cubic-bezier(.2,0,0,1)] hover:border-brand/60 motion-reduce:transition-none">
-      <Link to={`/events/${event.slug}`} className="flex h-full flex-col focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand">
-        <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
-          <p className="font-mono text-[0.6875rem] uppercase tracking-[0.08em] text-muted-foreground">
-            <span className="block">{weekday}</span>
-            <span className="block text-foreground">
-              {day} {month}
-            </span>
+    <div aria-hidden="true" className="relative aspect-[16/10] overflow-hidden border-b border-border">
+      <svg className="absolute inset-0 h-full w-full text-border" preserveAspectRatio="none" viewBox="0 0 160 100">
+        <path d="M0 100 A100 100 0 0 1 100 0" fill="none" stroke="currentColor" vectorEffect="non-scaling-stroke" />
+        <line x1="100" y1="0" x2="100" y2="100" stroke="currentColor" vectorEffect="non-scaling-stroke" />
+      </svg>
+      <div className="absolute right-0 bottom-0 left-0 flex items-end justify-between p-5">
+        <p className="font-mono leading-none">
+          <span className="block text-56 text-foreground">{day}</span>
+          <span className="mt-2 block text-13 tracking-[0.08em] text-muted-foreground uppercase">
+            {weekday} {month}
+          </span>
+        </p>
+        {live && event.admittedShown ? (
+          <p className="text-right text-13 text-muted-foreground">
+            <span className="block font-mono text-28 text-foreground">{event.admitted.toLocaleString("en-GB")}</span>
+            here now
           </p>
-          {event.state === "live" ? (
-            <Badge tone="success" dot pulse={pct >= 85}>
-              Live
-            </Badge>
-          ) : (
-            <Badge tone="neutral">Upcoming</Badge>
-          )}
-        </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
-        <div className="flex flex-1 flex-col justify-between gap-6 px-5 py-5">
-          <div>
-            <h2 className="font-serif text-2xl leading-tight font-normal">{event.title}</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
+export function EventCard({ event, index }: { event: EventSummary; index: number }) {
+  const live = event.state === "live";
+  const pct = occupancyPct(event);
+  return (
+    <li className="enter" style={{ ["--i" as string]: index }}>
+      <Link
+        to={`/events/${event.slug}`}
+        className="group flex h-full flex-col transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] hover:bg-card/40 motion-reduce:transition-none"
+      >
+        <EventPlate event={event} />
+        <div className="flex flex-1 flex-col gap-4 p-5 sm:p-6">
+          <div className="flex items-center justify-between gap-3">
+            {live ? (
+              <Badge tone="success" dot>
+                Live
+              </Badge>
+            ) : (
+              <span className="text-13 text-muted-foreground">Opens {relativeDays(event.startsAt, clock.now())}</span>
+            )}
+            <span className="font-mono text-13 text-muted-foreground">{formatTime(event.startsAt, event.timezone)}</span>
+          </div>
+          <div className="flex-1">
+            <h3 className="font-display text-28 leading-tight underline-offset-4 group-hover:underline">{event.title}</h3>
+            <p className="mt-2 text-15 text-muted-foreground">
               {event.venue} · {event.city}
             </p>
           </div>
-
-          {event.state === "live" ? (
+          {live && event.admittedShown ? (
             <div>
-              <div className="mb-2 flex items-baseline justify-between gap-3">
-                <span className="font-mono text-[0.625rem] uppercase tracking-[0.12em] text-muted-foreground">
-                  Occupancy
-                </span>
-                <span
-                  className={`font-mono text-[0.6875rem] tabular-nums ${
-                    pct >= 100 ? "text-destructive" : pct >= 85 ? "text-warning" : "text-foreground"
-                  }`}
-                >
+              <div className="mb-2 flex items-baseline justify-between text-13 text-muted-foreground">
+                <span>Here now</span>
+                <span className={`font-mono ${pct >= 100 ? "text-destructive" : pct >= 85 ? "text-warning" : "text-foreground"}`}>
                   {pct}%
                 </span>
               </div>
-              <AnimatedBar value={pct} tone={barTone(pct)} label={`${event.title} occupancy`} />
+              <AnimatedBar value={pct} tone={barTone(pct)} label={`${event.title}: ${pct}% of capacity`} />
             </div>
           ) : (
-            <p className="font-mono text-[0.625rem] uppercase tracking-[0.12em] text-muted-foreground">
-              Capacity {event.capacity.toLocaleString("en-GB")}
+            <p className="text-13 text-muted-foreground">
+              <span className="font-mono">{event.sessionCount}</span> sessions · capacity{" "}
+              <span className="font-mono">{event.capacity.toLocaleString("en-GB")}</span>
             </p>
           )}
         </div>
       </Link>
-    </Card>
+    </li>
   );
 }
 
 export default function Discover() {
   const [filter, setFilter] = useState<Filter>("all");
+  const events = useResource("events", getEvents);
 
   useEffect(() => {
-    document.title = "Connexia";
+    document.title = pageTitle();
   }, []);
 
-  const visible = events.filter((event) => {
-    if (filter === "live") return event.state === "live";
-    if (filter === "upcoming") return event.state === "upcoming";
-    if (filter === "near") return event.nearby;
-    return true;
-  });
+  if (events.status !== "ready") {
+    return (
+      <PageShell bleed>
+        <h1 className="sr-only">Events</h1>
+        {events.status === "loading" ? (
+          <SkeletonCells count={3} />
+        ) : events.status === "offline" ? (
+          <OfflineState what="Events" onRetry={events.retry} />
+        ) : (
+          <ErrorState what="events" onRetry={events.retry} />
+        )}
+      </PageShell>
+    );
+  }
 
-  const featured = events.find((event) => event.state === "live");
+  const all = events.data;
+  const featured = all.find((event) => event.state === "live") ?? all[0];
+  const rest = all.filter((event) => event !== featured);
+  const visible = rest.filter((event) => filter === "all" || event.state === filter);
+  const counts: Record<Filter, number> = {
+    all: rest.length,
+    live: rest.filter((event) => event.state === "live").length,
+    upcoming: rest.filter((event) => event.state === "upcoming").length,
+  };
 
   return (
-    <PageShell>
-      <h1 className="sr-only">Events</h1>
+    <PageShell bleed>
+      {featured ? <Featured event={featured} /> : <h1 className="sr-only">Events</h1>}
 
-      {featured && (filter === "all" || filter === "live" || filter === "near") ? (
-        <FeaturedEvent event={featured} />
-      ) : null}
-
-      <nav aria-label="Filter events" className="border-b border-border">
-        <div className="flex flex-wrap gap-7">
-          {filters.map(({ id, label }) => (
-            <button
-              key={id}
-              type="button"
-              aria-pressed={filter === id}
-              onClick={() => setFilter(id)}
-              className={`relative pt-3 pb-3 font-mono text-[0.6875rem] uppercase tracking-[0.12em] transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand motion-reduce:transition-none ${
-                filter === id ? "text-brand" : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {label}
-              <AnimatedUnderline active={filter === id} />
-            </button>
-          ))}
-        </div>
-      </nav>
-
-      <section aria-labelledby="all-events-heading" className="pt-8 pb-24">
-        <div className="mb-5 flex items-baseline justify-between gap-4">
-          <h2 id="all-events-heading" className="font-mono text-[0.625rem] uppercase tracking-[0.18em] text-muted-foreground">
-            {filter === "all" ? "All events" : filters.find((f) => f.id === filter)?.label}
+      <section aria-labelledby="more-title">
+        <div className="flex items-stretch justify-between border-b border-border">
+          <h2 id="more-title" className="flex items-center px-4 font-display text-21 sm:px-6 md:px-8">
+            {featured ? "More events" : "Events"}
           </h2>
-          <span className="font-mono text-[0.625rem] tabular-nums text-muted-foreground">
-            {visible.length.toString().padStart(2, "0")}
-          </span>
+          <div role="group" aria-label="Filter events" className="flex items-stretch">
+            {filters.map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={filter === id}
+                onClick={() => setFilter(id)}
+                className={`relative flex min-h-14 items-center gap-2 border-l border-border px-4 text-15 transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none sm:px-5 ${
+                  filter === id ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {label}
+                <span className="font-mono text-13 text-muted-foreground">{counts[id]}</span>
+                <span
+                  aria-hidden="true"
+                  className={`absolute inset-x-0 -bottom-px h-px origin-left bg-brand transition-transform duration-[180ms] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none ${
+                    filter === id ? "scale-x-100" : "scale-x-0"
+                  }`}
+                />
+              </button>
+            ))}
+          </div>
         </div>
 
         {visible.length > 0 ? (
-          <ul className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-            {visible.map((event) => (
-              <li key={event.slug}>
-                <EventCard event={event} />
-              </li>
+          <ul key={filter} className="grid sm:grid-cols-2 lg:grid-cols-3 [&>li]:border-b [&>li]:border-border sm:[&>li:nth-child(odd)]:border-r lg:[&>li]:border-r lg:[&>li:nth-child(3n)]:border-r-0">
+            {visible.map((event, index) => (
+              <EventCard key={event.slug} event={event} index={index} />
             ))}
           </ul>
         ) : (
-          <div className="flex flex-col items-start gap-3 border border-border px-6 py-14">
-            <p className="font-serif text-xl">Nothing in this view.</p>
-            <p className="text-sm text-muted-foreground">
-              There are no events for this filter right now.
-            </p>
-            <Button variant="secondary" size="sm" onClick={() => setFilter("all")} className="mt-2">
-              Show all events
-            </Button>
-          </div>
+          <StateBlock
+            glyph="·"
+            title={filter === "live" ? "Nothing else is live right now." : "No upcoming events yet."}
+            action={
+              <button type="button" onClick={() => setFilter("all")} className={buttonClass("secondary", "sm")}>
+                Show all events
+              </button>
+            }
+          >
+            New events appear here as soon as organisers publish them.
+          </StateBlock>
         )}
       </section>
     </PageShell>

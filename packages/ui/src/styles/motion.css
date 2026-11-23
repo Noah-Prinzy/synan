@@ -1,229 +1,76 @@
 /**
- * Connexia Motion - CSS animations and transition utilities
+ * Motion — CSS only (docs/05 §5). Cubic-bezier easing, transform and opacity only,
+ * nothing infinite except loading indicators, and a reduced-motion path for all of it.
  *
- * Rules (docs/05-design-system.md §5):
- * - cubic-bezier easing only - no spring, no bounce, no parallax
- * - state 120ms / panels 180ms with cubic-bezier(.2,0,0,1)
- * - occupancy bars animate with transform: scaleX, never width
+ * Everything sits in Tailwind's `utilities` layer, and no name here shadows a
+ * Tailwind utility (no `.transition-colors`, no `.animate-spin`).
  *
- * This file contains no global element styles. Ambient page treatment is
- * owned by each app so it can be tuned per surface.
+ *   enter          opacity + 8px rise, 240ms. Stagger with style="--i: n" (40ms steps).
+ *   fade-in        120ms crossfade, for content that replaces content.
+ *   animate-status-pulse, animate-skeleton-sweep   loading/live indicators.
+ *   drainX         keyframes for a countdown rule (scaleX from --drain-from to 0).
  */
 
-/* ============================================================================
-   KEYFRAMES
-   ============================================================================ */
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
-@keyframes fadeOut {
-  from { opacity: 1; }
-  to { opacity: 0; }
-}
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes fadeInDown {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes fadeInLeft {
-  from {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes fadeInRight {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes scaleIn {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes scaleOut {
-  from {
-    opacity: 1;
-    transform: scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-}
-
-@keyframes slideInLeft {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(0); }
-}
-
-@keyframes slideInRight {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
-}
-
-@keyframes slideInTop {
-  from { transform: translateY(-100%); }
-  to { transform: translateY(0); }
-}
-
-@keyframes slideInBottom {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  20%, 60% { transform: translateX(-5px); }
-  40%, 80% { transform: translateX(5px); }
-}
-
-/* Occupancy / capacity bars: transform-only growth */
-@keyframes scaleXIn {
-  from { transform: scaleX(0); }
-  to { transform: scaleX(1); }
-}
-
-/* Status dot pulse: opacity only, no movement */
+/* Status dot: opacity only, a few beats, then still. */
 @keyframes statusPulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
 
-/* Skeleton sweep: horizontal transform only */
 @keyframes skeletonSweep {
   from { transform: translateX(-100%); }
   to { transform: translateX(100%); }
 }
 
-/* ============================================================================
-   ANIMATION UTILITIES
-   ============================================================================ */
-
-.animate-fade-in { animation-name: fadeIn; }
-.animate-fade-out { animation-name: fadeOut; }
-.animate-fade-in-up { animation-name: fadeInUp; }
-.animate-fade-in-down { animation-name: fadeInDown; }
-.animate-fade-in-left { animation-name: fadeInLeft; }
-.animate-fade-in-right { animation-name: fadeInRight; }
-.animate-scale-in { animation-name: scaleIn; }
-.animate-scale-out { animation-name: scaleOut; }
-.animate-slide-in-left { animation-name: slideInLeft; }
-.animate-slide-in-right { animation-name: slideInRight; }
-.animate-slide-in-top { animation-name: slideInTop; }
-.animate-slide-in-bottom { animation-name: slideInBottom; }
-.animate-spin { animation-name: spin; animation-timing-function: linear; }
-.animate-shake { animation-name: shake; }
-.animate-scale-x-in { animation-name: scaleXIn; }
-.animate-status-pulse { animation-name: statusPulse; }
-.animate-skeleton-sweep { animation: skeletonSweep 1600ms linear infinite; }
-
-.animate-duration-sm { animation-duration: 120ms; }
-.animate-duration-md { animation-duration: 180ms; }
-.animate-duration-lg { animation-duration: 240ms; }
-
-.animate-ease-default { animation-timing-function: cubic-bezier(0.2, 0, 0, 1); }
-.animate-ease-linear { animation-timing-function: linear; }
-
-.animate-fill-forwards { animation-fill-mode: forwards; }
-.animate-fill-backwards { animation-fill-mode: backwards; }
-.animate-fill-both { animation-fill-mode: both; }
-
-.animate-once { animation-iteration-count: 1; }
-.animate-loop { animation-iteration-count: infinite; }
-
-.animate-fade-in-sm { animation: fadeIn 120ms cubic-bezier(0.2, 0, 0, 1) forwards; }
-.animate-fade-in-md { animation: fadeIn 180ms cubic-bezier(0.2, 0, 0, 1) forwards; }
-.animate-fade-in-up-md { animation: fadeInUp 180ms cubic-bezier(0.2, 0, 0, 1) forwards; }
-.animate-scale-in-md { animation: scaleIn 180ms cubic-bezier(0.2, 0, 0, 1) forwards; }
-.animate-slide-in-left-md { animation: slideInLeft 180ms cubic-bezier(0.2, 0, 0, 1) forwards; }
-.animate-slide-in-right-md { animation: slideInRight 180ms cubic-bezier(0.2, 0, 0, 1) forwards; }
-
-/* ============================================================================
-   TRANSITION UTILITIES
-   ============================================================================ */
-
-.transition-none { transition-property: none; }
-.transition-all { transition-property: all; }
-.transition-colors { transition-property: color, background-color, border-color, fill, stroke; }
-.transition-opacity { transition-property: opacity; }
-.transition-transform { transition-property: transform; }
-.transition-border { transition-property: border-color; }
-
-.transition-duration-sm { transition-duration: 120ms; }
-.transition-duration-md { transition-duration: 180ms; }
-.transition-duration-lg { transition-duration: 240ms; }
-
-.transition-ease-default { transition-timing-function: cubic-bezier(0.2, 0, 0, 1); }
-
-.transition-state { transition: all 120ms cubic-bezier(0.2, 0, 0, 1); }
-.transition-panel { transition: all 180ms cubic-bezier(0.2, 0, 0, 1); }
-.transition-colors-normal {
-  transition:
-    color 180ms cubic-bezier(0.2, 0, 0, 1),
-    background-color 180ms cubic-bezier(0.2, 0, 0, 1),
-    border-color 180ms cubic-bezier(0.2, 0, 0, 1);
-}
-.transition-opacity-normal { transition: opacity 180ms cubic-bezier(0.2, 0, 0, 1); }
-.transition-transform-normal { transition: transform 180ms cubic-bezier(0.2, 0, 0, 1); }
-
-/* ============================================================================
-   FOCUS
-   ============================================================================ */
-
-.focus-ring-brand:focus-visible {
-  outline: 1px solid var(--color-brand, #0aa7c2);
-  outline-offset: 1px;
+@keyframes drainX {
+  from { transform: scaleX(var(--drain-from, 1)); }
+  to { transform: scaleX(0); }
 }
 
-/* ============================================================================
-   REDUCED MOTION
-   ============================================================================ */
+@layer utilities {
+  .enter {
+    animation: enter 240ms cubic-bezier(0.2, 0, 0, 1) both;
+    animation-delay: calc(var(--i, 0) * 40ms);
+  }
+
+  .fade-in {
+    animation: fadeIn 120ms cubic-bezier(0.2, 0, 0, 1) both;
+  }
+
+  .animate-status-pulse {
+    animation: statusPulse 2s cubic-bezier(0.2, 0, 0, 1) 3;
+  }
+
+  /* A loading indicator, so it may repeat while loading lasts. */
+  .animate-skeleton-sweep {
+    animation: skeletonSweep 1600ms linear infinite;
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
+  .enter,
+  .fade-in,
+  .animate-status-pulse,
+  .animate-skeleton-sweep {
+    animation: none;
+  }
+
   *,
   *::before,
   *::after {

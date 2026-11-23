@@ -1,6 +1,6 @@
-# Connexia — Edge AI
+# Synan — Edge AI
 
-Local machine intelligence that turns Connexia from a passive record of what happened into a
+Local machine intelligence that turns Synan from a passive record of what happened into a
 forecast of what is about to. **This is Phase 6, the last phase** (D-08): AI is integrated only
 after the full system is built, hardened, and running. Until then, the deterministic rules in
 [01 §7](01-product.md) do the work, and no screen, endpoint, or table depends on a model.

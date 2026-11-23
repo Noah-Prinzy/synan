@@ -1,5 +1,6 @@
 // Auth mock layer using localStorage
-const STORAGE_KEY = "cnx.session";
+const STORAGE_KEY = "syn.session";
+const MAGIC_PREFIX = "syn-magic-";
 
 interface Session {
   email: string;
@@ -41,9 +42,9 @@ export function signIn(email: string): Session {
 }
 
 export function verifyToken(token: string): Session | null {
-  // Mock token format: cnx-magic-<email>
-  if (token.startsWith("cnx-magic-")) {
-    const email = token.slice(11);
+  // Mock token format: syn-magic-<email>
+  if (token.startsWith(MAGIC_PREFIX)) {
+    const email = token.slice(MAGIC_PREFIX.length);
     const emailTrimmed = decodeURIComponent(email).trim();
     const session: Session = {
       email: emailTrimmed,
@@ -55,6 +56,11 @@ export function verifyToken(token: string): Session | null {
   return null;
 }
 
+/** Mock: tokens starting syn-expired- are expired; anything else not syn-magic- is invalid. */
+export function linkProblem(token: string): "expired" | "invalid" {
+  return token.startsWith("syn-expired-") ? "expired" : "invalid";
+}
+
 export function signOut(): void {
   setStoredSession(null);
 }
@@ -62,7 +68,7 @@ export function signOut(): void {
 // React hook for session state
 import { useSyncExternalStore } from "react";
 
-const SESSION_EVENT = "cnx:session";
+const SESSION_EVENT = "syn:session";
 
 function notify(): void {
   window.dispatchEvent(new Event(SESSION_EVENT));

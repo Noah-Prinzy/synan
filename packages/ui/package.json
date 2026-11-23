@@ -1,15 +1,21 @@
 {
-  "name": "@connexia/ui",
+  "name": "@synan/ui",
   "version": "1.0.0",
-  "description": "Connexia shared UI components and design system",
+  "description": "Synan shared UI components and design system",
   "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
     "./components": "./src/components/index.ts",
+    "./data": "./src/components/data/index.ts",
+    "./brand": "./src/brand/index.ts",
+    "./brand/options": "./src/brand/options/index.ts",
+    "./brand/options/*": "./src/brand/options/*",
     "./motion": "./src/motion/index.ts",
     "./tokens": "./src/tokens/index.ts",
-    "./styles": "./src/styles/index.ts"
+    "./styles": "./src/styles/index.ts",
+    "./theme.css": "./src/styles/theme.css",
+    "./motion.css": "./src/styles/motion.css"
   },
   "scripts": {
     "build": "tsc --noEmit",
@@ -17,6 +23,16 @@
     "dev": "tsc --noEmit --watch"
   },
   "dependencies": {
+    "@fontsource-variable/bricolage-grotesque": "5.3.0",
+    "@fontsource-variable/dm-sans": "5.3.0",
+    "@fontsource-variable/figtree": "5.3.0",
+    "@fontsource-variable/geist-mono": "5.3.0",
+    "@fontsource-variable/instrument-sans": "5.3.0",
+    "@fontsource-variable/martian-mono": "5.3.0",
+    "@fontsource-variable/newsreader": "5.3.0",
+    "@fontsource/dm-mono": "5.3.0",
+    "@fontsource/instrument-serif": "5.3.0",
+    "@synan/contracts": "workspace:*",
     "motion": "^11.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

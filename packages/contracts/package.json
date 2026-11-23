@@ -1,0 +1,30 @@
+{
+  "name": "@synan/contracts",
+  "version": "0.1.0",
+  "description": "Shared Zod contracts: enums, error codes, REST and WebSocket payloads",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./enums": "./src/enums/index.ts",
+    "./errors": "./src/errors/index.ts",
+    "./copy": "./src/copy/index.ts",
+    "./qr": "./src/qr/index.ts",
+    "./rest": "./src/rest/index.ts",
+    "./ws": "./src/ws/index.ts",
+    "./common": "./src/common.ts",
+    "./brand": "./src/brand.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

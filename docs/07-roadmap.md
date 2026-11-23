@@ -1,4 +1,4 @@
-# Connexia — Roadmap
+# Synan — Roadmap
 
 Build order, acceptance gates, and live status. **This is the only place status is recorded.** When
 something is built, update §1 here; do not write a separate report.
@@ -7,18 +7,19 @@ something is built, update §1 here; do not write a separate report.
 
 ## 1. Where we are
 
-Last updated: 2026-11-23. Status below was read from the repository's files. The apps were not run
-or type-checked in this pass.
+Last updated: 2026-11-23. Checked on this date by running them: all 8 workspace packages typecheck;
+all three apps build; 252 automated tests pass (database 70, contracts 15, API 167 on each of its two
+storage backends).
 
 | Phase | Status | Detail |
 | --- | --- | --- |
-| Checkpoint 0 — look | **Done** | Direction agreed; identity locked 2026-11-22; surface split decided 2026-11-23 (D-01) |
-| 0 — Foundations | **Partly done** | See §1.1 |
-| 1 — Attendee Portal | **In progress** | A1–A9 exist against local fixtures. A10, A11 not started. See §1.2 |
-| 1B — Backend skeleton | Not started | |
-| 2 — Admin Command | **Started** | D1 only |
-| 3 — Gate Scanner | Not started | `apps/scanner` does not exist |
-| 4 — Backend completion | Not started | |
+| Checkpoint 0 — look | **Reopened** | Full rebrand to Synan (D-18, D-19). Structure decided (Direction A); identity being chosen from a brand board |
+| 0 — Foundations | **Done, with gaps** | See §1.1 |
+| 1 — Attendee Portal | **In progress** | A1–A9 run on the mock layer; Direction A redesign under way. A10, A11 not started. See §1.2 |
+| 1B — Backend skeleton | **Mostly done** | See §1.3 |
+| 2 — Admin Command | **Started** | D1 only, and not yet to the specified structure |
+| 3 — Gate Scanner | **Scaffolded** | Five routes; one working verdict screen on mock data, four placeholders |
+| 4 — Backend completion | Not started | 46 of the 70 endpoints have contracts only |
 | 5 — Hardening | Not started | |
 | 6 — Edge AI | Not started | |
 
@@ -27,22 +28,22 @@ or type-checked in this pass.
 | Item | State |
 | --- | --- |
 | pnpm monorepo, Vite + React + TypeScript, Tailwind v4 | Done |
-| `apps/attendee` | Exists, theme preset applied |
-| `apps/admin` | Exists. Does not yet consume `@connexia/ui` |
-| `apps/scanner` | **Missing.** The root `dev:scanner` script points at nothing |
-| `packages/ui` | Tokens, motion primitives, 9 components ([05 §8](05-design-system.md)) |
-| `packages/contracts` | **Missing.** Payload types are declared ad hoc inside each app |
-| `packages/mock` | **Missing.** Apps read hand-written fixtures in `src/data/` instead; no scenario harness |
+| `apps/attendee`, `apps/admin`, `apps/scanner` | All exist, build, and share one theme from `packages/ui` |
+| `apps/api` | Exists (see §1.3) |
+| `packages/ui` | Tokens, one shared theme file, motion, 10 components, the brand module |
+| `packages/contracts` | Done: every enum, all 70 REST endpoints, all four WebSocket channels, error and scan-result copy |
+| `packages/db` | Done: the full schema, migrations, rules, purge, seed (see §1.4) |
+| `packages/mock` | Seeded fixtures, controllable clock, `MockRealtime`, all nine scenarios. **MSW request handlers not built**: apps read an in-process store that returns the contract shapes |
 
 ### 1.2 Attendee Portal — what exists
 
 | Screen | State |
 | --- | --- |
-| A1 Discover | Built, redesigned layout |
-| A2 Event detail | Built, redesigned layout |
-| A3 Registration | Built, three steps |
-| A4 My pass | Built, redesigned layout. **QR does not rotate yet** (D-05) |
-| A5 Bind wristband | Built |
+| A1 Discover | Built; Direction A rebuild under way |
+| A2 Event detail | Built; Direction A rebuild under way. Agenda links to sessions do not land yet |
+| A3 Registration | Built, three steps. Not yet viewed in a browser in review |
+| A4 My pass | Built: rotating QR with countdown, all five states live, arrival-purpose line, band-first once bound, offline behaviour |
+| A5 Bind wristband | Built, with real Web NFC reading |
 | A6 Agenda | Built |
 | A7 Notifications | Built |
 | A8 Account | Built |
@@ -50,19 +51,45 @@ or type-checked in this pass.
 | A10 Invitation | Not started |
 | A11 Kiosk | Not designed (O-10) |
 
-### 1.3 Known gaps against the specification
+Measured production bundles, gzip: attendee pass route about 106 KB (budget under review, O-15);
+admin 113 KB (budget 180 KB, met); scanner scaffold 117 KB.
 
-These were introduced by decisions taken after the code was written, or were never closed.
+### 1.3 Backend — what exists
 
-1. **Tiers.** The pass fixture uses a free-text tier ("General admission"). The four-tier enum (D-02)
-   is not in the code.
-2. **Signed rotating QR and single-use emailed QR** (D-05, D-12) are not implemented. The pass screen
-   does not yet explain that the QR is for arrival and band pickup (D-11).
-3. **`suspended_review` state and `suspended` scan result** (D-06) are not in the code.
-4. **No contracts package**, so the rule "one declaration of every payload" is not yet true.
-5. **Bundle budget.** The attendee pass screen was last estimated at about 105 KB gzip against a
-   90 KB budget ([02 §9](02-architecture.md)). The figure is unverified and must be measured.
-6. **Admin has one route.** No router structure, chrome, or shared components yet.
+- **Implemented and tested (24 endpoints):** operator sign-in and refresh, attendee email-link
+  sign-in, MFA step-up, WebSocket tickets, signing keys, server time; event list, detail, and
+  sessions; own credential, own registration, and signed QR codes; credential revoke, clear-review, and resend; scan
+  ingest with the full decision order and occupancy rules; scan list; alerts list, acknowledge, and
+  resolve; room recount; gate health.
+- **Live channel:** `/stream/telemetry`. The other three channels have contracts only.
+- **Runs on two storage backends** behind one interface: in-memory, and SQL through `packages/db`.
+
+### 1.4 Verified, and not verified
+
+There is no PostgreSQL server on the development machine. Database and API tests run against an
+in-process PostgreSQL (PGlite). That leaves these **unverified**:
+
+- Behaviour under concurrent load: the audit chain lock, constraint races, partition create and drop.
+- Row-level security from the API's side (the in-process engine connects as a superuser).
+- Index use and speed at real volumes. None of the targets in [02 §9](02-architecture.md) is measured.
+- Anything on a real or managed PostgreSQL: extension and policy privileges.
+
+### 1.5 Known gaps against the specification
+
+1. **Identity.** The wordmark, mark, and icons are being replaced for Synan (D-18).
+2. **Secrets are stored unencrypted**: MFA secrets, signing private keys, and attendee name and
+   email in the identity vault. No key management exists yet. Must be closed before any real data.
+3. **Sign-in sessions, email links, WebSocket tickets, and rate-limit counters live in server
+   memory.** They are lost on restart and unsafe across more than one server. Tables are needed.
+4. **Not built in the backend:** the signed offline allowlist, wristband binding, invitations,
+   registration, venue and staff management, reports, webhooks, background jobs (purge, export,
+   email), session-end occupancy reset, scanner heartbeats, real email delivery.
+5. **Fixed readers cannot authenticate** — no mechanism is specified (O-17).
+6. **Pass bundle over budget** (O-15).
+7. **Attendee screens** still lack loading, error, and offline states on most screens, and the
+   phone bottom bar, footer, and error boundary. Being addressed in the Direction A rebuild.
+8. **Admin D1** does not match its specification: no map, rooms rail, live indicator, or alert strip.
+9. **Operator login lockout** (5 failures in 15 minutes) can be used to lock a named operator out.
 
 ---
 
@@ -72,9 +99,12 @@ Each phase lists what it delivers. Order matters: later phases consume what earl
 
 ### Checkpoint 0 — Look
 
-Editorial and expressive for the Attendee Portal; instrument-dense for Admin and Scanner; neutral
-dark ground; Fraunces, Geist, JetBrains Mono; radius 0; the abstract zone grid as the only map in
-version 1.
+Expressive for the Attendee Portal, in the Direction A structure; instrument-dense for Admin and
+Scanner; radius 0 and hairlines; the abstract zone grid as the only map in version 1.
+
+Reopened by the rebrand (D-18, D-19). It closes again when the owner has chosen an identity from the
+brand board, the chosen wordmark, mark, icons, accent, and typefaces are in `packages/ui`, the
+other options' files are deleted, and [05 §3, §4, §6](05-design-system.md) record the choice.
 
 ### Phase 0 — Foundations
 
@@ -87,7 +117,7 @@ contracts is a screen to rework.
    scenarios, and the controllable clock ([02 §8](02-architecture.md)).
 3. Move the attendee app's `src/data/` fixtures behind the mock layer.
 4. Scaffold `apps/scanner` and apply the theme preset.
-5. Wire `apps/admin` to `@connexia/ui`.
+5. Wire `apps/admin` to `@synan/ui`.
 6. Measure bundle sizes and record them in §1.
 
 ### Phase 1 — Attendee Portal

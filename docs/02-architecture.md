@@ -1,6 +1,6 @@
-# Connexia — Architecture
+# Synan — Architecture
 
-How Connexia is built: stack, repository, data model, API, real-time channels, and performance
+How Synan is built: stack, repository, data model, API, real-time channels, and performance
 targets. Behaviour is specified in [01-product.md](01-product.md); protection in
 [03-security-privacy.md](03-security-privacy.md).
 
@@ -55,11 +55,13 @@ measured limit requires it.
 apps/
   attendee/      Attendee Portal            (port 5173)
   admin/         Admin Command              (port 5174)
-  scanner/       Gate Scanner PWA           — planned
+  scanner/       Gate Scanner PWA           (port 5175)
+  api/           Backend: REST and WebSocket (port 5180)
 packages/
-  ui/            Shared tokens, motion, components
-  contracts/     Zod schemas for REST and WS — planned
-  mock/          Mock REST and WS layer      — planned
+  ui/            Shared theme, tokens, motion, components, brand
+  contracts/     Zod schemas for REST and WS, enums, error and result copy
+  db/            PostgreSQL schema (Drizzle), migrations, rules, seed
+  mock/          Fixtures, mock realtime, scenarios, controllable clock
 docs/            This specification
 ```
 
@@ -69,8 +71,9 @@ What exists today versus what is planned is tracked in [07-roadmap.md](07-roadma
 
 ## 4. Data model
 
-Tables are grouped by domain. Columns list what matters, not every field. The model is implemented in
-Phase 4; until then it is the shape the contracts and mocks follow.
+Tables are grouped by domain. Columns list what matters, not every field. **The complete column list
+is the Drizzle schema in `packages/db/src/schema/`**; this section states the shape and the rules,
+and is not a second copy of it. Table and column names here and in the schema are identical.
 
 ### 4.1 Venue and events (P-03, P-05, P-13)
 
@@ -178,6 +181,44 @@ each event, so these per-gate, per-minute rates are the only history the forecas
 [04-edge-ai.md](04-edge-ai.md) will ever have to learn from. An event run before this table exists
 contributes nothing.
 
+### 4.6 Rules the schema enforces
+
+Settled while building the schema, and enforced by the database itself rather than by convention:
+
+- **Scans are partitioned by event.** One partition per event, created automatically when the event
+  is created, so the purge is a partition drop. Identifiers and `idem_key` are therefore unique per
+  event. `scans` is append-only: updates and deletes are rejected.
+- **Scans record direction.** A scan carries `direction` (in or out), required at a `both` gate,
+  along with the device, the staff user, and what the gate decided locally when offline. The
+  corrected time is computed by the database, never written by the application.
+- **Occupancy corrections are anchors.** A recount or a session-end reset stores an absolute value
+  (`set_to`) at a point in time; a late offline scan from before that point no longer changes the
+  count. A sync-conflict correction is a relative `delta`.
+- **Events move only along the lifecycle**, and publishing is refused without a pass template and at
+  least one room with capacity. An event records `closed_at` and `purged_at`; after a purge the
+  database refuses late scans for it.
+- **Credentials:** exactly one holder; one live credential per registration or staff user.
+  **Carriers:** an identifier is unique among carriers that are not retired, so a retired band can
+  be re-imported; a stock band has no credential.
+- **Staff shifts cannot overlap** for one person.
+- **Venue consistency:** a checkpoint's zone and an event's rooms must belong to the right venue.
+- **The audit log is append-only and hash-chained** by a database trigger, which also stamps the
+  time. Applications supply only actor, action, target, and detail.
+- **The identity vault is a separate schema** (`pii_vault`) with row-level security forced. Every
+  query against it declares a scope — system, operator, attendee, or scan — for the length of one
+  transaction; with no scope, nothing is visible and writes fail.
+- **Attendance survives the purge:** a registration records `checked_in_at`.
+- **Erasure scrubs** an attendee's identity in place rather than deleting the row, so registrations
+  and aggregates stay consistent.
+- `occupancy_rollups` use 5-minute buckets. `gate_rate_rollups` are per minute.
+- Alert severity is `low | medium | high | critical`. A resolved alert requires a resolution note.
+
+Enum values are declared twice, in `packages/contracts` and in the database, and an automated test
+fails if they drift.
+
+**Not yet in the schema:** tables for refresh sessions and sign-in links. Until they exist the API
+holds these in memory ([07 §1.5](07-roadmap.md)).
+
 ---
 
 ## 5. REST API
@@ -187,7 +228,8 @@ Base path `/api/v1`. Every payload is declared in the contract package (§7).
 ```
 Auth
   POST  /auth/login                 POST  /auth/refresh
-  POST  /auth/verify                (attendee email link)
+  POST  /auth/email-link            (attendee asks for a sign-in link)
+  POST  /auth/verify                (attendee redeems the link)
   POST  /auth/mfa/verify            (operators; required for privileged actions)
   POST  /auth/ws-ticket             (single-use ticket for a WebSocket — P-16)
   GET   /auth/signing-keys          (public keys for verifying QR codes and allowlists — D-12)
@@ -238,6 +280,7 @@ Reports
 Attendee self-service
   GET   /me/credential              POST  /me/credential/bind
   GET   /me/credential/codes        (a batch of signed portal QR codes — D-12)
+  GET   /me/registration            (own registration for one event, for the event page)
   GET   /me/sessions                GET   /me/notifications     GET  /me/assignments
   POST  /me/data-export             POST  /me/data-erasure
 ```
@@ -274,8 +317,14 @@ packages/contracts/
   src/ws/            Discriminated unions per channel event
   src/enums/         ScanResult, AlertKind, Severity, CredentialState, CarrierState,
                      EventState, AttendeeTier, Role
-  src/errors/        Canonical error codes and their human strings
+  src/errors/        Canonical error codes and their human strings; scan-result copy
+  src/brand.ts       The product name, and every wire constant derived from it
 ```
+
+`src/rest` holds one registry of every endpoint in §5. Each entry states its method, path, permitted
+roles, whether it needs MFA, whether it is audited, its rate-limit bucket, and its request and
+response schemas. The API mounts every entry: one without a handler still checks sign-in and role,
+then answers 501.
 
 Rules:
 
@@ -289,7 +338,10 @@ Rules:
 
 ## 8. Mock-first data strategy
 
-Until the backend exists, all three apps run against a deterministic mock layer in `packages/mock`.
+Until each endpoint exists on the real server, the apps run against a deterministic mock layer in
+`packages/mock`. Today the mock is an in-process store that returns the contract shapes directly;
+the MSW request handlers described below are the next step, so that screens fetch over HTTP exactly
+as they will in production.
 
 - **REST:** MSW handlers built from the same Zod schemas, backed by seeded fixtures — 2 venues,
   60 rooms, 1,400 attendees, 40,000 scans.
@@ -339,7 +391,7 @@ These are binding and testable.
 | Telemetry ingest | ≤ 4 Hz per channel, coalesced 250 ms |
 | Scan verdict render | < 16 ms after the local decision |
 | Admin initial JS, route-split | ≤ 180 KB gzip per surface |
-| Attendee pass screen | ≤ 90 KB gzip, first paint < 1.2 s on 4G |
+| Attendee pass screen | ≤ 90 KB gzip, first paint < 1.2 s on 4G. **Under review (O-15):** React and the router alone measure 81 KB, so this figure cannot be met on the current stack |
 | Scanner first interactive | < 1.5 s, fully usable offline thereafter |
 
 **Implementation notes**

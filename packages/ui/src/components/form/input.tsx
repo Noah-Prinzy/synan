@@ -18,7 +18,7 @@ export function Input({ label, hint, error, id, className, ...props }: InputProp
       {label ? (
         <label
           htmlFor={inputId}
-          className="font-mono text-[0.625rem] uppercase tracking-[0.12em] text-muted-foreground"
+          className="text-13 font-medium text-muted-foreground"
         >
           {label}
         </label>
@@ -29,17 +29,17 @@ export function Input({ label, hint, error, id, className, ...props }: InputProp
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
         className={cn(
-          "w-full border border-border bg-transparent px-3 py-2.5 text-[0.9375rem] text-foreground placeholder:text-muted-foreground/70 transition-[border-color] duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] focus:border-brand focus-visible:outline-none motion-reduce:transition-none",
+          "w-full border border-border bg-transparent min-h-12 px-3 py-2.5 text-17 text-foreground placeholder:text-muted-foreground transition-[border-color] duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] focus:border-brand focus-visible:outline-none motion-reduce:transition-none",
           error && "border-destructive",
           className,
         )}
       />
       {error ? (
-        <p id={`${inputId}-error`} className="font-mono text-[0.625rem] uppercase tracking-[0.08em] text-destructive">
+        <p id={`${inputId}-error`} className="text-13 text-destructive">
           {error}
         </p>
       ) : hint ? (
-        <p id={`${inputId}-hint`} className="text-xs text-muted-foreground">
+        <p id={`${inputId}-hint`} className="text-13 text-muted-foreground">
           {hint}
         </p>
       ) : null}

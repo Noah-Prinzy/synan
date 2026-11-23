@@ -1,13 +1,13 @@
-# Connexia — Product
+# Synan — Product
 
-What Connexia is and how it behaves, independent of how it is built. Tags `P-nn` and `D-nn` are
+What Synan is and how it behaves, independent of how it is built. Tags `P-nn` and `D-nn` are
 explained in [00-index.md](00-index.md).
 
 ---
 
-## 1. What Connexia is
+## 1. What Synan is
 
-Connexia is a real-time event operations platform. It lets an organiser publish events, register
+Synan is a real-time event operations platform. It lets an organiser publish events, register
 attendees, issue each one a credential, control physical entry to rooms with that credential, watch
 occupancy live on a venue map, raise security alerts as they happen, and produce reports afterwards.
 
@@ -23,8 +23,8 @@ occupancy live on a venue map, raise security alerts as they happen, and produce
 
 **Out of scope**
 
-- Payments and ticket sales (O-02). Registrations are free, or paid for outside Connexia.
-- Precise indoor positioning. Connexia knows which zone a credential last entered, never where a
+- Payments and ticket sales (O-02). Registrations are free, or paid for outside Synan.
+- Precise indoor positioning. Synan knows which zone a credential last entered, never where a
   person is standing (D-04).
 
 ### 1.1 How it flows, end to end
@@ -164,7 +164,7 @@ Carrier:     stock → assigned → bound → active → retired | lost
 ```
 
 Revoking a credential invalidates every carrier bound to it, immediately. The scanner reports
-`CREDENTIAL_REVOKED`, which is distinct from `UNKNOWN_TOKEN`, so gate staff can tell a cancelled
+`revoked`, which is distinct from `unknown_token`, so gate staff can tell a cancelled
 attendee from a forged band.
 
 ### 5.3 Wristband provisioning (P-10)
@@ -218,7 +218,7 @@ Organisation → Venue → Zone (a floor or area) → Room
 **Decision order.** Every scan is decided by the same steps, in this order. The first step that
 fails decides the result.
 
-1. Is the token a known Connexia credential? If not: `unknown_token`.
+1. Is the token a known Synan credential? If not: `unknown_token`.
 2. Is this carrier accepted at this gate? A QR at an interior gate: `wristband_required`. A spent
    emailed QR: `pass_spent`.
 3. Is the credential revoked or under review? `revoked` or `suspended`.
@@ -238,9 +238,9 @@ fails decides the result.
     marked as continuously occupied (a lounge, an expo floor).
   - *Manual recount.* An operator can set a room's count to a headcount. The correction is audited.
 - **Debounce.** The same credential at the same checkpoint within 60 seconds is ignored and logged
-  as `DUPLICATE_READ`. It is not an alert.
+  as `duplicate_read`. It is not an alert.
 - **Anti-passback, same perimeter.** An `in` scan for a credential already inside that zone is
-  `ALREADY_INSIDE`: amber, not red, not an alert. Re-entry after an `out` scan is allowed.
+  `already_inside`: amber, not red, not an alert. Re-entry after an `out` scan is allowed.
 - **Impossible travel.** A credential scanned at two checkpoints sooner than the minimum transit
   time between them is flagged. The credential moves to `suspended_review`, is refused at gates, and
   the floor supervisor is notified with the last two checkpoints. In version 1 this is a
@@ -251,6 +251,22 @@ fails decides the result.
   is worse than exceeding the figure.
 - Occupancy never goes negative. A negative result is clamped to 0 and logged as a reconciliation
   fault.
+
+**Clarifications settled in the build.**
+
+- *Debounce* is measured from the last admission. Repeated refusals are each recorded, so repeated
+  attempts can escalate an alert.
+- *Already inside* is judged by zone at a perimeter gate and by room at an interior gate, so moving
+  between two rooms in the same zone is not blocked.
+- *Exits.* An `out` scan passes steps 1–4 and is then recorded. A revoked or suspended credential is
+  refused at an exit gate too (O-18).
+- *A perimeter gate with no room* admits any valid credential for the event.
+- *A credential from another event* reads as `unknown_token`. *A lost or retired wristband* reads as
+  `revoked`.
+- *A session-end reset or a recount to zero* un-counts everyone in the room. A recount to a non-zero
+  headcount does not change who is counted as present.
+- *Capacity and operators.* Operators always see exact counts, because capacity enforcement needs
+  them.
 
 **Scan results.** The vocabulary is fixed and shared by every surface:
 
@@ -263,11 +279,11 @@ fails decides the result.
 | `capacity_block` | Room at blocking threshold | Red |
 | `revoked` | Credential revoked | Red |
 | `suspended` | Credential under review | Red |
-| `unknown_token` | Not a Connexia credential, or forged | Red |
+| `unknown_token` | Not a Synan credential, or forged | Red |
 | `wristband_required` | QR presented at an interior gate | Red |
 | `pass_spent` | Emailed QR already used once | Red |
 | `implied_exit` | System-generated: holder was admitted elsewhere | None (not shown at a gate) |
-| `offline_queued` | Decided locally, awaiting sync | As decided, tagged `LOCAL` |
+| `offline_queued` | Decided locally, awaiting sync. A display state on the scanner only; the server never stores or returns it | As decided, tagged `LOCAL` |
 
 ---
 
@@ -299,6 +315,12 @@ sync, three things can happen that an online system would have stopped:
 These are accepted at the gate, because the queue must not stop, and are **caught when the gates
 sync**. Each one raises an alert naming the scans involved, and the occupancy count is corrected.
 They are never silently discarded.
+
+The rule behind it: an offline scan is a record of what happened at the gate. Wherever the gate
+admitted someone the server would have refused, an alert is raised — for a reused pass or a
+pass-back the credential is also suspended for review; for anything else the alert says the
+allowlist was stale. A scan that arrives late is judged against the present state and never moves a
+person backwards in time.
 
 **Device clocks (D-14).** Offline scans are ordered by time, and a phone's clock can be wrong. At
 every sync the scanner records the difference between its clock and the server's, and sends that

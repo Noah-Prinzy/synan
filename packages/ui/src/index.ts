@@ -1,11 +1,11 @@
 /**
- * Connexia UI Package
+ * Synan UI Package
  * 
- * Shared UI components, design tokens, and motion utilities for Connexia.
+ * Shared UI components, design tokens, and motion utilities for Synan.
  * 
  * Usage:
- *   import { Button, Input, tokens, motion } from '@connexia/ui';
- *   import '@connexia/ui/styles';
+ *   import { Button, Input, tokens, motion } from '@synan/ui';
+ *   import '@synan/ui/styles';
  */
 
 // Re-export tokens

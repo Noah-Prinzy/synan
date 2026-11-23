@@ -1,6 +1,6 @@
-# Connexia — Design System
+# Synan — Design System
 
-How Connexia looks and moves: principles, colour, type, form, motion, identity, components, and the
+How Synan looks and moves: principles, colour, type, form, motion, identity, components, and the
 reference library. Screens are specified in [06-screens.md](06-screens.md).
 
 ---
@@ -36,8 +36,36 @@ layout expression they are allowed.
 | Imagery | Allowed | None | None |
 | Target | Mobile-first 360–430, deliberate two-column at 1024+ | 1440–1920, one breakpoint at 1280 | Venue-owned Android phone or tablet, one-handed |
 
-The Attendee Portal is where Connexia is allowed to feel premium and less generic. Admin and Scanner
+The Attendee Portal is where Synan is allowed to feel premium and less generic. Admin and Scanner
 are where it must be fast to read under pressure. Neither borrows the other's manner.
+
+### 2.1 Attendee Portal structure: Direction A (D-19)
+
+The Attendee Portal's structure is adapted from the owner's sample site
+(`archive/inspiration-clip.mp4`):
+
+| Element | Where it applies |
+| --- | --- |
+| A visible hairline frame around the page column | Every attendee screen |
+| Navigation as a strip of ruled cells | Site header |
+| Centred display headline, with a strip of fact cells beneath | A1 Discover hero |
+| Cards as ruled cells | A1 event grid |
+| A sticky side list that follows the scroll, replacing tabs | A2 Event detail |
+| A vertical list whose active item carries a 2px accent rule | A2 schedule by day |
+| Options as square chips | A3 registration choices |
+| Link columns in ruled cells | Shared footer |
+
+Two things in the sample are **not** taken, because they break §1: saturated colour blocks and
+gradients (colour is reserved for meaning), and a continuously scrolling logo strip (no endless
+decorative motion). The sample's own identity is never copied (§6).
+
+Type roles on this surface: mono is for data only — dates, counts, identifiers. Labels, navigation,
+and buttons use the UI sans in sentence case. Small mono capitals on every label make nothing rank.
+
+**Rules the rebrand may reopen, for this surface only.** "Hospitable" may call for a warm-tinted
+ground instead of pure neutral black, a light theme, or the accent as a fill on the one primary
+action. Each is a change to §1 and takes effect only if the owner approves the brand option that
+needs it.
 
 ---
 
@@ -113,7 +141,8 @@ The preset proposed Noto Sans with Geist Mono headings and Phosphor icons. Only 
 were taken (`apply --only theme`). Mono headings would have made the admin read as a terminal and cost
 the attendee portal its editorial voice; icons stay Lucide at 1.5px to match the hairline rule weight.
 
-Scale: 11 / 12 / 13 / 15 / 17 / 21 / 28 / 40 / 56. Admin body is 13px. Attendee body is 17px.
+Scale: 11 / 12 / 13 / 15 / 17 / 21 / 28 / 40 / 56, plus 96 for the scanner's verdict word only.
+Admin body is 13px. Attendee body is 17px, secondary text 15px. Nothing is set below 11px.
 Section eyebrows: mono, 11px, `+0.14em`, muted-foreground, with an editorial numeral (`01 —`).
 
 The scale is fixed. The Attendee Portal uses the upper end more freely; it does not add sizes.
@@ -142,19 +171,24 @@ columns, with gutters of 24 (attendee) and 16 (admin).
 
 ## 6. Identity
 
-**Locked 2026-11-22.** The identity is the supplied wordmark, rebuilt as clean vectors — a
-geometric sans with the final X set in `--brand`. Two files carry it:
+**The identity is being replaced (D-18, D-19).** The product is now Synan, from the Greek
+*synántisi*: a meeting, a gathering. The brand is the host at the door, not the guard: hospitable,
+warm, modern. It must not read as a security or surveillance product.
 
-- `apps/attendee/src/brand/wordmark.tsx` — full wordmark, `viewBox="0 0 170 30"`, cap height 20.8 units,
-  letters `currentColor`, X upstroke `var(--brand)`. The X deliberately overshoots cap height top and
-  bottom; that is part of the mark, not an error.
-- `apps/attendee/src/brand/mark.tsx` — the X alone (`viewBox="0 0 34 34"`), used for the favicon
-  (`public/favicon.svg`), `icon-512.png`, `apple-touch-icon.png` and the scanner splash.
+The wordmark, the mark, the accent colour, and the typefaces are all open. Three complete options
+are presented on a brand board for the owner to choose from; until one is chosen the apps show the
+name as text on the neutral palette. When the choice is made, this section, §3 (the accent), and §4
+(the typefaces) are rewritten to record it.
 
-No second icon, no serif wordmark, no lockup beyond the wordmark itself. On dark ground the letters
-render `#FAFAFA`; the original navy is only for print on light stock. Type in the interface is
-unchanged: Fraunces for display, Geist for UI, JetBrains Mono for data — the wordmark is an asset, not
-a text style.
+What is fixed regardless of the option:
+
+- The name, wordmark, mark, and icons live in exactly one place: `packages/ui/src/brand/`. All three
+  apps read from it; page titles and `index.html` are filled from it at build time.
+- The wordmark must be legible at about 16px in a navigation cell. The mark must work alone as the
+  favicon and app icon at 16, 32, 180, and 512px.
+- The accent must not be mistakable for the success, warning, or destructive signals.
+- Synan takes the sample site's **structure**, never its identity: no pixel-art mosaics or mascots,
+  no orange, yellow, and red block stacks, nothing resembling another company's logo.
 
 ---
 
@@ -225,23 +259,21 @@ value of its own.
 
 | Export | Contents |
 | --- | --- |
-| `@connexia/ui/tokens` | Colour, spacing, type scales (attendee and admin), motion timings |
-| `@connexia/ui/styles` | The same tokens as CSS custom properties, plus CSS animation classes |
-| `@connexia/ui/motion` | Motion primitives built on the `motion` library — cubic-bezier only |
-| `@connexia/ui/components` | Shared components (see below) |
+| `@synan/ui/tokens` | Colour, spacing, type scales (attendee and admin), motion timings |
+| `@synan/ui/styles` | The same tokens as CSS custom properties, plus CSS animation classes |
+| `@synan/ui/motion` | Motion primitives built on the `motion` library — cubic-bezier only |
+| `@synan/ui/components` | Shared components (see below) |
+
+| `@synan/ui/data` | Components that read contract copy, such as `ResultChip` |
+| `@synan/ui/brand` | The name, wordmark, mark, and icons (§6) |
 
 Built so far: `Button`, `Input`, `Card`, `Badge`, `Separator`, `AnimatedCounter`, `AnimatedBar`,
-`AnimatedUnderline`, `MorphSkeleton`. Everything else in §7 is still to build.
+`AnimatedUnderline`, `MorphSkeleton`, `ResultChip`. Everything else in §7 is still to build.
 
-**Theme preset.** Colour and radius come from shadcn preset `b3rmZc8LB2`, applied per app, theme
-only:
-
-```
-npx shadcn@latest apply b3rmZc8LB2 --only theme -y -c apps/<app>
-```
-
-After applying, hand-add the `--success` and `--warning` block from §3, since those are ours and not
-the preset's.
+**One theme file.** `packages/ui/src/styles/theme.css` is the only place a palette value is
+declared. All three apps import it. The neutral values in §3 originally came from shadcn preset
+`b3rmZc8LB2` (theme only); the signal colours and the type-scale tokens (`text-11` … `text-56`, and
+`text-96` for the scanner verdict) are ours. A change of palette is a change to this one file.
 
 **Fonts** are self-hosted through Fontsource variable packages and imported once in each app's
 `index.css`. Nothing loads from a font CDN: a venue with poor connectivity must still render type.
@@ -321,31 +353,9 @@ They are built around a rounded, gradient, motion-first aesthetic that breaks §
 operations map cannot share the main thread with decoration. On the Attendee Portal they may be
 studied for layout ideas; their code is not imported.
 
-### 10.3 Bookmarks
+### 10.3 The full collection
 
-The full collection, for browsing. Presence here is not endorsement — §10.1 and §10.2 govern what is
-actually used.
-
-**Design Inspiration.** [Horizon](https://horizonx.so) · [Godly](https://godly.design) · [Inspora](https://inspora.design) · [SiteReel](https://sitereel.ai) · [Layers](https://layers.to) · [Mobbin](https://mobbin.com) · [Figma Community](https://www.figma.com/community) · [Cosmos](https://www.cosmos.so) · [Savee](https://savee.com) · [Visuelle](https://visuelle.co.uk) · [Another Graphic](https://anothergraphic.org) · [Fonts In Use](https://fontsinuse.com) · [Awwwards](https://www.awwwards.com) · [Dribbble](https://dribbble.com) · [Behance](https://www.behance.net) · [Land-book](https://land-book.com) · [Lapa Ninja](https://www.lapa.ninja) · [SaaS Landing Page](https://saaslandingpage.com) · [Siteinspire](https://www.siteinspire.com) · [Httpster](https://httpster.net) · [Minimal Gallery](https://minimal.gallery) · [One Page Love](https://onepagelove.com) · [Refero](https://refero.design) · [Page Flows](https://pageflows.com) · [Navbar Gallery](https://www.navbar.gallery)
-
-**UI Component Libraries.** [shadcn/ui](https://ui.shadcn.com) · [Watermelon UI](https://ui.watermelon.sh) · [Componentry](https://componentry.dev) · [Skiper UI](https://skiper-ui.com) · [Amicro](https://amicro.vercel.app) · [Bencho](https://bencho.dev) · [Hero UI](https://heroui.com) · [Aceternity UI](https://ui.aceternity.com) · [Smooth UI](https://smoothui.dev) · [Cult UI](https://cult-ui.com) · [Hyper UI](https://hyperui.dev) · [Preline UI](https://preline.co) · [PrebuiltUI](https://prebuiltui.com) · [Animmaster Lib](https://animmasterlib.dev) · [21st.dev](https://21st.dev) · [React Bits](https://reactbits.dev) — 218 free animated React components and backgrounds, plus 201 UI sounds (Claude skill: `react-bits`) · [Magic UI](https://magicui.design) · [Hover.dev](https://www.hover.dev) · [Motion Primitives](https://motion-primitives.com) · [Animata](https://animata.design) · [Kokonut UI](https://kokonutui.com) · [Uiverse](https://uiverse.io) · [daisyUI](https://daisyui.com) · [Flowbite](https://flowbite.com) · [Radix UI](https://www.radix-ui.com) · [Headless UI](https://headlessui.com) · [Mantine](https://mantine.dev)
-
-**AI Design Prompts & Design Systems.** [Design Prompts](https://designprompts.dev) · [awesome-design-md](https://github.com/VoltAgent/awesome-design-md) · [awesome-claude-design](https://github.com/VoltAgent/awesome-claude-design) · [UI/UX Pro Max](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill)
-
-**Templates & Frameworks.** [React JS Templates](https://reactjstemplates.com) · [HTML5 UP](https://html5up.net) · [FreeHTML5.co](https://freehtml5.co) · [Astro](https://astro.build)
-
-**Colors, Gradients & Backgrounds.** [Realtime Colors](https://realtimecolors.com) · [Coolors](https://coolors.co) · [Shader Gradient](https://shadergradient.co) · [Mesh Gradient](https://meshgradient.com) · [Pattern Monster](https://pattern.monster) · [Haikei](https://haikei.app) · [Vanta JS](https://vantajs.com) · [Gradient Studio](https://gurade.netlify.app) · [UI Colors](https://uicolors.app) · [Happy Hues](https://www.happyhues.co) · [Color Hunt](https://colorhunt.co) · [Huemint](https://huemint.com) · [Adobe Color](https://color.adobe.com) · [CSS Gradient](https://cssgradient.io) · [uiGradients](https://uigradients.com) · [Hero Patterns](https://heropatterns.com) · [fffuel](https://www.fffuel.co) · [BGJar](https://bgjar.com)
-
-**3D, Animation & Interactive Graphics.** [Spline](https://spline.design) · [Vectary](https://vectary.com) · [Unicorn Studio](https://unicorn.studio) · [Theatre JS](https://theatrejs.com) · [GSAP](https://gsap.com) · [Motion](https://motion.dev) · [Barba JS](https://barba.js.org) · [SVGator](https://svgator.com) · [Three.js](https://threejs.org) · [Rive](https://rive.app) · [LottieFiles](https://lottiefiles.com) · [Jitter](https://jitter.video) · [Animate.css](https://animate.style) · [AutoAnimate](https://auto-animate.formkit.com) · [Easings.net](https://easings.net) · [Smooth Shadows](https://shadows.brumm.af)
-
-**Icons & Fonts.** [Lucide](https://lucide.dev) · [Phosphor Icons](https://phosphoricons.com) · [Iconify](https://iconify.design) · [Heroicons](https://heroicons.com) · [Fontshare](https://fontshare.com) · [Bunny Fonts](https://fonts.bunny.net) · [Tabler Icons](https://tabler.io/icons) · [Remix Icon](https://remixicon.com) · [Iconoir](https://iconoir.com) · [Hugeicons](https://hugeicons.com) · [Simple Icons](https://simpleicons.org) · [SVGL](https://svgl.app) — brand logos as SVG · [Google Fonts](https://fonts.google.com) · [Fontsource](https://fontsource.org) · [Typewolf](https://www.typewolf.com) · [Fontpair](https://www.fontpair.co) · [Uncut](https://uncut.wtf)
-
-**Illustrations & Photos.** [unDraw](https://undraw.co) · [Humaaans](https://www.humaaans.com) · [Storyset](https://storyset.com) · [Blush](https://blush.design) · [Unsplash](https://unsplash.com) · [Pexels](https://www.pexels.com)
-
-**AI Builders.** [Manus](https://manus.im) · [v0](https://v0.app) · [Bolt](https://bolt.new) · [Lovable](https://lovable.dev) · [Framer](https://www.framer.com) · [Webflow](https://webflow.com) · [Relume](https://www.relume.io)
-
-**Video Tools.** [Shots](https://shots.so) — device mockups for screenshots · [Reelyrics](https://www.reelyrics.com) · [React Bits Center Stage](https://reactbits.dev/tools/center-stage) — screenshots and recordings on realistic device mockups
-
-**Asset Tools.** [React Bits Background Studio](https://reactbits.dev/tools/background-studio) — animated backgrounds, exported as code, image or looping video · [React Bits Shape Magic](https://reactbits.dev/tools/shape-magic) — logo marks with chrome, glass or neon materials · [React Bits Texture Lab](https://reactbits.dev/tools/texture-lab) — photo and video effects (ASCII, halftone, glitch) · [React Bits Sound Lab](https://reactbits.dev/tools/sound-lab) — 200 interface sounds
-
-**Portfolio References.** [Matthew Yu](https://matthewyu.dev) · [Sirio](https://sirio.online) · [Anti-Portfolio](https://anti-portfolio.framer.website) · [Jackie Zhang](https://jackiezhang.co.za) · [Taliah](https://taliahhh.com)
+The owner's complete collection of design resources — inspiration galleries, component libraries,
+design prompts and systems, skills, colour and background tools, animation libraries, icons, fonts,
+illustration sources — lives in [design_base.md](design_base.md). It is the toolbox for upgrading the
+interface. §10.1 and §10.2 above govern what from it is actually imported into the code.
