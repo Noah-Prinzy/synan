@@ -1,4 +1,4 @@
-import { eventDetails, type EventDetail } from "./events";
+import { eventDetails } from "./events";
 
 export interface AgendaSession {
   id: string;
@@ -13,6 +13,13 @@ export interface AgendaSession {
   admitted: number;
 }
 
+/** Session times are wall-clock strings; anchor them to the event's date and offset. */
+function toIso(eventStartsAt: string, wallClock: string): string {
+  const date = eventStartsAt.slice(0, 10);
+  const offset = eventStartsAt.length > 19 ? eventStartsAt.slice(19) : "Z";
+  return `${date}T${wallClock}:00${offset}`;
+}
+
 // Create agenda sessions from eventDetails
 function buildAgendaSessions(): AgendaSession[] {
   const sessions: AgendaSession[] = [];
@@ -20,14 +27,14 @@ function buildAgendaSessions(): AgendaSession[] {
   for (const event of eventDetails) {
     for (const session of event.sessions) {
       sessions.push({
-        id: session.id,
+        id: `${event.slug}-${session.id}`,
         eventSlug: event.slug,
         eventTitle: event.title,
         day: session.day,
         room: session.room,
         title: session.title,
-        startsAt: session.startsAt,
-        endsAt: session.endsAt,
+        startsAt: toIso(event.startsAt, session.startsAt),
+        endsAt: toIso(event.startsAt, session.endsAt),
         capacity: session.capacity,
         admitted: Math.floor(session.occupancy * session.capacity / 100),
       });

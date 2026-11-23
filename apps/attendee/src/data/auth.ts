@@ -21,6 +21,7 @@ function setStoredSession(session: Session | null): void {
   } else {
     localStorage.removeItem(STORAGE_KEY);
   }
+  notify();
 }
 
 export function getSession(): Session | null {
@@ -61,13 +62,36 @@ export function signOut(): void {
 // React hook for session state
 import { useSyncExternalStore } from "react";
 
+const SESSION_EVENT = "cnx:session";
+
+function notify(): void {
+  window.dispatchEvent(new Event(SESSION_EVENT));
+}
+
 function subscribe(listener: () => void): () => void {
-  window.addEventListener("storage", listener);
-  return () => window.removeEventListener("storage", listener);
+  const onChange = () => {
+    refreshSnapshot();
+    listener();
+  };
+  window.addEventListener("storage", onChange);
+  window.addEventListener(SESSION_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", onChange);
+    window.removeEventListener(SESSION_EVENT, onChange);
+  };
+}
+
+let cached: Session | null = null;
+let loaded = false;
+
+function refreshSnapshot(): Session | null {
+  cached = getStoredSession();
+  loaded = true;
+  return cached;
 }
 
 function getSnapshot(): Session | null {
-  return getStoredSession();
+  return loaded ? cached : refreshSnapshot();
 }
 
 export function useSession(): Session | null {

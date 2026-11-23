@@ -1,19 +1,9 @@
 import { useState, useSyncExternalStore, useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
-import SiteHeader from "../components/site-header";
+import { PageShell, Eyebrow } from "../components/page";
 import { passVariant, shortUid, type CredentialState } from "../data/pass";
-
-function SkipLink() {
-  return (
-    <a
-      href="#content"
-      className="absolute top-0 -left-[9999px] focus:left-4 focus:top-4 focus:z-50 focus:block focus:border focus:border-brand focus:bg-background focus:px-3 focus:py-2 focus:font-mono focus:text-[0.6875rem] focus:tracking-[0.12em] focus:text-brand focus:uppercase focus:underline focus:underline-offset-2"
-    >
-      Skip to content
-    </a>
-  );
-}
+import { Badge, buttonClass, type BadgeTone } from "@connexia/ui/components";
 
 type ScreenWakeLock = { request: (type: "screen") => Promise<unknown> };
 
@@ -33,35 +23,19 @@ function formatDate(startsAt: string, timezone: string): string {
   }).format(new Date(startsAt));
 }
 
-function ToneDot({ state }: { state: CredentialState }) {
-  const toneClass: Record<CredentialState, string> = {
-    READY: "bg-success",
-    "NOT YET BOUND": "bg-warning",
-    REVOKED: "bg-destructive",
-    REPLACED: "bg-muted-foreground",
-  };
-  return <span className={`size-1.5 ${toneClass[state]}`} aria-hidden />;
-}
+const toneFor: Record<CredentialState, BadgeTone> = {
+  READY: "success",
+  "NOT YET BOUND": "warning",
+  REVOKED: "destructive",
+  REPLACED: "neutral",
+};
 
-function StateLabel({ state }: { state: CredentialState }) {
-  const labels: Record<CredentialState, string> = {
-    READY: "READY",
-    "NOT YET BOUND": "NOT YET BOUND",
-    REVOKED: "REVOKED",
-    REPLACED: "REPLACED",
-  };
-  return <span className="font-mono text-[0.625rem] tracking-[0.18em] uppercase">{labels[state]}</span>;
-}
-
-function StateDescription({ state }: { state: CredentialState }) {
-  const descriptions: Record<CredentialState, string> = {
-    READY: "This credential is active and ready for use.",
-    "NOT YET BOUND": "This credential needs to be bound to a wristband at the desk.",
-    REVOKED: "This credential was revoked. Ask staff at the desk for a replacement.",
-    REPLACED: "This pass was replaced. Your credential now lives on the band issued at the desk.",
-  };
-  return <p className="max-w-[16rem] text-sm leading-relaxed">{descriptions[state]}</p>;
-}
+const descriptionFor: Record<CredentialState, string> = {
+  READY: "This credential is active and ready for use.",
+  "NOT YET BOUND": "This credential needs to be bound to a wristband at the desk.",
+  REVOKED: "This credential was revoked. Ask staff at the desk for a replacement.",
+  REPLACED: "This pass was replaced. Your credential now lives on the band issued at the desk.",
+};
 
 function useOnline(): boolean {
   return useSyncExternalStore(
@@ -118,42 +92,49 @@ export default function Pass() {
   ];
 
   return (
-    <main className="bg-background text-foreground flex min-h-dvh flex-col">
-      <SkipLink />
-      <SiteHeader />
+    <PageShell>
+      <div className="mx-auto w-full max-w-[600px] pb-20">
+        <header className="flex items-start justify-between gap-4 border-b border-border pb-5">
+          <div>
+            <Eyebrow>My pass</Eyebrow>
+            <h1 className="mt-2 font-serif text-2xl leading-tight font-normal md:text-3xl">
+              {pass.event.title}
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {formatDate(pass.event.startsAt, pass.event.timezone)} · {pass.event.venue}
+            </p>
+          </div>
+          <Badge
+            tone={toneFor[pass.state]}
+            dot
+            pulse={pass.state === "READY"}
+            className="shrink-0"
+          >
+            {pass.state}
+          </Badge>
+        </header>
 
-      <div id="content" className="mx-auto w-full max-w-[1600px] flex-1 px-6 pb-16 md:px-10 xl:px-16">
-        <div className="mx-auto w-full max-w-[420px] pt-10">
-          <p className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase">
-            {formatDate(pass.event.startsAt, pass.event.timezone)} · {pass.event.venue}
-          </p>
-          <h1 className="mt-2 font-serif text-2xl leading-tight">{pass.event.title}</h1>
-
-          <p className="mt-8 flex items-center gap-2 font-mono text-[0.625rem] tracking-[0.18em] uppercase">
-            <ToneDot state={pass.state} />
-            <StateLabel state={pass.state} />
-          </p>
-
+        <section aria-label="Credential" className="mt-6 border border-border bg-card/40">
           {showRevoked ? (
-            <div className="border-destructive bg-destructive/10 mt-6 flex flex-col items-center justify-center gap-3 border px-6 py-16 text-center">
-              <span className="font-mono text-[0.625rem] tracking-[0.18em] text-destructive uppercase">
+            <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
+              <span className="font-mono text-[0.625rem] uppercase tracking-[0.18em] text-destructive">
                 Revoked
               </span>
-              <StateDescription state={pass.state} />
+              <p className="max-w-[22rem] text-sm leading-relaxed">{descriptionFor[pass.state]}</p>
             </div>
           ) : showReplaced ? (
-            <div className="border-border mt-6 flex flex-col items-center justify-center gap-3 border px-6 py-16 text-center">
-              <span className="font-mono text-[0.625rem] tracking-[0.18em] text-muted-foreground uppercase">
+            <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
+              <span className="font-mono text-[0.625rem] uppercase tracking-[0.18em] text-muted-foreground">
                 Replaced
               </span>
-              <StateDescription state={pass.state} />
+              <p className="max-w-[22rem] text-sm leading-relaxed">{descriptionFor[pass.state]}</p>
             </div>
           ) : (
-            <div className="mt-6 flex flex-col items-center">
-              <div className="w-full max-w-[280px] border border-[#0a0a0a] bg-white">
+            <div className="flex flex-col items-center px-6 pt-10 pb-8">
+              <div className="w-full max-w-[220px] border border-[#0a0a0a] bg-white p-2.5">
                 <QRCodeSVG
                   value={pass.token}
-                  size={280}
+                  size={220}
                   marginSize={2}
                   level="M"
                   bgColor="#ffffff"
@@ -163,70 +144,69 @@ export default function Pass() {
                   role="img"
                 />
               </div>
-              <p className="mt-4 text-center font-mono text-[0.6875rem] tracking-[0.12em] uppercase">
+              <p className="mt-5 text-center font-mono text-[0.6875rem] uppercase tracking-[0.12em]">
                 {pass.holder} · {pass.tier}
               </p>
+              <p className="mt-2 max-w-[22rem] text-center text-sm leading-relaxed text-muted-foreground">
+                {descriptionFor[pass.state]}
+              </p>
             </div>
           )}
 
-          <div className="border-border mt-10 flex items-start justify-between gap-4 border-t pt-4">
-            <div className="min-w-0">
-              <p className="font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground uppercase">
-                Wristband
-              </p>
-              {pass.band ? (
-                <p className="mt-1.5 flex items-center gap-2 font-mono text-[0.6875rem] tracking-[0.08em] uppercase">
-                  <span className="bg-success size-1.5" aria-hidden />
-                  Bound · uid {shortUid(pass.band.uid)}
-                </p>
-              ) : (
-                <>
-                  <p className="mt-1.5 text-sm">Not bound — bind at the desk</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{pass.nearestDesk}</p>
-                </>
-              )}
+          {qrVisible ? (
+            <div className="grid grid-cols-3 divide-x divide-border border-t border-border">
+              {actions.map((action) => (
+                <button
+                  key={action.label}
+                  type="button"
+                  onClick={action.run}
+                  className="flex min-h-[4.5rem] items-center justify-center px-3 py-4 text-center font-mono text-[0.625rem] uppercase tracking-[0.12em] text-muted-foreground transition-colors duration-[120ms] ease-[cubic-bezier(.2,0,0,1)] hover:bg-background hover:text-foreground focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand motion-reduce:transition-none"
+                >
+                  {action.label}
+                </button>
+              ))}
             </div>
-            {!pass.band && (
-              <Link
-                to="/pass/pair"
-                className="border-border hover:border-brand hover:text-brand shrink-0 border px-3 py-2 font-mono text-[0.625rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none"
-              >
-                Bind
-              </Link>
+          ) : null}
+        </section>
+
+        {qrVisible ? (
+          <p
+            role="status"
+            className="mt-3 min-h-4 font-mono text-[0.625rem] uppercase tracking-[0.08em] text-muted-foreground"
+          >
+            {notice}
+          </p>
+        ) : null}
+
+        <div className="mt-8 flex items-end justify-between gap-4 border-t border-border pt-5">
+          <div className="min-w-0">
+            <Eyebrow>Wristband</Eyebrow>
+            {pass.band ? (
+              <p className="mt-2 flex items-center gap-2 font-mono text-[0.6875rem] uppercase tracking-[0.08em]">
+                <span className="size-1.5 bg-success" aria-hidden />
+                Bound · uid {shortUid(pass.band.uid)}
+              </p>
+            ) : (
+              <>
+                <p className="mt-1.5 text-sm">Not bound — bind at the desk</p>
+                <p className="mt-1 text-xs text-muted-foreground">{pass.nearestDesk}</p>
+              </>
             )}
           </div>
-
-          {qrVisible && (
-            <>
-              <div className="border-border mt-8 border-y">
-                {actions.map((action) => (
-                  <button
-                    key={action.label}
-                    type="button"
-                    onClick={action.run}
-                    className="border-border hover:bg-card/50 w-full border-b py-3.5 text-left font-mono text-[0.6875rem] tracking-[0.12em] uppercase transition-colors motion-reduce:transition-none last:border-b-0"
-                  >
-                    {action.label}
-                  </button>
-                ))}
-              </div>
-              <p
-                role="status"
-                className="mt-3 min-h-4 font-mono text-[0.625rem] tracking-[0.08em] text-muted-foreground uppercase"
-              >
-                {notice}
-              </p>
-            </>
-          )}
-
-          {!online && (
-            <p className="border-border mt-8 flex items-center gap-2 border px-3 py-2.5 font-mono text-[0.625rem] tracking-[0.08em] uppercase">
-              <span className="bg-warning size-1.5" aria-hidden />
-              Offline — pass remains valid
-            </p>
-          )}
+          {!pass.band ? (
+            <Link to="/pass/pair" className={buttonClass("secondary", "sm", "shrink-0")}>
+              Bind
+            </Link>
+          ) : null}
         </div>
+
+        {!online ? (
+          <p className="mt-8 flex items-center gap-2 border border-border px-3 py-2.5 font-mono text-[0.625rem] uppercase tracking-[0.08em]">
+            <span className="size-1.5 bg-warning" aria-hidden />
+            Offline — pass remains valid
+          </p>
+        ) : null}
       </div>
-    </main>
+    </PageShell>
   );
 }
