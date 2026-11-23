@@ -1,14 +1,14 @@
 /**
  * Connexia UI Components
  * 
- * Export all components from this package.
+ * Re-export all components from this package.
  */
 
-// Re-export animated components
+// Animated components
 export * from './animated';
 
-// Re-export layout components
-export * from './layout';
-
-// Re-export form components
+// Form components
 export * from './form';
+
+// Layout components
+export * from './layout';
