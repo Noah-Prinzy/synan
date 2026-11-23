@@ -3,6 +3,9 @@
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/jetbrains-mono";
 
+/* Tailwind source: include @connexia/ui package for component classes */
+@source "../../packages/ui/src";
+
 @custom-variant dark (&:is(.dark *));
 
 :root {

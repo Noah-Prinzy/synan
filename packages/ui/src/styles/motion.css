@@ -361,54 +361,6 @@ main::before {
   z-index: -1;
 }
 
-/* Second ambient layer - floating particles
-   FIXED: Using valid pseudo-elements (main::after, not main::after::before) */
-main::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: -1;
-  overflow: hidden;
-}
-
-/* First particle */
-main::after::before {
-  content: "";
-  position: absolute;
-  top: -100px;
-  left: 10%;
-  width: 200px;
-  height: 200px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--color-brand) 3%, transparent);
-  filter: blur(100px);
-  animation: float 60s ease-in-out infinite;
-}
-
-/* Second particle */
-main::after::after {
-  content: "";
-  position: absolute;
-  bottom: -100px;
-  right: 10%;
-  width: 200px;
-  height: 200px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--color-brand) 2%, transparent);
-  filter: blur(100px);
-  animation: float 60s ease-in-out infinite reverse;
-}
-
-@keyframes float {
-  0%, 100% { 
-    transform: translateY(0) rotate(0deg); 
-  }
-  50% { 
-    transform: translateY(-10px) rotate(0.5deg); 
-  }
-}
-
 /* Pulsing brand thread at top of page
    FIXED: Uses valid CSS, no overflow issues */
 body::before {
@@ -461,8 +413,6 @@ body::before {
   
   /* Disable ambient animations */
   main::before,
-  main::after::before,
-  main::after::after,
   body::before {
     animation: none !important;
     opacity: 0.5;

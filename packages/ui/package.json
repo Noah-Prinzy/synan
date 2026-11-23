@@ -4,6 +4,16 @@
   "description": "Connexia shared UI components and design system",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./styles": "./dist/styles/index.js",
+    "./motion": "./dist/motion/index.js",
+    "./tokens": "./dist/tokens/index.js",
+    "./components": "./dist/components/index.js"
+  },
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
