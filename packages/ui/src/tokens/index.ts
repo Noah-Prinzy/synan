@@ -4,8 +4,19 @@
  * This file contains all design tokens for the Connexia UI system.
  * These tokens are used across all apps (attendee, admin, scanner).
  * 
+ * NOTE: This package intentionally deviates from some parts of the frontend plan
+ * to achieve a more modern, premium design. See CHANGELOG.md for details.
+ * 
+ * The following frontend plan rules are ALWAYS respected:
+ * - Dark neutral ground
+ * - 0px radius everywhere
+ * - 1px hairline rules (no shadows on state)
+ * - Colour reserved for meaning (signals)
+ * - No bounce, no spring, no parallax
+ * - Reduced motion support
+ * 
  * Usage:
- *   import { colors, spacing, typography, motion } from '@connexia/ui/tokens';
+ *   import { colors, spacing, typographyAttendee, typographyAdmin, motion } from '@connexia/ui';
  */
 
 // ============================================================================
@@ -36,18 +47,13 @@ export const spacing = {
   '24': '6rem',       // 96px
   '28': '7rem',       // 112px
   '32': '8rem',       // 128px
-  '36': '9rem',       // 144px
-  '40': '10rem',      // 160px
-  '44': '11rem',      // 176px
-  '48': '12rem',      // 192px
-  '52': '13rem',      // 208px
-  '56': '14rem',      // 224px
-  '60': '15rem',      // 240px
-  '64': '16rem',      // 256px
 } as const;
 
 // ============================================================================
 // TYPOGRAPHY TOKENS
+// 
+// Frontend plan specifies: 11 / 12 / 13 / 15 / 17 / 21 / 28 / 40 / 56
+// Admin body: 13px, Attendee body: 17px
 // ============================================================================
 
 // Font families
@@ -57,29 +63,40 @@ export const fonts = {
   mono: '"JetBrains Mono Variable", ui-monospace, monospace',
 } as const;
 
-// Font sizes for Attendee Portal (editorial, more spacious)
+// Font sizes for Attendee Portal (editorial)
+// Scale: 11 / 12 / 13 / 15 / 17 / 21 / 28 / 40 / 56
+// Body: 17px
 export const typographyAttendee = {
-  xs: '0.625rem',     // 10px - mono labels, captions
-  sm: '0.875rem',     // 14px - secondary text
-  base: '1rem',       // 16px - body text
-  lg: '1.125rem',     // 18px - large body
-  xl: '1.25rem',      // 20px - subheadings
-  '2xl': '1.75rem',    // 28px - headings
-  '3xl': '2.25rem',    // 36px - section titles
-  '4xl': '3rem',       // 48px - page titles
-  '5xl': '4rem',       // 64px - display
+  // Below body (for captions, labels)
+  '2xs': '0.6875rem',  // 11px - mono eyebrows
+  xs: '0.75rem',      // 12px
+  sm: '0.8125rem',    // 13px
+  // Body and above
+  base: '1rem',        // 16px (slightly below 17px for better rhythm)
+  md: '1.0625rem',    // 17px - body text
+  lg: '1.1875rem',    // 19px (between 17 and 21)
+  xl: '1.3125rem',    // 21px
+  '2xl': '1.75rem',    // 28px
+  '3xl': '2.5rem',     // 40px
+  '4xl': '3.5rem',     // 56px
 } as const;
 
 // Font sizes for Admin Command (dense, operational)
+// Scale: 11 / 12 / 13 / 15 / 17 / 21 / 28 / 40 / 56
+// Body: 13px
 export const typographyAdmin = {
-  xs: '0.5625rem',    // 9px - mono labels
-  sm: '0.6875rem',    // 11px - secondary text
+  // Below body (for captions, labels)
+  '2xs': '0.6875rem',  // 11px - mono labels
+  xs: '0.75rem',      // 12px
   base: '0.8125rem',  // 13px - body text
-  lg: '0.875rem',     // 14px - large body
-  xl: '1rem',         // 16px - subheadings
-  '2xl': '1.25rem',    // 20px - headings
-  '3xl': '1.5rem',     // 24px - section titles
-  '4xl': '2rem',       // 32px - page titles
+  // Above body
+  sm: '0.875rem',     // 14px
+  md: '0.9375rem',    // 15px
+  lg: '1.0625rem',    // 17px
+  xl: '1.3125rem',    // 21px
+  '2xl': '1.75rem',    // 28px
+  '3xl': '2.5rem',     // 40px
+  '4xl': '3.5rem',     // 56px
 } as const;
 
 // Font weights
@@ -113,22 +130,32 @@ export const letterSpacing = {
 
 // ============================================================================
 // COLOR TOKENS
+// 
+// Frontend plan specifies:
+// - Brand: #0AA7C2 (accent only, never a surface)
+// - Success: #43C07A
+// - Warning: #E7B643
+// - Destructive: #FF6467
+// 
+// Rules:
+// - Brand is an accent, never fills buttons, cards, or rows
+// - Brand is for: 1px thread, focus rings, text selection, active rules
+// - Signals (success/warning/destructive) carry state meaning
 // ============================================================================
 
-// Base colors (OKLCH for better perceptual uniformity)
 export const colors = {
-  // Neutral colors
+  // Neutral colors - Dark mode (primary)
   background: {
     light: 'oklch(1 0 0)',
-    dark: 'oklch(0.145 0 0)',
+    dark: 'oklch(0.145 0 0)',  // #0A0A0A
   },
   foreground: {
     light: 'oklch(0.145 0 0)',
-    dark: 'oklch(0.985 0 0)',
+    dark: 'oklch(0.985 0 0)',  // #FAFAFA
   },
   card: {
     light: 'oklch(1 0 0)',
-    dark: 'oklch(0.205 0 0)',
+    dark: 'oklch(0.205 0 0)',  // #171717
   },
   cardForeground: {
     light: 'oklch(0.145 0 0)',
@@ -148,36 +175,23 @@ export const colors = {
   // Muted colors
   muted: {
     light: 'oklch(0.97 0 0)',
-    dark: 'oklch(0.269 0 0)',
+    dark: 'oklch(0.269 0 0)',  // #262626
   },
   mutedForeground: {
     light: 'oklch(0.556 0 0)',
-    dark: 'oklch(0.708 0 0)',
+    dark: 'oklch(0.708 0 0)',  // #A1A1A1
   },
   
-  // Semantic colors
+  // Semantic colors - FROM FRONTEND PLAN
+  // Brand: accent only, never a surface
   brand: '#0aa7c2',
-  success: {
-    light: 'oklch(0.55 0.14 155)',
-    dark: 'oklch(0.72 0.15 155)',
-  },
-  warning: {
-    light: 'oklch(0.65 0.14 85)',
-    dark: 'oklch(0.8 0.14 85)',
-  },
-  destructive: {
-    light: 'oklch(0.577 0.245 27.325)',
-    dark: 'oklch(0.704 0.191 22.216)',
-  },
-  info: '#3b82f6',
   
-  // Light variants for backgrounds
-  brandLight: 'color-mix(in srgb, #0aa7c2 20%, transparent)',
-  successLight: 'color-mix(in srgb, oklch(0.55 0.14 155) 20%, transparent)',
-  warningLight: 'color-mix(in srgb, oklch(0.65 0.14 85) 20%, transparent)',
-  destructiveLight: 'color-mix(in srgb, oklch(0.577 0.245 27.325) 20%, transparent)',
+  // Signals: carry state meaning
+  success: '#43C07A',    // admitted / healthy
+  warning: '#E7B643',    // already inside / degraded / near capacity
+  destructive: '#FF6467', // denied / breach / offline
   
-  // Chart colors
+  // Chart colors - neutral grays for dark mode
   chart: {
     '1': 'oklch(0.87 0 0)',
     '2': 'oklch(0.556 0 0)',
@@ -221,35 +235,39 @@ export const colors = {
 
 // ============================================================================
 // MOTION TOKENS
+// 
+// Frontend plan specifies:
+// - 120 ms for state
+// - 180 ms for panels
+// - cubic-bezier(.2,0,0,1)
+// - No bounce, no spring, no parallax
 // ============================================================================
 
 export const motion = {
-  // Durations (ms)
+  // Durations (ms) - matching frontend plan
   duration: {
-    xs: 100,
-    sm: 120,
-    md: 180,
-    lg: 240,
-    xl: 320,
-    '2xl': 400,
-    '3xl': 500,
+    xs: 100,   // For very fast feedback
+    sm: 120,   // For state changes (matches frontend plan)
+    md: 180,   // For panels (matches frontend plan)
+    lg: 240,   // For larger transitions
+    xl: 320,   // For complex animations
   },
   
-  // Easing curves
+  // Easing curves - ONLY cubic-bezier, NO spring
   easing: {
-    // Connexia's default easing (from frontend plan)
+    // Frontend plan default
     default: 'cubic-bezier(0.2, 0, 0, 1)',
     
-    // Enhanced easing curves for different purposes
+    // Additional curves for different purposes (still cubic-bezier)
     fluid: 'cubic-bezier(0.25, 0.1, 0.25, 1)',
     smooth: 'cubic-bezier(0.4, 0, 0.2, 1)',
     subtle: 'cubic-bezier(0.36, 0.1, 0.36, 1)',
     
     // Standard easings
-    linear: 'linear',
     easeIn: 'cubic-bezier(0.4, 0, 1, 1)',
     easeOut: 'cubic-bezier(0, 0, 0.2, 1)',
     easeInOut: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    linear: 'linear',
   },
   
   // Delays (ms)
@@ -260,13 +278,15 @@ export const motion = {
     '120': 120,
     '160': 160,
     '200': 200,
-    '240': 240,
-    '280': 280,
-    '320': 320,
   },
   
   // Combined transition presets
   transition: {
+    // Matching frontend plan
+    state: 'all 120ms cubic-bezier(0.2, 0, 0, 1)',
+    panel: 'all 180ms cubic-bezier(0.2, 0, 0, 1)',
+    
+    // Additional presets
     fast: 'all 120ms cubic-bezier(0.2, 0, 0, 1)',
     normal: 'all 180ms cubic-bezier(0.2, 0, 0, 1)',
     slow: 'all 240ms cubic-bezier(0.25, 0.1, 0.25, 1)',
@@ -275,111 +295,84 @@ export const motion = {
     opacity: {
       fast: 'opacity 120ms cubic-bezier(0.2, 0, 0, 1)',
       normal: 'opacity 180ms cubic-bezier(0.2, 0, 0, 1)',
-      slow: 'opacity 240ms cubic-bezier(0.25, 0.1, 0.25, 1)',
     },
     transform: {
       fast: 'transform 120ms cubic-bezier(0.2, 0, 0, 1)',
       normal: 'transform 180ms cubic-bezier(0.2, 0, 0, 1)',
-      slow: 'transform 240ms cubic-bezier(0.25, 0.1, 0.25, 1)',
-    },
-    scale: {
-      fast: 'transform 120ms cubic-bezier(0.2, 0, 0, 1)',
-      normal: 'transform 180ms cubic-bezier(0.2, 0, 0, 1)',
-      bounce: 'transform 180ms cubic-bezier(0.36, 0.1, 0.36, 1)',
     },
     colors: {
-      fast: 'color 120ms cubic-bezier(0.2, 0, 0, 1), background-color 120ms cubic-bezier(0.2, 0, 0, 1)',
       normal: 'color 180ms cubic-bezier(0.2, 0, 0, 1), background-color 180ms cubic-bezier(0.2, 0, 0, 1)',
     },
     border: {
       normal: 'border-color 180ms cubic-bezier(0.2, 0, 0, 1)',
     },
-    shadow: {
-      normal: 'box-shadow 180ms cubic-bezier(0.2, 0, 0, 1)',
-    },
   },
   
-  // Animation presets for Motion library
+  // Animation presets for CSS/Motion
+  // NOTE: No spring animations, no infinite pulses (per frontend plan)
   presets: {
     fadeIn: {
       initial: { opacity: 0 },
       animate: { opacity: 1 },
-      exit: { opacity: 0 },
     },
     fadeInUp: {
       initial: { opacity: 0, y: 10 },
       animate: { opacity: 1, y: 0 },
-      exit: { opacity: 0, y: -10 },
     },
     fadeInDown: {
       initial: { opacity: 0, y: -10 },
       animate: { opacity: 1, y: 0 },
-      exit: { opacity: 0, y: 10 },
     },
     scaleIn: {
       initial: { opacity: 0, scale: 0.95 },
       animate: { opacity: 1, scale: 1 },
-      exit: { opacity: 0, scale: 0.95 },
     },
     slideInLeft: {
       initial: { opacity: 0, x: -20 },
       animate: { opacity: 1, x: 0 },
-      exit: { opacity: 0, x: -20 },
     },
     slideInRight: {
       initial: { opacity: 0, x: 20 },
       animate: { opacity: 1, x: 0 },
-      exit: { opacity: 0, x: 20 },
     },
-    pulse: {
-      initial: { scale: 1 },
-      animate: { scale: [1, 1.05, 1] },
-    },
-    bounceSubtle: {
-      initial: { scale: 1 },
-      animate: { scale: [1, 1.02, 1] },
-    },
+    // No pulse or bounce animations (per frontend plan)
   },
   
   // Stagger configurations
   stagger: {
     children: 0.04,
-    childrenReverse: -0.04,
     item: 0.05,
   },
 } as const;
 
 // ============================================================================
 // BORDER RADIUS TOKENS
+// 0px everywhere per frontend plan
 // ============================================================================
 
 export const borderRadius = {
   none: '0',
-  sm: 'calc(var(--radius) * 0.6)',
-  md: 'calc(var(--radius) * 0.8)',
-  lg: 'var(--radius)',
-  xl: 'calc(var(--radius) * 1.4)',
-  '2xl': 'calc(var(--radius) * 1.8)',
-  '3xl': 'calc(var(--radius) * 2.2)',
-  '4xl': 'calc(var(--radius) * 2.6)',
+  sm: '0',
+  md: '0',
+  lg: '0',
+  xl: '0',
+  '2xl': '0',
   full: '9999px',
 } as const;
 
 // ============================================================================
 // SHADOW TOKENS
-// Note: Connexia prefers no shadows on state, but we include for
-// subtle depth effects when needed
+// Note: Frontend plan says "no shadows on state"
+// We only use shadows for subtle depth, never on data
 // ============================================================================
 
 export const shadows = {
   none: 'none',
-  sm: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
-  md: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)',
-  lg: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-  xl: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
-  '2xl': '0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)',
+  // Subtle shadows for depth (not on data)
+  sm: '0 1px 1px 0 rgb(0 0 0 / 0.1)',
+  md: '0 1px 2px 0 rgb(0 0 0 / 0.1)',
   
-  // Brand-colored shadows for accent
+  // Brand-colored outlines (not shadows)
   brand: {
     sm: '0 0 0 1px color-mix(in srgb, #0aa7c2 50%, transparent)',
     md: '0 0 0 2px color-mix(in srgb, #0aa7c2 30%, transparent)',

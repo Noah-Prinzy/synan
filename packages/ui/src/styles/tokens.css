@@ -4,18 +4,30 @@
  * This file contains all CSS custom properties for the Connexia design system.
  * Import this file in your app's CSS to use the tokens.
  * 
+ * NOTE: This package intentionally deviates from some parts of the frontend plan
+ * to achieve a more modern, premium design. See CHANGELOG.md for details.
+ * 
+ * The following frontend plan rules are ALWAYS respected:
+ * - Dark neutral ground
+ * - 0px radius everywhere
+ * - 1px hairline rules (no shadows on state)
+ * - Colour reserved for meaning (signals)
+ * - No bounce, no spring, no parallax
+ * - Reduced motion support
+ * 
  * Usage:
- *   @import '@connexia/ui/styles/tokens.css';
+ *   @import '@connexia/ui/styles';
  *   
  *   .my-element {
  *     color: var(--color-foreground);
  *     padding: var(--spacing-4);
- *     font-size: var(--text-base);
+ *     font-size: var(--text-attendee-md);
  *   }
  */
 
 /* ============================================================================
    SPACING TOKENS
+   8px base scale with half-steps
    ============================================================================ */
 
 :root {
@@ -43,41 +55,39 @@
   --spacing-24: 6rem;       /* 96px */
   --spacing-28: 7rem;       /* 112px */
   --spacing-32: 8rem;       /* 128px */
-  --spacing-36: 9rem;       /* 144px */
-  --spacing-40: 10rem;      /* 160px */
-  --spacing-44: 11rem;      /* 176px */
-  --spacing-48: 12rem;      /* 192px */
-  --spacing-52: 13rem;      /* 208px */
-  --spacing-56: 14rem;      /* 224px */
-  --spacing-60: 15rem;      /* 240px */
-  --spacing-64: 16rem;      /* 256px */
 }
 
 /* ============================================================================
-   TYPOGRAPHY TOKENS - ATTENDEE PORTAL (Editorial)
+   TYPOGRAPHY TOKENS
+   
+   Frontend plan specifies: 11 / 12 / 13 / 15 / 17 / 21 / 28 / 40 / 56
+   Admin body: 13px, Attendee body: 17px
    ============================================================================ */
 
 :root {
-  /* Attendee typography */
-  --text-attendee-xs: 0.625rem;     /* 10px */
-  --text-attendee-sm: 0.875rem;     /* 14px */
+  /* Attendee typography - editorial */
+  --text-attendee-2xs: 0.6875rem;  /* 11px - mono eyebrows */
+  --text-attendee-xs: 0.75rem;     /* 12px */
+  --text-attendee-sm: 0.8125rem;   /* 13px */
   --text-attendee-base: 1rem;       /* 16px */
-  --text-attendee-lg: 1.125rem;     /* 18px */
-  --text-attendee-xl: 1.25rem;      /* 20px */
-  --text-attendee-2xl: 1.75rem;     /* 28px */
-  --text-attendee-3xl: 2.25rem;     /* 36px */
-  --text-attendee-4xl: 3rem;        /* 48px */
-  --text-attendee-5xl: 4rem;        /* 64px */
+  --text-attendee-md: 1.0625rem;   /* 17px - body text */
+  --text-attendee-lg: 1.1875rem;   /* 19px */
+  --text-attendee-xl: 1.3125rem;   /* 21px */
+  --text-attendee-2xl: 1.75rem;    /* 28px */
+  --text-attendee-3xl: 2.5rem;     /* 40px */
+  --text-attendee-4xl: 3.5rem;     /* 56px */
   
-  /* Admin typography */
-  --text-admin-xs: 0.5625rem;    /* 9px */
-  --text-admin-sm: 0.6875rem;    /* 11px */
-  --text-admin-base: 0.8125rem;  /* 13px */
-  --text-admin-lg: 0.875rem;     /* 14px */
-  --text-admin-xl: 1rem;         /* 16px */
-  --text-admin-2xl: 1.25rem;     /* 20px */
-  --text-admin-3xl: 1.5rem;      /* 24px */
-  --text-admin-4xl: 2rem;        /* 32px */
+  /* Admin typography - dense, operational */
+  --text-admin-2xs: 0.6875rem;    /* 11px - mono labels */
+  --text-admin-xs: 0.75rem;       /* 12px */
+  --text-admin-base: 0.8125rem;   /* 13px - body text */
+  --text-admin-sm: 0.875rem;      /* 14px */
+  --text-admin-md: 0.9375rem;     /* 15px */
+  --text-admin-lg: 1.0625rem;     /* 17px */
+  --text-admin-xl: 1.3125rem;     /* 21px */
+  --text-admin-2xl: 1.75rem;     /* 28px */
+  --text-admin-3xl: 2.5rem;      /* 40px */
+  --text-admin-4xl: 3.5rem;      /* 56px */
   
   /* Font families */
   --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
@@ -109,56 +119,25 @@
 }
 
 /* ============================================================================
-   COLOR TOKENS - LIGHT MODE (Reference only, not shipped)
-   ============================================================================ */
-
-:root {
-  /* Neutral colors - Light */
-  --color-background-light: oklch(1 0 0);
-  --color-foreground-light: oklch(0.145 0 0);
-  --color-card-light: oklch(1 0 0);
-  --color-card-foreground-light: oklch(0.145 0 0);
-  
-  /* Border and input - Light */
-  --color-border-light: oklch(0.922 0 0);
-  --color-input-light: oklch(0.922 0 0);
-  
-  /* Muted - Light */
-  --color-muted-light: oklch(0.97 0 0);
-  --color-muted-foreground-light: oklch(0.556 0 0);
-  
-  /* Semantic colors - Light */
-  --color-brand-light: #0aa7c2;
-  --color-success-light: oklch(0.55 0.14 155);
-  --color-warning-light: oklch(0.65 0.14 85);
-  --color-destructive-light: oklch(0.577 0.245 27.325);
-  
-  /* Sidebar - Light */
-  --color-sidebar-light: oklch(0.985 0 0);
-  --color-sidebar-foreground-light: oklch(0.145 0 0);
-  --color-sidebar-primary-light: oklch(0.205 0 0);
-  --color-sidebar-primary-foreground-light: oklch(0.985 0 0);
-  --color-sidebar-accent-light: oklch(0.97 0 0);
-  --color-sidebar-border-light: oklch(0.922 0 0);
-  --color-sidebar-ring-light: oklch(0.708 0 0);
-  
-  /* Chart colors - Light */
-  --color-chart-1-light: oklch(0.87 0 0);
-  --color-chart-2-light: oklch(0.556 0 0);
-  --color-chart-3-light: oklch(0.439 0 0);
-  --color-chart-4-light: oklch(0.371 0 0);
-  --color-chart-5-light: oklch(0.269 0 0);
-}
-
-/* ============================================================================
    COLOR TOKENS - DARK MODE (Shipped)
+   
+   Frontend plan specifies:
+   - Brand: #0AA7C2 (accent only, never a surface)
+   - Success: #43C07A
+   - Warning: #E7B643
+   - Destructive: #FF6467
+   
+   Rules:
+   - Brand is an accent, never fills buttons, cards, or rows
+   - Brand is for: 1px thread, focus rings, text selection, active rules
+   - Signals carry state meaning
    ============================================================================ */
 
 :root {
   /* Neutral colors - Dark */
-  --color-background: oklch(0.145 0 0);
-  --color-foreground: oklch(0.985 0 0);
-  --color-card: oklch(0.205 0 0);
+  --color-background: oklch(0.145 0 0);      /* #0A0A0A */
+  --color-foreground: oklch(0.985 0 0);      /* #FAFAFA */
+  --color-card: oklch(0.205 0 0);           /* #171717 */
   --color-card-foreground: oklch(0.985 0 0);
   
   /* Border and input - Dark */
@@ -166,22 +145,14 @@
   --color-input: oklch(1 0 0 / 15%);
   
   /* Muted - Dark */
-  --color-muted: oklch(0.269 0 0);
-  --color-muted-foreground: oklch(0.708 0 0);
+  --color-muted: oklch(0.269 0 0);           /* #262626 */
+  --color-muted-foreground: oklch(0.708 0 0); /* #A1A1A1 */
   
-  /* Semantic colors - Dark */
-  --color-brand: #0aa7c2;
-  --color-success: oklch(0.72 0.15 155);
-  --color-warning: oklch(0.8 0.14 85);
-  --color-destructive: oklch(0.704 0.191 22.216);
-  --color-info: #3b82f6;
-  
-  /* Light variants for backgrounds */
-  --color-brand-light: color-mix(in srgb, #0aa7c2 20%, transparent);
-  --color-success-light: color-mix(in srgb, oklch(0.72 0.15 155) 20%, transparent);
-  --color-warning-light: color-mix(in srgb, oklch(0.8 0.14 85) 20%, transparent);
-  --color-destructive-light: color-mix(in srgb, oklch(0.704 0.191 22.216) 20%, transparent);
-  --color-info-light: color-mix(in srgb, #3b82f6 20%, transparent);
+  /* Semantic colors - FROM FRONTEND PLAN */
+  --color-brand: #0aa7c2;                   /* Accent only, never a surface */
+  --color-success: #43C07A;                 /* admitted / healthy */
+  --color-warning: #E7B643;                 /* already inside / degraded / near capacity */
+  --color-destructive: #FF6467;             /* denied / breach / offline */
   
   /* Sidebar - Dark */
   --color-sidebar: oklch(0.205 0 0);
@@ -192,22 +163,19 @@
   --color-sidebar-border: oklch(1 0 0 / 10%);
   --color-sidebar-ring: oklch(0.556 0 0);
   
-  /* Chart colors - Dark */
+  /* Chart colors - neutral grays for dark mode */
   --color-chart-1: oklch(0.87 0 0);
   --color-chart-2: oklch(0.556 0 0);
   --color-chart-3: oklch(0.439 0 0);
   --color-chart-4: oklch(0.371 0 0);
   --color-chart-5: oklch(0.269 0 0);
   
-  /* Radius - 0px everywhere */
+  /* Radius - 0px everywhere per frontend plan */
   --radius: 0;
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
 /* ============================================================================
@@ -215,16 +183,14 @@
    ============================================================================ */
 
 :root {
-  /* Durations */
+  /* Durations - from frontend plan §2.3 */
   --duration-xs: 100ms;
-  --duration-sm: 120ms;
-  --duration-md: 180ms;
+  --duration-sm: 120ms;   /* State changes */
+  --duration-md: 180ms;   /* Panels */
   --duration-lg: 240ms;
   --duration-xl: 320ms;
-  --duration-2xl: 400ms;
-  --duration-3xl: 500ms;
   
-  /* Easing curves */
+  /* Easing curves - ONLY cubic-bezier, NO spring */
   --ease-default: cubic-bezier(0.2, 0, 0, 1);
   --ease-fluid: cubic-bezier(0.25, 0.1, 0.25, 1);
   --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
@@ -241,35 +207,34 @@
   --delay-120: 120ms;
   --delay-160: 160ms;
   --delay-200: 200ms;
-  --delay-240: 240ms;
-  --delay-280: 280ms;
-  --delay-320: 320ms;
   
   /* Combined transitions */
+  --transition-state: all 120ms var(--ease-default);
+  --transition-panel: all 180ms var(--ease-default);
   --transition-fast: all 120ms var(--ease-default);
   --transition-normal: all 180ms var(--ease-default);
   --transition-slow: all 240ms var(--ease-fluid);
   --transition-opacity-fast: opacity 120ms var(--ease-default);
   --transition-opacity-normal: opacity 180ms var(--ease-default);
-  --transition-opacity-slow: opacity 240ms var(--ease-fluid);
   --transition-transform-fast: transform 120ms var(--ease-default);
   --transition-transform-normal: transform 180ms var(--ease-default);
-  --transition-transform-slow: transform 240ms var(--ease-fluid);
   --transition-colors-normal: color 180ms var(--ease-default), background-color 180ms var(--ease-default);
   --transition-border-normal: border-color 180ms var(--ease-default);
 }
 
 /* ============================================================================
    SHADOW TOKENS
+   Note: Frontend plan says "no shadows on state"
+   We only use minimal shadows for depth, never on data
    ============================================================================ */
 
 :root {
   /* Shadows (used sparingly per design constraints) */
   --shadow-none: none;
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-sm: 0 1px 1px 0 rgb(0 0 0 / 0.1);
+  --shadow-md: 0 1px 2px 0 rgb(0 0 0 / 0.1);
   
-  /* Brand-colored "shadows" (actually outlines) */
+  /* Brand-colored outlines (not shadows) */
   --shadow-brand-sm: 0 0 0 1px color-mix(in srgb, #0aa7c2 50%, transparent);
   --shadow-brand-md: 0 0 0 2px color-mix(in srgb, #0aa7c2 30%, transparent);
 }
@@ -303,8 +268,6 @@
   --border-0: 0;
   --border-1: 1px;
   --border-2: 2px;
-  --border-4: 4px;
-  --border-8: 8px;
 }
 
 /* ============================================================================
@@ -313,7 +276,6 @@
 
 :root {
   --opacity-0: 0;
-  --opacity-5: 0.05;
   --opacity-10: 0.1;
   --opacity-15: 0.15;
   --opacity-20: 0.2;
@@ -326,7 +288,6 @@
   --opacity-75: 0.75;
   --opacity-80: 0.8;
   --opacity-90: 0.9;
-  --opacity-95: 0.95;
   --opacity-100: 1;
 }
 
@@ -342,18 +303,16 @@
     --duration-md: 0.01ms;
     --duration-lg: 0.01ms;
     --duration-xl: 0.01ms;
-    --duration-2xl: 0.01ms;
-    --duration-3xl: 0.01ms;
     
+    --transition-state: none;
+    --transition-panel: none;
     --transition-fast: none;
     --transition-normal: none;
     --transition-slow: none;
     --transition-opacity-fast: none;
     --transition-opacity-normal: none;
-    --transition-opacity-slow: none;
     --transition-transform-fast: none;
     --transition-transform-normal: none;
-    --transition-transform-slow: none;
     --transition-colors-normal: none;
     --transition-border-normal: none;
   }

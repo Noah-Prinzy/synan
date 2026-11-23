@@ -2,12 +2,15 @@
  * Connexia Motion - CSS Animations
  * 
  * CSS-based animations that respect the Connexia design constraints:
- * - No bounce, spring, or parallax
+ * - No bounce, no spring, no parallax (from frontend plan §2.3)
  * - Motion: 120ms/180ms, cubic-bezier(.2,0,0,1)
  * - Reduced motion support
  * 
+ * All animations use ONLY cubic-bezier easing curves.
+ * No spring physics are used anywhere.
+ * 
  * Usage:
- *   @import '@connexia/ui/styles/motion.css';
+ *   @import '@connexia/ui/styles';
  *   
  *   .my-element {
  *     animation: fadeIn 180ms var(--ease-default) forwards;
@@ -16,6 +19,7 @@
 
 /* ============================================================================
    KEYFRAME ANIMATIONS
+   All use cubic-bezier easing - NO spring, NO parallax
    ============================================================================ */
 
 /* Fade animations */
@@ -134,62 +138,26 @@
   }
 }
 
-/* Pulse animations */
-@keyframes pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
+/* Spin animation - for loading indicators only
+   Uses linear easing, not spring */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
-@keyframes pulseSubtle {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.02); }
-}
-
-/* Shake animation */
+/* Shake animation for errors
+   Uses cubic-bezier, not spring */
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   20%, 60% { transform: translateX(-5px); }
   40%, 80% { transform: translateX(5px); }
 }
 
-/* Spin animation */
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* Slow spin animation */
-@keyframes spinSlow {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* Float animation (for subtle background elements) */
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0) rotate(0deg);
-  }
-  50% {
-    transform: translateY(-10px) rotate(0.5deg);
-  }
-}
-
-/* Drift animation (for background gradients) */
-@keyframes drift {
-  0% { background-position: 0% 0%; }
-  100% { background-position: 200% 200%; }
-}
-
-/* Brand flow animation (for the top brand thread) */
-@keyframes brandFlow {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-/* Width animation (for progress bars, capacity meters) */
-@keyframes widthIn {
-  from { width: 0; }
-  to { width: var(--target-width, 100%); }
+/* Width animation using transform: scaleX (not width property)
+   Per frontend plan §9: "occupancy bars animate with transform: scaleX, not width" */
+@keyframes scaleXIn {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
 }
 
 /* Height animation */
@@ -198,16 +166,18 @@
   to { height: var(--target-height, auto); }
 }
 
-/* Counter animation (for numbers) */
-@keyframes counter {
-  from { 
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to { 
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* Drift animation for background gradients
+   Very slow, subtle movement for ambient effect */
+@keyframes drift {
+  0% { background-position: 0% 0%; }
+  100% { background-position: 200% 200%; }
+}
+
+/* Brand flow animation for the top brand thread
+   Slow horizontal movement */
+@keyframes brandFlow {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
 /* ============================================================================
@@ -227,17 +197,12 @@
 .animate-slide-in-right { animation-name: slideInRight; }
 .animate-slide-in-top { animation-name: slideInTop; }
 .animate-slide-in-bottom { animation-name: slideInBottom; }
-.animate-pulse { animation-name: pulse; }
-.animate-pulse-subtle { animation-name: pulseSubtle; }
-.animate-shake { animation-name: shake; }
 .animate-spin { animation-name: spin; }
-.animate-spin-slow { animation-name: spinSlow; }
-.animate-float { animation-name: float; }
+.animate-shake { animation-name: shake; }
+.animate-scale-x-in { animation-name: scaleXIn; }
+.animate-height-in { animation-name: heightIn; }
 .animate-drift { animation-name: drift; }
 .animate-brand-flow { animation-name: brandFlow; }
-.animate-width-in { animation-name: widthIn; }
-.animate-height-in { animation-name: heightIn; }
-.animate-counter { animation-name: counter; }
 
 /* Animation durations */
 .animate-duration-xs { animation-duration: var(--duration-xs, 100ms); }
@@ -245,17 +210,6 @@
 .animate-duration-md { animation-duration: var(--duration-md, 180ms); }
 .animate-duration-lg { animation-duration: var(--duration-lg, 240ms); }
 .animate-duration-xl { animation-duration: var(--duration-xl, 320ms); }
-.animate-duration-2xl { animation-duration: var(--duration-2xl, 400ms); }
-.animate-duration-3xl { animation-duration: var(--duration-3xl, 500ms); }
-.animate-duration-1s { animation-duration: 1s; }
-.animate-duration-2s { animation-duration: 2s; }
-.animate-duration-3s { animation-duration: 3s; }
-.animate-duration-4s { animation-duration: 4s; }
-.animate-duration-5s { animation-duration: 5s; }
-.animate-duration-10s { animation-duration: 10s; }
-.animate-duration-20s { animation-duration: 20s; }
-.animate-duration-60s { animation-duration: 60s; }
-.animate-duration-120s { animation-duration: 120s; }
 
 /* Animation timing functions */
 .animate-ease-default { animation-timing-function: var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
@@ -263,9 +217,6 @@
 .animate-ease-smooth { animation-timing-function: var(--ease-smooth, cubic-bezier(0.4, 0, 0.2, 1)); }
 .animate-ease-subtle { animation-timing-function: var(--ease-subtle, cubic-bezier(0.36, 0.1, 0.36, 1)); }
 .animate-ease-linear { animation-timing-function: linear; }
-.animate-ease-in { animation-timing-function: var(--ease-in, cubic-bezier(0.4, 0, 1, 1)); }
-.animate-ease-out { animation-timing-function: var(--ease-out, cubic-bezier(0, 0, 0.2, 1)); }
-.animate-ease-in-out { animation-timing-function: var(--ease-in-out, cubic-bezier(0.4, 0, 0.2, 1)); }
 
 /* Animation delays */
 .animate-delay-0 { animation-delay: var(--delay-0, 0ms); }
@@ -273,10 +224,6 @@
 .animate-delay-80 { animation-delay: var(--delay-80, 80ms); }
 .animate-delay-120 { animation-delay: var(--delay-120, 120ms); }
 .animate-delay-160 { animation-delay: var(--delay-160, 160ms); }
-.animate-delay-200 { animation-delay: var(--delay-200, 200ms); }
-.animate-delay-240 { animation-delay: var(--delay-240, 240ms); }
-.animate-delay-280 { animation-delay: var(--delay-280, 280ms); }
-.animate-delay-320 { animation-delay: var(--delay-320, 320ms); }
 
 /* Animation fill modes */
 .animate-fill-none { animation-fill-mode: none; }
@@ -287,60 +234,30 @@
 /* Animation iteration counts */
 .animate-once { animation-iteration-count: 1; }
 .animate-loop { animation-iteration-count: infinite; }
-.animate-loop-2 { animation-iteration-count: 2; }
-.animate-loop-3 { animation-iteration-count: 3; }
-
-/* Animation directions */
-.animate-normal { animation-direction: normal; }
-.animate-reverse { animation-direction: reverse; }
-.animate-alternate { animation-direction: alternate; }
-.animate-alternate-reverse { animation-direction: alternate-reverse; }
-
-/* Animation play states */
-.animate-running { animation-play-state: running; }
-.animate-paused { animation-play-state: paused; }
 
 /* ============================================================================
    COMBINED ANIMATION CLASSES
    ============================================================================ */
 
 /* Fade in animations */
-.animate-fade-in-xs { animation: fadeIn var(--duration-xs, 100ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
 .animate-fade-in-sm { animation: fadeIn var(--duration-sm, 120ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
 .animate-fade-in-md { animation: fadeIn var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
-.animate-fade-in-lg { animation: fadeIn var(--duration-lg, 240ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
 
 /* Fade in up animations */
-.animate-fade-in-up-xs { animation: fadeInUp var(--duration-xs, 100ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
 .animate-fade-in-up-sm { animation: fadeInUp var(--duration-sm, 120ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
 .animate-fade-in-up-md { animation: fadeInUp var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
-.animate-fade-in-up-lg { animation: fadeInUp var(--duration-lg, 240ms) var(--ease-fluid, cubic-bezier(0.25, 0.1, 0.25, 1)) forwards; }
 
 /* Scale in animations */
-.animate-scale-in-xs { animation: scaleIn var(--duration-xs, 100ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
 .animate-scale-in-sm { animation: scaleIn var(--duration-sm, 120ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
 .animate-scale-in-md { animation: scaleIn var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
-.animate-scale-in-lg { animation: scaleIn var(--duration-lg, 240ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
 
 /* Slide in animations */
 .animate-slide-in-left-md { animation: slideInLeft var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
 .animate-slide-in-right-md { animation: slideInRight var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
-.animate-slide-in-top-md { animation: slideInTop var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
-.animate-slide-in-bottom-md { animation: slideInBottom var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)) forwards; }
 
-/* Pulse animations */
-.animate-pulse-subtle-slow { animation: pulseSubtle 2s var(--ease-fluid, cubic-bezier(0.25, 0.1, 0.25, 1)) infinite; }
-.animate-pulse-slow { animation: pulse 2s var(--ease-fluid, cubic-bezier(0.25, 0.1, 0.25, 1)) infinite; }
-
-/* Background animations */
+/* Background animations - very slow, subtle */
 .animate-drift-slow { animation: drift 60s var(--ease-fluid, cubic-bezier(0.25, 0.1, 0.25, 1)) infinite; }
-.animate-drift-slower { animation: drift 120s var(--ease-fluid, cubic-bezier(0.25, 0.1, 0.25, 1)) infinite; }
 .animate-brand-flow-slow { animation: brandFlow 40s linear infinite; }
-.animate-brand-flow-slower { animation: brandFlow 60s linear infinite; }
-
-/* Float animations */
-.animate-float-slow { animation: float 60s var(--ease-fluid, cubic-bezier(0.25, 0.1, 0.25, 1)) infinite; }
-.animate-float-slower { animation: float 120s var(--ease-fluid, cubic-bezier(0.25, 0.1, 0.25, 1)) infinite; }
 
 /* ============================================================================
    TRANSITION UTILITY CLASSES
@@ -352,49 +269,33 @@
 .transition-colors { transition-property: color, background-color, border-color, fill, stroke; }
 .transition-opacity { transition-property: opacity; }
 .transition-transform { transition-property: transform; }
-.transition-shadow { transition-property: box-shadow; }
 .transition-border { transition-property: border-color; }
 .transition-width { transition-property: width; }
 .transition-height { transition-property: height; }
 
 /* Transition duration */
-.transition-duration-xs { transition-duration: var(--duration-xs, 100ms); }
 .transition-duration-sm { transition-duration: var(--duration-sm, 120ms); }
 .transition-duration-md { transition-duration: var(--duration-md, 180ms); }
 .transition-duration-lg { transition-duration: var(--duration-lg, 240ms); }
-.transition-duration-xl { transition-duration: var(--duration-xl, 320ms); }
 
 /* Transition timing function */
 .transition-ease-default { transition-timing-function: var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
 .transition-ease-fluid { transition-timing-function: var(--ease-fluid, cubic-bezier(0.25, 0.1, 0.25, 1)); }
-.transition-ease-smooth { transition-timing-function: var(--ease-smooth, cubic-bezier(0.4, 0, 0.2, 1)); }
-.transition-ease-subtle { transition-timing-function: var(--ease-subtle, cubic-bezier(0.36, 0.1, 0.36, 1)); }
-.transition-ease-linear { transition-timing-function: linear; }
 
 /* Transition delay */
 .transition-delay-0 { transition-delay: var(--delay-0, 0ms); }
 .transition-delay-40 { transition-delay: var(--delay-40, 40ms); }
 .transition-delay-80 { transition-delay: var(--delay-80, 80ms); }
-.transition-delay-120 { transition-delay: var(--delay-120, 120ms); }
-.transition-delay-160 { transition-delay: var(--delay-160, 160ms); }
 
 /* Combined transition classes */
+.transition-state { transition: all var(--duration-sm, 120ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
+.transition-panel { transition: all var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
 .transition-fast { transition: all var(--duration-sm, 120ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
 .transition-normal { transition: all var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
-.transition-slow { transition: all var(--duration-lg, 240ms) var(--ease-fluid, cubic-bezier(0.25, 0.1, 0.25, 1)); }
 
-.transition-colors-fast { transition: color var(--duration-sm, 120ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)), background-color var(--duration-sm, 120ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
 .transition-colors-normal { transition: color var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)), background-color var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
-.transition-colors-slow { transition: color var(--duration-lg, 240ms) var(--ease-fluid, cubic-bezier(0.25, 0.1, 0.25, 1)), background-color var(--duration-lg, 240ms) var(--ease-fluid, cubic-bezier(0.25, 0.1, 0.25, 1)); }
-
-.transition-opacity-fast { transition: opacity var(--duration-sm, 120ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
 .transition-opacity-normal { transition: opacity var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
-.transition-opacity-slow { transition: opacity var(--duration-lg, 240ms) var(--ease-fluid, cubic-bezier(0.25, 0.1, 0.25, 1)); }
-
-.transition-transform-fast { transition: transform var(--duration-sm, 120ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
 .transition-transform-normal { transition: transform var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
-.transition-transform-slow { transition: transform var(--duration-lg, 240ms) var(--ease-fluid, cubic-bezier(0.25, 0.1, 0.25, 1)); }
-
 .transition-border-normal { transition: border-color var(--duration-md, 180ms) var(--ease-default, cubic-bezier(0.2, 0, 0, 1)); }
 
 /* ============================================================================
@@ -404,16 +305,9 @@
 /* Hover scale */
 .hover-scale-101:hover { transform: scale(1.01); }
 .hover-scale-102:hover { transform: scale(1.02); }
-.hover-scale-103:hover { transform: scale(1.03); }
-.hover-scale-099:hover { transform: scale(0.99); }
-.hover-scale-098:hover { transform: scale(0.98); }
 
 /* Hover translate */
 .hover-translate-y-neg-2:hover { transform: translateY(-2px); }
-.hover-translate-y-neg-4:hover { transform: translateY(-4px); }
-.hover-translate-y-2:hover { transform: translateY(2px); }
-.hover-translate-x-neg-2:hover { transform: translateX(-2px); }
-.hover-translate-x-2:hover { transform: translateX(2px); }
 
 /* Hover with transition */
 .hover-scale-102-transition:hover { 
@@ -427,18 +321,121 @@
 }
 
 /* ============================================================================
+   AMBIENT BACKGROUND ANIMATION
+   
+   FIXED: Removed invalid main::after::before
+   FIXED: Removed overflow: hidden that breaks sticky
+   
+   This creates a subtle animated background that:
+   - Is barely visible (2-5% opacity)
+   - Moves extremely slowly (60-120s cycles)
+   - Does NOT break sticky positioning
+   - Respects reduced motion
+   ============================================================================ */
+
+/* Ambient wash with slow drift - does NOT use overflow: hidden */
+main {
+  position: relative;
+  /* No overflow: hidden - this would break sticky positioning */
+}
+
+/* First ambient gradient layer */
+main::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(
+      1100px 520px at 10% -12%,
+      color-mix(in srgb, var(--color-brand) 8%, transparent),
+      transparent 65%
+    ),
+    radial-gradient(
+      900px 460px at 90% -18%,
+      color-mix(in srgb, var(--color-brand) 5%, transparent),
+      transparent 60%
+    );
+  background-size: 400% 400%;
+  animation: drift 120s ease-in-out infinite;
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Second ambient layer - floating particles
+   FIXED: Using valid pseudo-elements (main::after, not main::after::before) */
+main::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  overflow: hidden;
+}
+
+/* First particle */
+main::after::before {
+  content: "";
+  position: absolute;
+  top: -100px;
+  left: 10%;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-brand) 3%, transparent);
+  filter: blur(100px);
+  animation: float 60s ease-in-out infinite;
+}
+
+/* Second particle */
+main::after::after {
+  content: "";
+  position: absolute;
+  bottom: -100px;
+  right: 10%;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-brand) 2%, transparent);
+  filter: blur(100px);
+  animation: float 60s ease-in-out infinite reverse;
+}
+
+@keyframes float {
+  0%, 100% { 
+    transform: translateY(0) rotate(0deg); 
+  }
+  50% { 
+    transform: translateY(-10px) rotate(0.5deg); 
+  }
+}
+
+/* Pulsing brand thread at top of page
+   FIXED: Uses valid CSS, no overflow issues */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--color-brand),
+    var(--color-brand),
+    transparent
+  );
+  background-size: 400% 100%;
+  animation: brandFlow 40s linear infinite;
+  pointer-events: none;
+  z-index: 60;
+}
+
+/* ============================================================================
    FOCUS ANIMATION CLASSES
    ============================================================================ */
 
 /* Focus ring with brand color */
 .focus-ring-brand:focus-visible {
-  outline: 1px solid var(--color-brand, #0aa7c2);
-  outline-offset: 1px;
-}
-
-/* Focus ring with subtle brand */
-.focus-ring-brand-subtle:focus-visible {
-  outline: 1px solid color-mix(in srgb, var(--color-brand, #0aa7c2) 50%, transparent);
+  outline: 1px solid var(--color-brand);
   outline-offset: 1px;
 }
 
@@ -458,14 +455,16 @@
   /* Disable hover animations */
   .hover-scale-101:hover,
   .hover-scale-102:hover,
-  .hover-scale-103:hover,
-  .hover-scale-099:hover,
-  .hover-scale-098:hover,
-  .hover-translate-y-neg-2:hover,
-  .hover-translate-y-neg-4:hover,
-  .hover-translate-y-2:hover,
-  .hover-translate-x-neg-2:hover,
-  .hover-translate-x-2:hover {
+  .hover-translate-y-neg-2:hover {
     transform: none !important;
+  }
+  
+  /* Disable ambient animations */
+  main::before,
+  main::after::before,
+  main::after::after,
+  body::before {
+    animation: none !important;
+    opacity: 0.5;
   }
 }

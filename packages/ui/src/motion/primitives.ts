@@ -2,33 +2,37 @@
  * Connexia Motion Primitives
  * 
  * A collection of reusable animation primitives for the Connexia UI system.
- * These primitives respect the design constraints from the frontend plan:
- * - No bounce, spring, or parallax
+ * 
+ * IMPORTANT: This package respects the frontend plan constraints:
+ * - NO bounce, NO spring, NO parallax
  * - Motion: 120ms/180ms, cubic-bezier(.2,0,0,1)
  * - Reduced motion support
  * 
+ * All animations use ONLY cubic-bezier easing curves.
+ * No spring physics are used anywhere.
+ * 
  * Usage:
- *   import { fadeIn, scaleIn, stagger } from '@connexia/ui/motion';
+ *   import { fadeIn, scaleIn, transitions, easing } from '@connexia/ui/motion';
  */
 
 import { motion, type Variants, type Transition, type HTMLMotionProps } from 'motion/react';
-import { motion as motionWeb, type MotionValue } from 'motion';
-import { motion } from 'motion/react';
 
 // ============================================================================
 // EASING CURVES
+// ONLY cubic-bezier - NO spring animations per frontend plan §2.3
 // ============================================================================
 
 /**
- * Connexia's default easing curve from the frontend plan
+ * Connexia's default easing curve from the frontend plan §2.3
  */
 export const easeDefault = 'cubic-bezier(0.2, 0, 0, 1)';
 
 /**
  * Enhanced easing curves for different animation purposes
+ * All are cubic-bezier - NO spring
  */
 export const easing = {
-  /** Default Connexia easing */
+  /** Default Connexia easing - from frontend plan */
   default: 'cubic-bezier(0.2, 0, 0, 1)',
   
   /** Fluid easing for smooth transitions */
@@ -59,15 +63,14 @@ export const easing = {
 
 /**
  * Animation durations in milliseconds
+ * 120ms for state, 180ms for panels per frontend plan §2.3
  */
 export const duration = {
-  xs: 100,
-  sm: 120,
-  md: 180,
-  lg: 240,
-  xl: 320,
-  '2xl': 400,
-  '3xl': 500,
+  xs: 100,   // Extra fast for immediate feedback
+  sm: 120,   // State changes (matches frontend plan)
+  md: 180,   // Panels (matches frontend plan)
+  lg: 240,   // Larger transitions
+  xl: 320,   // Complex animations
 } as const;
 
 // ============================================================================
@@ -84,47 +87,42 @@ export const delay = {
   '120': 120,
   '160': 160,
   '200': 200,
-  '240': 240,
-  '280': 280,
-  '320': 320,
 } as const;
 
 // ============================================================================
 // TRANSITION PRESETS
+// All use cubic-bezier - NO spring
 // ============================================================================
 
 /**
  * Predefined transition configurations
  */
 export const transitions = {
-  // Fast transitions (120ms)
+  // From frontend plan §2.3
+  state: {
+    duration: duration.sm / 1000,  // 120ms
+    ease: easing.default,
+  },
+  
+  panel: {
+    duration: duration.md / 1000,  // 180ms
+    ease: easing.default,
+  },
+  
+  // Additional presets
   fast: {
     duration: duration.sm / 1000,
     ease: easing.default,
   },
   
-  // Normal transitions (180ms)
   normal: {
     duration: duration.md / 1000,
     ease: easing.default,
   },
   
-  // Slow transitions (240ms)
   slow: {
     duration: duration.lg / 1000,
     ease: easing.fluid,
-  },
-  
-  // Fluid transitions
-  fluid: {
-    duration: duration.md / 1000,
-    ease: easing.fluid,
-  },
-  
-  // Smooth transitions
-  smooth: {
-    duration: duration.md / 1000,
-    ease: easing.smooth,
   },
   
   // Specific property transitions
@@ -137,10 +135,6 @@ export const transitions = {
       duration: duration.md / 1000,
       ease: easing.default,
     },
-    slow: {
-      duration: duration.lg / 1000,
-      ease: easing.fluid,
-    },
   },
   
   transform: {
@@ -152,31 +146,29 @@ export const transitions = {
       duration: duration.md / 1000,
       ease: easing.default,
     },
-    slow: {
-      duration: duration.lg / 1000,
-      ease: easing.fluid,
+  },
+  
+  colors: {
+    normal: {
+      duration: duration.md / 1000,
+      ease: easing.default,
     },
   },
   
-  // Bounce-free spring
-  spring: {
-    type: 'spring',
-    damping: 25,
-    stiffness: 200,
-    bounce: 0,
+  border: {
+    normal: {
+      duration: duration.md / 1000,
+      ease: easing.default,
+    },
   },
   
-  // Very stiff spring (almost no bounce)
-  springStiff: {
-    type: 'spring',
-    damping: 30,
-    stiffness: 500,
-    bounce: 0,
-  },
+  // NOTE: No spring configurations - per frontend plan §2.3
+  // Spring animations are explicitly forbidden
 } as const;
 
 // ============================================================================
 // ANIMATION VARIANTS
+// All use cubic-bezier easing - NO spring, NO infinite animations
 // ============================================================================
 
 /**
@@ -279,56 +271,33 @@ export const slideInBottom: Variants = {
 };
 
 /**
- * Pulse animation (subtle)
+ * Spin animation - for loading indicators only
+ * Uses linear easing, not spring
  */
-export const pulse: Variants = {
-  initial: { scale: 1 },
-  animate: { scale: [1, 1.05, 1] },
-};
-
-/**
- * Subtle pulse animation
- */
-export const pulseSubtle: Variants = {
-  initial: { scale: 1 },
-  animate: { scale: [1, 1.02, 1] },
-};
-
-/**
- * Bounce animation (bounce-free, just scale)
- */
-export const bounceSubtle: Variants = {
-  initial: { scale: 1 },
-  animate: { scale: [1, 1.02, 1] },
+export const spin: Variants = {
+  initial: { rotate: 0 },
+  animate: { 
+    rotate: 360,
+    transition: { 
+      duration: 1,
+      ease: 'linear',
+      repeat: Infinity,
+    }
+  },
 };
 
 /**
  * Shake animation for errors
+ * Uses cubic-bezier, not spring
  */
 export const shake: Variants = {
   initial: { x: 0 },
   animate: {
     x: [0, -5, 5, -5, 5, 0],
-    transition: { duration: 0.3 }
-  },
-};
-
-/**
- * Spin animation
- */
-export const spin: Variants = {
-  initial: { rotate: 0 },
-  animate: { rotate: 360 },
-};
-
-/**
- * Slow spin animation
- */
-export const spinSlow: Variants = {
-  initial: { rotate: 0 },
-  animate: {
-    rotate: 360,
-    transition: { duration: 20, repeat: Infinity, ease: 'linear' }
+    transition: { 
+      duration: 0.3,
+      ease: easing.default,
+    }
   },
 };
 
@@ -379,20 +348,16 @@ export function staggerCustom(delay: number = 0.04) {
  * Subtle scale on hover
  */
 export const hoverScale = {
-  whileHover: { scale: 1.02 },
-  whileTap: { scale: 0.98 },
+  whileHover: { scale: 1.01 },
+  whileTap: { scale: 0.99 },
 };
 
 /**
- * Lift effect on hover (subtle shadow equivalent)
+ * Lift effect on hover (subtle)
  */
 export const hoverLift = {
-  whileHover: { 
-    scale: 1.01,
-    // We can't use box-shadow directly in transform, 
-    // but this creates a subtle "lift" effect
-  },
-  whileTap: { scale: 0.99 },
+  whileHover: { y: -2 },
+  whileTap: { y: 0 },
 };
 
 /**
@@ -434,7 +399,10 @@ export function fadeInStagger(index: number, delayPerItem: number = 0.04) {
   return {
     initial: { opacity: 0, y: 10 },
     animate: { opacity: 1, y: 0 },
-    transition: { delay: index * delayPerItem },
+    transition: { 
+      delay: index * delayPerItem,
+      ease: easing.default,
+    },
   };
 }
 
@@ -445,7 +413,10 @@ export function scaleInStagger(index: number, delayPerItem: number = 0.05) {
   return {
     initial: { opacity: 0, scale: 0.95 },
     animate: { opacity: 1, scale: 1 },
-    transition: { delay: index * delayPerItem },
+    transition: { 
+      delay: index * delayPerItem,
+      ease: easing.default,
+    },
   };
 }
 
@@ -456,16 +427,21 @@ export function slideUpStagger(index: number, delayPerItem: number = 0.05) {
   return {
     initial: { opacity: 0, y: 20 },
     animate: { opacity: 1, y: 0 },
-    transition: { delay: index * delayPerItem, ease: easing.fluid },
+    transition: { 
+      delay: index * delayPerItem,
+      ease: easing.fluid,
+    },
   };
 }
 
 // ============================================================================
 // COUNTER ANIMATIONS
+// Uses transform: scaleX for bars (not width) per frontend plan §9
 // ============================================================================
 
 /**
  * Animate a number from start to end
+ * Uses cubic-bezier easing, not spring
  */
 export function animateNumber(
   start: number,
@@ -477,7 +453,10 @@ export function animateNumber(
     initial: { value: start },
     animate: { 
       value: end,
-      transition: { duration: duration / 1000, ease: easing }
+      transition: { 
+        duration: duration / 1000,
+        ease: easing,
+      }
     },
   };
 }
@@ -491,6 +470,7 @@ export function formatNumber(value: number): string {
 
 /**
  * Animate a percentage
+ * Uses cubic-bezier easing, not spring
  */
 export function animatePercentage(
   start: number,
@@ -502,7 +482,10 @@ export function animatePercentage(
     initial: { percentage: start },
     animate: { 
       percentage: end,
-      transition: { duration: duration / 1000, ease: easing }
+      transition: { 
+        duration: duration / 1000,
+        ease: easing,
+      }
     },
   };
 }
@@ -521,6 +504,7 @@ export function useReducedMotion(): boolean {
 
 /**
  * Create a motion component that respects reduced motion
+ * This is a wrapper that disables animations when reduced motion is preferred
  */
 export function ReducedMotionWrapper({
   children,
@@ -528,14 +512,14 @@ export function ReducedMotionWrapper({
 }: HTMLMotionProps<'div'>) {
   const reducedMotion = useReducedMotion();
   
+  // If reduced motion is preferred, return a plain div with no animations
+  if (reducedMotion) {
+    return <div {...props}>{children}</div>;
+  }
+  
+  // Otherwise, use motion.div with animations
   return (
-    <motion.div
-      {...props}
-      animate={reducedMotion ? {} : props.animate}
-      transition={reducedMotion ? {} : props.transition}
-      whileHover={reducedMotion ? {} : props.whileHover}
-      whileTap={reducedMotion ? {} : props.whileTap}
-    >
+    <motion.div {...props}>
       {children}
     </motion.div>
   );
