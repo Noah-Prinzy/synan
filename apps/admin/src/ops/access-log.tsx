@@ -522,28 +522,31 @@ function sentence(label: string): string {
 
 function Notes({ eventId }: { eventId: string }) {
   const { can } = useSession();
+  // The event's attendee table is in the event workspace; a role without it (the supervisor)
+  // finds people in the attendee lookup instead (routes.ts, D-23).
+  const workspace = can("events.view");
   return (
     <p className={cn("border-b border-border py-2.5 text-12 leading-relaxed text-muted-foreground", GUTTER_X)}>
       Who presented a pass is not shown here.{" "}
       {can("attendees.view") ? (
         <>
-          To see one person's scans, open them in{" "}
-          <Link to={`/events/${eventId}/attendees`} className={linkClass}>
+          To find one person, open{" "}
+          <Link to={workspace ? `/events/${eventId}/attendees` : "/attendees"} className={linkClass}>
             Attendees
           </Link>
-          ; that lookup is audited.
+          : it shows their pass, band and last scan.
         </>
-      ) : (
-        "A person's own scan history is an audited lookup for supervisors."
-      )}
-      <Can I="reports.view">
-        {" "}
-        To export scans, start a{" "}
-        <Link to={`/events/${eventId}/reports`} className={linkClass}>
-          report
-        </Link>
-        : exports run as a job.
-      </Can>
+      ) : null}
+      {workspace && can("reports.view") ? (
+        <>
+          {" "}
+          To export scans, start a{" "}
+          <Link to={`/events/${eventId}/reports`} className={linkClass}>
+            report
+          </Link>
+          : exports run as a job.
+        </>
+      ) : null}
     </p>
   );
 }
@@ -613,14 +616,16 @@ function ScanRow({
           <Detail label="Decided" value={scan.offline ? "Offline, on the gate's allowlist; synced later" : "Online"} />
           <Detail label="Room" value={room ?? "Venue perimeter"} />
           <Detail label="Scan ID" value={scan.id} mono />
-          <div className="min-w-0">
-            <dt className="text-12 text-muted-foreground">Gate</dt>
-            <dd>
-              <Link to={`/gates/${scan.checkpoint_id}`} className={linkClass}>
-                Open {label}
-              </Link>
-            </dd>
-          </div>
+          <Can I="gates.view">
+            <div className="min-w-0">
+              <dt className="text-12 text-muted-foreground">Gate</dt>
+              <dd>
+                <Link to={`/gates/${scan.checkpoint_id}`} className={linkClass}>
+                  Open {label}
+                </Link>
+              </dd>
+            </div>
+          </Can>
         </dl>
       ) : null}
     </li>

@@ -190,10 +190,13 @@ function GateView({ checkpoint, eventId, timeZone, back }: { checkpoint: Checkpo
             >
               {marked === undefined ? "Mark for maintenance" : "End maintenance"}
             </Button>
-            <Can I="staff.manage">
-              <Link to={`/events/${eventId}/staff`} className={buttonClass("secondary", "compact")}>
-                Reassign
-              </Link>
+            {/* The Staff tab lives in the event workspace: opening it needs both. */}
+            <Can I="events.view">
+              <Can I="staff.manage">
+                <Link to={`/events/${eventId}/staff`} className={buttonClass("secondary", "compact")}>
+                  Reassign
+                </Link>
+              </Can>
             </Can>
           </span>
         }

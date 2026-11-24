@@ -7,6 +7,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { Room } from "@synan/contracts/rest";
+import { Can } from "../access/session";
 import {
   CapacityMeter,
   OccupancyBar,
@@ -120,9 +121,11 @@ export function GatesSection({ layout }: { layout: VenueLayout }) {
       id="rail-gates"
       title="Gates"
       meta={
-        <Link to="/gates" className="text-muted-foreground transition-colors duration-120 hover:text-foreground">
-          Gate health →
-        </Link>
+        <Can I="gates.view">
+          <Link to="/gates" className="text-muted-foreground transition-colors duration-120 hover:text-foreground">
+            Gate health →
+          </Link>
+        </Can>
       }
       className="shrink-0"
     >
@@ -445,9 +448,11 @@ export function LiveFeed({ layout, timeZone }: { layout: VenueLayout; timeZone: 
       id="rail-feed"
       title="Recent activity"
       meta={
-        <Link to="/access-log" className="text-muted-foreground transition-colors duration-120 hover:text-foreground">
-          Access log →
-        </Link>
+        <Can I="scans.view">
+          <Link to="/access-log" className="text-muted-foreground transition-colors duration-120 hover:text-foreground">
+            Access log →
+          </Link>
+        </Can>
       }
       className="shrink-0"
     >
