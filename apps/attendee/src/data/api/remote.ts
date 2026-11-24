@@ -134,8 +134,6 @@ export function createRemote(state: CoreState) {
       admitted: event.on_site ?? 0,
       admittedShown: event.on_site !== null,
       capacity: event.capacity ?? (detail ? detail.rooms.reduce((sum, room) => sum + room.capacity, 0) : 0),
-      // GAP: no proximity in the contract (undecided).
-      nearby: false,
       image: event.image_url ?? null,
       sessionCount: event.session_count ?? detail?.sessions.length ?? 0,
     };

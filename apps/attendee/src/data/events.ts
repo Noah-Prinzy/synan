@@ -21,7 +21,6 @@ export type EventSummary = {
   /** False when the server withholds the count (EventSummary.on_site is null). */
   admittedShown: boolean;
   capacity: number;
-  nearby: boolean;
   /** Event photograph, when the organiser supplied one. */
   image: string | null;
   sessionCount: number;
