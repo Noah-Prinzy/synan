@@ -205,13 +205,12 @@ export class CommandStore {
 
   /** Acknowledge: optimistic, one click (docs/06 §2.3 D1). */
   async ack(alertId: string): Promise<void> {
-    const before = this.alerts.get();
-    this.alerts.set(before.map((a) => (a.id === alertId && a.state === "open" ? { ...a, state: "acked" } : a)));
+    const undo = this.optimistic(alertId, (a) => (a.state === "open" ? { ...a, state: "acked" } : null));
     try {
       const acked = await this.api.ack(alertId);
       this.replaceAlert(acked);
     } catch {
-      this.alerts.set(before);
+      undo();
       this.say("Could not acknowledge the alert. Try again.", false);
     }
   }
@@ -221,23 +220,31 @@ export class CommandStore {
    * open list, so a failure puts it back and rethrows for the form to say so.
    */
   async resolve(alertId: string, note: string): Promise<BreachAlert> {
-    const before = this.alerts.get();
     const now = new Date(this.now()).toISOString();
-    this.alerts.set(
-      before.map((a) =>
-        a.id === alertId && a.state !== "resolved"
-          ? { ...a, state: "resolved", resolution_note: note.trim(), acked_at: a.acked_at ?? now }
-          : a,
-      ),
+    const undo = this.optimistic(alertId, (a) =>
+      a.state !== "resolved" ? { ...a, state: "resolved", resolution_note: note.trim(), acked_at: a.acked_at ?? now } : null,
     );
     try {
       const resolved = await this.api.resolveAlert(alertId, { note: note.trim() });
       this.replaceAlert(resolved);
       return resolved;
     } catch (error) {
-      this.alerts.set(before);
+      undo();
       throw error;
     }
+  }
+
+  /**
+   * Show one alert changed at once. The returned undo puts back that alert only, and only while
+   * the optimistic copy is still the one shown: an alert raised, or a server update that arrived,
+   * while the request was out is kept.
+   */
+  private optimistic(alertId: string, change: (alert: BreachAlert) => BreachAlert | null): () => void {
+    const previous = this.alerts.get().find((a) => a.id === alertId);
+    const next = previous ? change(previous) : null;
+    if (!previous || !next) return () => undefined;
+    this.alerts.set(this.alerts.get().map((a) => (a === previous ? next : a)));
+    return () => this.alerts.update((list) => list.map((a) => (a === next ? previous : a)));
   }
 
   /**
