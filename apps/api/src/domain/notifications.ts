@@ -7,6 +7,7 @@
  * a room, gate, zone, time of a passage, or another person. A failure to write one never undoes the
  * action that caused it (logged without detail).
  */
+import { describeError } from "@synan/db";
 import type { AttendeeTier } from "@synan/contracts/enums";
 import type { Clock } from "../lib/clock.js";
 import type { NotificationKindT, Repos } from "../repo/types.js";
@@ -56,7 +57,7 @@ export class NotificationService {
     try {
       await f();
     } catch (e) {
-      console.error(`[notifications] ${what} failed: ${e instanceof Error ? e.message.slice(0, 120) : "error"}`);
+      console.error(`[notifications] ${what} failed: ${describeError(e)}`);
     }
   }
 

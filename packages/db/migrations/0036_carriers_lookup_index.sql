@@ -1,0 +1,1 @@
+CREATE INDEX "carriers_kind_identifier_idx" ON "carriers" USING btree ("kind","identifier");

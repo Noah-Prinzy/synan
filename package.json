@@ -7,7 +7,16 @@
     "dev:admin": "pnpm --filter @synan/admin dev",
     "dev:scanner": "pnpm --filter @synan/scanner dev",
     "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "pg:start": "node scripts/pg-start.mjs",
+    "pg:stop": "node scripts/pg-stop.mjs",
+    "pg:status": "node scripts/pg-status.mjs",
+    "test:realpg": "node scripts/with-pg.mjs pnpm -r --workspace-concurrency=1 --filter ./packages/db --filter ./apps/api test:realpg",
+    "db:migrate:check": "node scripts/with-pg.mjs pnpm --filter ./packages/db migrate:check",
+    "db:migrations:verify": "node scripts/pnpm.mjs --filter ./packages/db migrations:verify",
+    "db:migrations:manifest": "node scripts/pnpm.mjs --filter ./packages/db migrations:manifest",
+    "db:seed:load": "node scripts/with-pg.mjs pnpm --filter ./apps/api seed:load",
+    "load:scans": "node scripts/load-scans.mjs"
   },
   "devDependencies": {
     "typescript": "^5.9.0"

@@ -3,6 +3,7 @@
  * the post-event purge; export is an asynchronous CSV job (MFA, audited) delivered by a signed,
  * short-lived link served from /report-files/:id (not a JSON endpoint).
  */
+import { describeError } from "@synan/db";
 import express, { type Express } from "express";
 import { API_BASE_PATH } from "@synan/contracts/common";
 import { ContractError } from "@synan/contracts/errors";
@@ -162,7 +163,7 @@ export function reportRoutes(x: Express, app: AppContext) {
       res.status(200);
       // Decrypted as it is sent (constant memory). A file that fails authentication aborts the response.
       stream.on("error", (e: Error) => {
-        console.error(`[reports] download of report:${req.params.id} failed: ${e.message.slice(0, 120)}`);
+        console.error(`[reports] download of report:${req.params.id} failed: ${describeError(e)}`);
         res.destroy();
       });
       stream.pipe(res);

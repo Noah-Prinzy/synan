@@ -1,6 +1,7 @@
 /**
- * Adoption of @synan/db (encryption, sign-in state in the database, formats). Always runs on the SQL
- * backend (PGlite) and inspects stored rows directly.
+ * Adoption of @synan/db (encryption, sign-in state in the database, formats). Always runs on a SQL
+ * backend and inspects stored rows directly: PGlite, or the real server in the realpg mode (where the
+ * statements below run as the database's admin, since the app's own logins may not run them).
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { sql } from "drizzle-orm";
@@ -12,14 +13,25 @@ import type { PortalCodeBatch, TokenPair, WsTicket } from "@synan/contracts/rest
 import { createApp, createAppCipher } from "../src/app.js";
 import { ManualClock } from "../src/lib/clock.js";
 import { MemoryMailer } from "../src/lib/mailer.js";
-import { createPgliteRepos, type DrizzleRepos } from "../src/repo/drizzle.js";
+import { InProcessJobs } from "../src/lib/jobs.js";
+import { createPgliteRepos, createPostgresRepos, type DrizzleRepos } from "../src/repo/drizzle.js";
+import type { RealPgDatabase } from "@synan/db/testing";
 import { runSecretMaintenance } from "../src/tasks/secrets.js";
-import { addAttendee, band, devEmail, errCode, mfaCode, postScans, scan, startHarness, type Harness } from "./helpers.js";
+import { addAttendee, backend, band, devEmail, errCode, mfaCode, postScans, REPO_UNDER_TEST, scan, startHarness, type Harness } from "./helpers.js";
 
 const B64URL43 = /^[A-Za-z0-9_-]{43}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
 
+/** PGlite here unless the run is on the real server, where startHarness() gives each app its own database. */
+const SQL_HARNESS = REPO_UNDER_TEST === "postgres" ? {} : { config: { repo: "pglite" as const } };
+/** The real-server database behind a repository, for statements its app logins may not run. */
+const realDb = new WeakMap<object, RealPgDatabase>();
+const track = (h: Harness) => {
+  if (h.database) realDb.set(h.app.ctx.repos, h.database);
+};
 async function q<T = Record<string, unknown>>(repos: DrizzleRepos, text: string): Promise<T[]> {
+  const d = realDb.get(repos);
+  if (d) return d.execAsAdmin<T>(text);
   return ((await repos.conn.db.execute(sql.raw(text))) as unknown as { rows: T[] }).rows;
 }
 async function attendeeTokens(h: Harness, email: string): Promise<TokenPair> {
@@ -39,8 +51,9 @@ describe("Step B: no secret is stored in the clear after normal API use", () => 
   let repos: DrizzleRepos;
   const plaintexts: string[] = [];
   beforeAll(async () => {
-    h = await startHarness({ config: { repo: "pglite" } });
+    h = await startHarness(SQL_HARNESS);
     repos = h.app.ctx.repos as DrizzleRepos;
+    track(h);
     expect(repos.kind).toBe("drizzle");
     // Normal use: attendee sign-in, operator sign-in with MFA, emailed QR resend, portal codes.
     const att = await attendeeTokens(h, devEmail("vip"));
@@ -132,8 +145,9 @@ describe("operator email, enforced by the database (@synan/db 0009–0010)", () 
   let repos: DrizzleRepos;
   const operator = { id: "6f1c2c3e-0000-4000-8000-00000000beef", email: devEmail("new.operator") };
   beforeAll(async () => {
-    h = await startHarness({ config: { repo: "pglite" } });
+    h = await startHarness(SQL_HARNESS);
     repos = h.app.ctx.repos as DrizzleRepos;
+    track(h);
   });
   afterAll(async () => h.close());
 
@@ -210,8 +224,9 @@ describe("Step C: sign-in state lives in the database", () => {
   let h: Harness;
   let repos: DrizzleRepos;
   beforeAll(async () => {
-    h = await startHarness({ config: { repo: "pglite" } });
+    h = await startHarness(SQL_HARNESS);
     repos = h.app.ctx.repos as DrizzleRepos;
+    track(h);
   });
   afterAll(async () => h.close());
 
@@ -277,9 +292,14 @@ describe("Step C: sessions, links, tickets and keys survive a restart (a second 
   it("refresh, link redemption, ticket consumption and QR verification all work on the new instance", async () => {
     const clock = new ManualClock(Date.now());
     const mailer = new MemoryMailer();
-    const repos = await createPgliteRepos({ cipher: await createAppCipher({}) });
-    const cfg = { repo: "pglite" as const, rateLimits: { authPerMin: 10_000, scanPerMin: 100_000, resendPerHour: 10_000 } };
-    const app1 = await createApp({ clock, mailer, repos, seed: true, config: cfg });
+    const be = REPO_UNDER_TEST === "postgres" ? await backend() : null;
+    const cipher = await createAppCipher({});
+    const repos = be
+      ? await createPostgresRepos({ cipher, url: be.config.databaseUrl!, vaultUrl: be.config.databaseVaultUrl!, scanUrl: be.config.databaseScanUrl!, requireSeparateRoles: true })
+      : await createPgliteRepos({ cipher });
+    if (be?.database) realDb.set(repos, be.database);
+    const cfg = { ...(be ? be.config : { repo: "pglite" as const }), rateLimits: { authPerMin: 10_000, scanPerMin: 100_000, resendPerHour: 10_000 } };
+    const app1 = await createApp({ clock, mailer, repos, seed: true, config: cfg, jobs: new InProcessJobs() });
     const seed = app1.seed!;
     try {
       const base1 = await app1.listen(0, "127.0.0.1");
@@ -299,7 +319,7 @@ describe("Step C: sessions, links, tickets and keys survive a restart (a second 
       const ticket = (await call<WsTicket>(base1, "POST", "/auth/ws-ticket", { channel: "/stream/telemetry", event_id: seed.eventId }, op.access_token)).body.ticket;
       await app1.close(); // the repository (database) stays open: it belongs to the caller
 
-      const app2 = await createApp({ clock, mailer, repos, seed: false, config: cfg });
+      const app2 = await createApp({ clock, mailer, repos, seed: false, config: cfg, jobs: new InProcessJobs() });
       try {
         const base2 = await app2.listen(0, "127.0.0.1");
         const refreshed = await call<TokenPair>(base2, "POST", "/auth/refresh", { refresh_token: op.refresh_token });
@@ -317,6 +337,7 @@ describe("Step C: sessions, links, tickets and keys survive a restart (a second 
       }
     } finally {
       await repos.close?.();
+      await be?.release();
     }
   });
 });
@@ -325,8 +346,9 @@ describe("@synan/db enforcement: every write still succeeds with both enforcemen
   let h: Harness;
   let repos: DrizzleRepos;
   beforeAll(async () => {
-    h = await startHarness({ config: { repo: "pglite" } });
+    h = await startHarness(SQL_HARNESS);
     repos = h.app.ctx.repos as DrizzleRepos;
+    track(h);
     // Flows before enforcement, so VALIDATE runs over real rows.
     await attendeeTokens(h, devEmail("vip"));
     const admin = await steppedAdmin(h);

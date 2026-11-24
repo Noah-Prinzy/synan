@@ -12,7 +12,7 @@ import type {
 import { createApp } from "../src/app.js";
 import { ManualClock } from "../src/lib/clock.js";
 import { hashPassword } from "../src/lib/crypto.js";
-import { addAttendee, devEmail, errCode, mfaCode, REPO_UNDER_TEST, startHarness, type Harness } from "./helpers.js";
+import { addAttendee, devEmail, errCode, mfaCode, backend, startHarness, type Harness } from "./helpers.js";
 
 let h: Harness;
 let admin: string;
@@ -48,7 +48,8 @@ describe("D0 · the current organisation", () => {
     expect((await h.call("GET", "/organizations/current")).status).toBe(401);
     expect((await h.call("GET", "/organizations/current", { token: await h.gateToken(h.seed.checkpoints.mainIn) })).status).toBe(403);
 
-    const app = await createApp({ clock: new ManualClock(Date.now()), seed: false, config: { repo: REPO_UNDER_TEST } });
+    const be = await backend();
+    const app = await createApp({ clock: new ManualClock(Date.now()), seed: false, config: be.config, ...(be.jobs ? { jobs: be.jobs } : {}) });
     try {
       const base = await app.listen(0, "127.0.0.1");
       const id = randomUUID();
@@ -67,6 +68,7 @@ describe("D0 · the current organisation", () => {
       expect((await call("GET", "/organizations/current", undefined, tok)).body).toMatchObject({ has_published_venue: false, venues: 1 });
     } finally {
       await app.close();
+      await be.release();
     }
   });
 });

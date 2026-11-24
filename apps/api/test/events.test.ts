@@ -66,7 +66,22 @@ describe("GET /me/registration", () => {
 
 describe("backend under test", () => {
   it("is the repository implementation that was requested", () => {
-    expect(h.app.ctx.repos.kind).toBe(REPO_UNDER_TEST === "pglite" ? "drizzle" : "memory");
+    expect(h.app.ctx.repos.kind).toBe(REPO_UNDER_TEST === "memory" ? "memory" : "drizzle");
+  });
+
+  it("on the real server, connects through three separate logins, one per role, none privileged", async () => {
+    if (REPO_UNDER_TEST !== "postgres") return;
+    expect(h.database).not.toBeNull();
+    const { describeConnection } = await import("@synan/db");
+    const conn = (h.app.ctx.repos as unknown as { conn: Record<"db" | "vault" | "scan", Parameters<typeof describeConnection>[0]> }).conn;
+    const [g, v, s] = await Promise.all([describeConnection(conn.db), describeConnection(conn.vault), describeConnection(conn.scan)]);
+    expect([g.user, v.user, s.user]).toEqual(["synan_test_api", "synan_test_vault", "synan_test_scan"]);
+    for (const c of [g, v, s]) expect([c.superuser, c.bypassRls]).toEqual([false, false]);
+    expect([g.memberOf, v.memberOf, s.memberOf]).toEqual([
+      { app_api: true, app_scan: false, app_vault: false },
+      { app_api: false, app_scan: false, app_vault: true },
+      { app_api: true, app_scan: true, app_vault: false },
+    ]);
   });
 });
 
