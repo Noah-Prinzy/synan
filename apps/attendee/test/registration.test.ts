@@ -112,7 +112,8 @@ describe("the draft", () => {
 });
 
 describe("the invitation reply", () => {
-  const token = "Abc_DEF-ghij1234klmnOPQR";
+  // An obviously fake, low-entropy token of the right shape (base64url, 16–512 characters).
+  const token = `test-invite-token-${"a".repeat(16)}`;
   const reply: RsvpReply = { accept: true, email: "  ada@example.com ", name: " Ada Lovelace ", answers: {}, zoneConsent: false };
 
   it("accepts only a well-formed link token: 16 to 512 base64url characters", () => {
