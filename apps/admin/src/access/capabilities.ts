@@ -27,6 +27,7 @@ export const CAPABILITIES = [
   "alerts.acknowledge",
   "alerts.resolve",
   "scans.view", // D9 access log
+  "scans.search", // D9 "Find a pass": one pass's scans, a credential access-history lookup (audited)
   /* events */
   "events.list", // D4 events
   "events.view", // open an event's workspace (overview, schedule, attendees table)
@@ -64,6 +65,8 @@ export const CAPABILITY_ENDPOINT: Record<Capability, string> = {
   "alerts.acknowledge": "ackAlert",
   "alerts.resolve": "resolveAlert",
   "scans.view": "listScans",
+  // No endpoint of its own: the server answers `q` on GET /scans for admins and organisers only.
+  "scans.search": "listScans",
   "events.list": "listEventsAdmin",
   "events.view": "getEventAdmin",
   "events.edit": "updateEvent",
@@ -98,6 +101,7 @@ export const ROLE_CAPABILITIES: Record<ConsoleRole, readonly Capability[]> = {
     "alerts.acknowledge",
     "alerts.resolve",
     "scans.view",
+    "scans.search",
     "events.list",
     "events.view",
     "events.edit",

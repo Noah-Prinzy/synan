@@ -132,11 +132,12 @@ function AccessLog({ event }: { event: CommandEvent }) {
   const linkLive = useSlice(store.link).status === "live";
   const [params, setParams] = useSearchParams();
   const timeZone = event.timezone;
-  const { role } = useSession();
-  // The real API searches for one pass (credential or band), for admins and organisers only, and
-  // writes each search to the audit log; the mock searches gate and result words for everyone.
+  const { can } = useSession();
+  // The real API searches for one pass (credential or band), only for a role holding
+  // `scans.search` (admins and organisers), and writes each search to the audit log; the mock
+  // searches gate and result words for everyone.
   const passSearch = mode === "api";
-  const canSearch = !passSearch || role === "admin" || role === "organiser";
+  const canSearch = !passSearch || can("scans.search");
 
   const filters = useMemo<Filters>(() => {
     const result = params.get("result");
