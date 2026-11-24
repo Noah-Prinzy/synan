@@ -21,8 +21,10 @@ import {
   unique,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
-import { capacityPolicy, checkpointDirection, eventState } from "./enums";
+import { capacityPolicy, checkpointDirection, eventState, wizardStep } from "./enums";
+import { users } from "./people";
 
 const tstz = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
 const createdAt = () => tstz("created_at").notNull().defaultNow();
@@ -50,6 +52,16 @@ const CHECKPOINT_POSITION_CHECK = `position_jsonb IS NULL OR CASE
    AND (position_jsonb ->> 'y')::numeric BETWEEN 0 AND 10000 AND (position_jsonb ->> 'y')::numeric = trunc((position_jsonb ->> 'y')::numeric)
 END`;
 
+/**
+ * Room and zone shapes are the contracts' `GridShape` (packages/contracts/src/rest/venue.ts): a
+ * `GridRect` `{ kind: "rect", x, y, w, h }` or a `GridPolygon` `{ kind: "polygon", points }` (3–64
+ * `[x, y]` pairs), in whole grid units 0–10 000 (w and h at least 1). `public.grid_shape_valid()`
+ * (migration 0023) is the check; null means "not drawn".
+ */
+export type GridShape =
+  | { kind: "rect"; x: number; y: number; w: number; h: number }
+  | { kind: "polygon"; points: [number, number][] };
+
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -72,10 +84,28 @@ export const venues = pgTable(
     /** City shown in event summaries. */
     city: text("city"),
     timezone: text("timezone").notNull(),
+    /**
+     * Floor labels in display order (06 D2b, D3). Zones carry one of them in `zones.floor`. Set by a
+     * layout publish; a zone written on its own with a new label appends it (trigger, 0025).
+     */
+    floors: text("floors").array().notNull().default(sql`'{}'::text[]`),
+    /** Capacity the editor proposes for a new room (06 D2b). Null: none. */
+    capacity_default: integer("capacity_default"),
+    /**
+     * Optimistic-concurrency version of the layout (floors, zones, rooms). Every change to a zone or a
+     * room raises it (trigger, 0025); a whole-layout publish names the version it was drawn on.
+     */
+    layout_version: integer("layout_version").notNull().default(0),
+    /** When the layout last changed (a publish, or a zone or room written on its own). */
+    layout_published_at: tstz("layout_published_at"),
     created_at: createdAt(),
     updated_at: updatedAt(),
   },
-  (t) => [index("venues_org_idx").on(t.org_id)],
+  (t) => [
+    index("venues_org_idx").on(t.org_id),
+    check("venues_capacity_default_positive", sql`${t.capacity_default} IS NULL OR ${t.capacity_default} >= 1`),
+    check("venues_layout_version_nonneg", sql`${t.layout_version} >= 0`),
+  ],
 );
 
 export const zones = pgTable(
@@ -88,14 +118,17 @@ export const zones = pgTable(
     name: text("name").notNull(),
     /** Free-form floor label ("G", "1", "Mezzanine"). */
     floor: text("floor"),
-    /** Map shape. Zone presence only — never attendee coordinates (D-04). */
-    geometry_jsonb: jsonb("geometry_jsonb"),
+    /** Map shape (`GridShape`). Zone presence only — never attendee coordinates (D-04). */
+    geometry_jsonb: jsonb("geometry_jsonb").$type<GridShape>(),
+    /** Order in the zone list (06 D3), set by a layout publish; zones are listed by floor, then this. */
+    sort_order: integer("sort_order").notNull().default(0),
     created_at: createdAt(),
   },
   (t) => [
     // Target of composite FKs that pin rooms/checkpoints to a zone of the *same* venue.
     unique("zones_id_venue_uq").on(t.id, t.venue_id),
     index("zones_venue_idx").on(t.venue_id),
+    check("zones_geometry_grid_shape", sql`public.grid_shape_valid(${t.geometry_jsonb})`),
   ],
 );
 
@@ -115,7 +148,8 @@ export const rooms = pgTable(
     capacity_policy: capacityPolicy("capacity_policy").notNull().default("block"),
     /** Exempt from the session-end occupancy reset (D-10): lounges, expo floors. */
     continuous_bool: boolean("continuous_bool").notNull().default(false),
-    geometry_jsonb: jsonb("geometry_jsonb"),
+    /** Map shape (`GridShape`), in the same grid units as the zones. */
+    geometry_jsonb: jsonb("geometry_jsonb").$type<GridShape>(),
     created_at: createdAt(),
     updated_at: updatedAt(),
   },
@@ -135,6 +169,7 @@ export const rooms = pgTable(
       "rooms_thresholds",
       sql`${t.warn_at_pct} > 0 AND ${t.block_at_pct} >= ${t.warn_at_pct} AND ${t.block_at_pct} <= 1000`,
     ),
+    check("rooms_geometry_grid_shape", sql`public.grid_shape_valid(${t.geometry_jsonb})`),
   ],
 );
 
@@ -227,14 +262,14 @@ export const events = pgTable(
     org_id: uuid("org_id")
       .notNull()
       .references(() => organizations.id),
-    venue_id: uuid("venue_id")
-      .notNull()
-      .references(() => venues.id),
+    /** Null only on a draft that has not chosen its venue yet (06 D5 writes a draft per step). */
+    venue_id: uuid("venue_id").references(() => venues.id),
     slug: text("slug").notNull(),
     title: text("title").notNull(),
     description: text("description"),
-    starts_at: tstz("starts_at").notNull(),
-    ends_at: tstz("ends_at").notNull(),
+    /** Null only on a draft whose dates are not set yet. */
+    starts_at: tstz("starts_at"),
+    ends_at: tstz("ends_at"),
     /** IANA timezone. All times are stored in UTC (01 §9). */
     timezone: text("timezone").notNull(),
     state: eventState("state").notNull().default("draft"),
@@ -256,6 +291,12 @@ export const events = pgTable(
     purged_at: tstz("purged_at"),
     /** Last rebuild_event_rollups() run: how current the reports and summary are. */
     rollups_rebuilt_at: tstz("rollups_rebuilt_at"),
+    /** The furthest step of the five-step wizard a draft has reached: where it resumes (06 D5). */
+    wizard_step: wizardStep("wizard_step").notNull().default("basics"),
+    /** When the event was published (draft → published). */
+    published_at: tstz("published_at"),
+    /** The operator who last changed the event, its rooms, sessions or access rules. */
+    updated_by: uuid("updated_by").references((): AnyPgColumn => users.id),
     created_at: createdAt(),
     updated_at: updatedAt(),
   },
@@ -263,8 +304,14 @@ export const events = pgTable(
     uniqueIndex("events_slug_uq").on(t.slug),
     index("events_venue_idx").on(t.venue_id),
     index("events_state_idx").on(t.state, t.starts_at),
+    index("events_updated_idx").on(t.updated_at),
     check("events_time_order", sql`${t.ends_at} > ${t.starts_at}`),
     check("events_grace_nonneg", sql`${t.grace_buffer} >= interval '0'`),
+    // Only a draft may lack its venue or dates: publishing (and every later state) needs all three.
+    check(
+      "events_scheduled_unless_draft",
+      sql`${t.state} = 'draft' OR (${t.venue_id} IS NOT NULL AND ${t.starts_at} IS NOT NULL AND ${t.ends_at} IS NOT NULL)`,
+    ),
   ],
 );
 

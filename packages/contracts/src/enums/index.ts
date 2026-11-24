@@ -14,8 +14,12 @@ export const AttendeeTier = z.enum(["VIP", "ORDINARY", "PRIVATE_INVITE", "PUBLIC
 export type AttendeeTier = z.infer<typeof AttendeeTier>;
 export const ATTENDEE_TIER_VALUES = AttendeeTier.options;
 
-/** Operator and staff roles stored in `users.role` (01 §3, 02 §4.2). */
-export const Role = z.enum(["admin", "organiser", "security_staff", "speaker", "crew"]);
+/**
+ * Operator and staff roles stored in `users.role` (01 §3, 02 §4.2). `supervisor` (operator kind: the
+ * live screens) and `desk_clerk` (staff kind: the registration desk of the events they are assigned
+ * to) were added by D-23.
+ */
+export const Role = z.enum(["admin", "organiser", "security_staff", "speaker", "crew", "supervisor", "desk_clerk"]);
 export type Role = z.infer<typeof Role>;
 export const ROLE_VALUES = Role.options;
 
@@ -26,8 +30,12 @@ export const ROLE_VALUES = Role.options;
 export const PrincipalKind = z.enum(["operator", "staff", "attendee", "device"]);
 export type PrincipalKind = z.infer<typeof PrincipalKind>;
 
-/** Roles that may use Admin Command. */
+/** Full operators (events, attendees, reports; admin also venues, staff, settings). */
 export const OPERATOR_ROLES = ["admin", "organiser"] as const satisfies readonly Role[];
+/** Roles that may open Admin Command; each sees only its own screens (D-23). */
+export const CONSOLE_ROLES = ["admin", "organiser", "supervisor", "desk_clerk"] as const satisfies readonly Role[];
+/** Roles whose principal kind is `operator` (the others are `staff`). */
+export const OPERATOR_KIND_ROLES = ["admin", "organiser", "supervisor"] as const satisfies readonly Role[];
 /** Roles that may operate a Gate Scanner. */
 export const SCANNER_ROLES = ["security_staff"] as const satisfies readonly Role[];
 
@@ -70,6 +78,14 @@ export type SigningKeyPurpose = z.infer<typeof SigningKeyPurpose>;
 export const EventState = z.enum(["draft", "published", "live", "closed", "archived"]);
 export type EventState = z.infer<typeof EventState>;
 export const EVENT_STATE_VALUES = EventState.options;
+
+/**
+ * The five steps of the event wizard (06 D5), in order: `events.wizard_step` holds the furthest one a
+ * draft has reached, so the wizard resumes there.
+ */
+export const WizardStep = z.enum(["basics", "venue", "access", "pass", "review"]);
+export type WizardStep = z.infer<typeof WizardStep>;
+export const WIZARD_STEP_VALUES = WizardStep.options;
 
 /** `checkpoints.direction` (01 §6). */
 export const CheckpointDirection = z.enum(["in", "out", "both"]);

@@ -62,6 +62,8 @@ export async function authoriseChannel(
     return { checkpoints: [...new Set(shifts.map((a) => a.checkpoint_id))], until: Math.min(...shifts.map((a) => a.shift_end.getTime()), now + 24 * 3600_000) };
   };
 
+  // Desk clerks have no live channel (D-23): the desk screen is REST only.
+  if (ctx.role === "desk_clerk") throw new ContractError("FORBIDDEN");
   if (channel === "/stream/telemetry") {
     if (!eventId) throw required();
     const event = await app.repos.events.byId(eventId);

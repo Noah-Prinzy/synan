@@ -15,7 +15,8 @@ import { date, json, num, numOrNull, rows, tsOrNow } from "./sqlrows";
 /* ------------------------------------------------------------------ summary */
 
 export interface PostEventSummary {
-  event: { id: string; slug: string; title: string; state: string; starts_at: Date; ends_at: Date; timezone: string; closed_at: Date | null };
+  /** `starts_at` and `ends_at` are null only for a draft whose dates are not set. */
+  event: { id: string; slug: string; title: string; state: string; starts_at: Date | null; ends_at: Date | null; timezone: string; closed_at: Date | null };
   /** True while the event is draft, published or live: figures so far. */
   provisional: boolean;
   computed_at: Date;
@@ -51,8 +52,8 @@ function parseSummary(x: J): PostEventSummary {
   const curve = x.onsite_curve as J;
   return {
     event: {
-      id: String(e.id), slug: String(e.slug), title: String(e.title), state: String(e.state), starts_at: date(e.starts_at)!,
-      ends_at: date(e.ends_at)!, timezone: String(e.timezone), closed_at: date(e.closed_at),
+      id: String(e.id), slug: String(e.slug), title: String(e.title), state: String(e.state), starts_at: date(e.starts_at),
+      ends_at: date(e.ends_at), timezone: String(e.timezone), closed_at: date(e.closed_at),
     },
     provisional: Boolean(x.provisional),
     computed_at: date(x.computed_at)!,

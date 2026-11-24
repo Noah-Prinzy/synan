@@ -14,6 +14,11 @@
 import { and, asc, desc, eq, gt, gte, ilike, inArray, isNull, lt, ne, notInArray, or, sql } from "drizzle-orm";
 import {
   access_rules,
+  access_rule_versions,
+  deleteDraftEvent,
+  duplicateEvent,
+  publishVenueLayout,
+  type GridShape,
   attendees,
   alertsPrune,
   audit_log,
@@ -138,6 +143,7 @@ import type {
   ScanRow,
   UserRow,
   DeviceRow,
+  VenueRow,
   WebhookEndpointRow,
 } from "./types.js";
 
@@ -206,7 +212,7 @@ const toRoom = (r: typeof rooms.$inferSelect): RoomRow => ({
   block_at_pct: r.block_at_pct,
   continuous_bool: r.continuous_bool,
   capacity_policy: r.capacity_policy,
-  geometry_jsonb: (r.geometry_jsonb ?? null) as Json | null,
+  geometry_jsonb: r.geometry_jsonb ?? null,
 });
 const toCheckpoint = (r: typeof checkpoints.$inferSelect): CheckpointRow => ({
   id: r.id,
@@ -219,7 +225,16 @@ const toCheckpoint = (r: typeof checkpoints.$inferSelect): CheckpointRow => ({
   label: r.label,
   position_jsonb: r.position_jsonb ?? null,
 });
+const toVenue = (v: typeof venues.$inferSelect): VenueRow => ({
+  id: v.id, org_id: v.org_id, name: v.name, address: v.address, timezone: v.timezone, city: v.city,
+  floors: v.floors, capacity_default: v.capacity_default, layout_version: v.layout_version, layout_published_at: v.layout_published_at,
+});
 const toEvent = (r: typeof events.$inferSelect): EventRow => ({
+  wizard_step: r.wizard_step,
+  published_at: r.published_at,
+  updated_by: r.updated_by,
+  created_at: r.created_at,
+  updated_at: r.updated_at,
   id: r.id,
   org_id: r.org_id,
   venue_id: r.venue_id,
@@ -239,7 +254,7 @@ const toEvent = (r: typeof events.$inferSelect): EventRow => ({
   closed_at: r.closed_at,
 });
 const toZone = (z: typeof zones.$inferSelect) => ({
-  id: z.id, venue_id: z.venue_id, name: z.name, floor: z.floor, geometry_jsonb: (z.geometry_jsonb ?? null) as Json | null,
+  id: z.id, venue_id: z.venue_id, name: z.name, floor: z.floor, geometry_jsonb: z.geometry_jsonb ?? null, sort_order: z.sort_order,
 });
 const toRegistration = (r: typeof registrations.$inferSelect) => ({
   id: r.id, event_id: r.event_id, attendee_id: r.attendee_id, tier: r.tier, state: r.state,
@@ -357,6 +372,7 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
     role: r.role,
     mfa_enrolled_at: r.mfa_enrolled_at,
     mfa_secret: r.mfa_secret_enc == null ? null : cipher.decrypt(r.mfa_secret_enc, { table: "users", column: "mfa_secret_enc", rowId: r.id }),
+    display_name: r.display_name ? r.display_name : null,
   });
   /** A raw users row: decrypts the address once (legacy plaintext tolerated until enforcement). */
   const toUser = (raw: typeof users.$inferSelect): UserRow => fromDecrypted(decryptUserRow(cipher, raw));
@@ -572,7 +588,7 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       },
       async insert(r) {
         await insertUser(db, cipher, {
-          id: r.id, email: r.email, password_hash: r.password_hash, role: r.role,
+          id: r.id, email: r.email, password_hash: r.password_hash, role: r.role, display_name: r.display_name ?? "",
           mfa_enrolled_at: r.mfa_enrolled_at, mfa_secret_enc: r.mfa_secret ? encryptMfaSecret(cipher, r.id, r.mfa_secret) : null,
         });
       },
@@ -584,6 +600,9 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       },
       async setPassword(id, hash) {
         await db.update(users).set({ password_hash: hash, updated_at: sql`now()` }).where(eq(users.id, id));
+      },
+      async setRole(id, role) {
+        await db.update(users).set({ role }).where(eq(users.id, id));
       },
       async startMfaEnrolment(id, secret, now) {
         await startMfaEnrolment(db, cipher, id, secret, { ttlMinutes: 10, now });
@@ -676,9 +695,7 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
 
     venues: {
       async zonesOfVenue(venueId) {
-        return (await db.select().from(zones).where(eq(zones.venue_id, venueId))).map((z) => ({
-          id: z.id, venue_id: z.venue_id, name: z.name, floor: z.floor, geometry_jsonb: (z.geometry_jsonb ?? null) as Json | null,
-        }));
+        return (await db.select().from(zones).where(eq(zones.venue_id, venueId))).map(toZone);
       },
       async room(id) {
         return one((await db.select().from(rooms).where(eq(rooms.id, id)).limit(1)).map(toRoom));
@@ -694,11 +711,7 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
         return (await db.select().from(checkpoints).where(eq(checkpoints.venue_id, venueId))).map(toCheckpoint);
       },
       async venue(id) {
-        return one(
-          (await db.select().from(venues).where(eq(venues.id, id)).limit(1)).map((v) => ({
-            id: v.id, org_id: v.org_id, name: v.name, address: v.address, timezone: v.timezone, city: v.city,
-          })),
-        );
+        return one((await db.select().from(venues).where(eq(venues.id, id)).limit(1)).map(toVenue));
       },
       async transitTimes(venueId) {
         return db.select().from(transit_times).where(eq(transit_times.venue_id, venueId));
@@ -707,9 +720,7 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
         return (await db.select().from(organizations)).map((o) => ({ id: o.id, name: o.name, timezone: o.timezone, support_email: o.support_email }));
       },
       async listVenues({ after, limit }) {
-        return (await db.select().from(venues).where(after ? gt(venues.id, after) : undefined).orderBy(asc(venues.id)).limit(limit)).map((v) => ({
-          id: v.id, org_id: v.org_id, name: v.name, address: v.address, timezone: v.timezone, city: v.city,
-        }));
+        return (await db.select().from(venues).where(after ? gt(venues.id, after) : undefined).orderBy(asc(venues.id)).limit(limit)).map(toVenue);
       },
       async zone(id) {
         return one((await db.select().from(zones).where(eq(zones.id, id)).limit(1)).map(toZone));
@@ -720,10 +731,17 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       async updateVenue(id, p) {
         const [v] = await db.update(venues).set(p).where(eq(venues.id, id)).returning();
         if (!v) throw new Error(`venue ${id} not found`);
-        return { id: v.id, org_id: v.org_id, name: v.name, address: v.address, timezone: v.timezone, city: v.city };
+        return toVenue(v);
+      },
+      async publishLayout(i) {
+        return publishVenueLayout(db, {
+          venueId: i.venueId, expectedVersion: i.expectedVersion, floors: i.floors, now: i.now,
+          zones: i.zones.map((z) => ({ ...z, geometry: z.geometry as GridShape | null })),
+          rooms: i.rooms.map((r) => ({ ...r, geometry: r.geometry as GridShape | null })),
+        });
       },
       async updateZone(id, p) {
-        const [z] = await db.update(zones).set(p).where(eq(zones.id, id)).returning();
+        const [z] = await db.update(zones).set(p as Partial<typeof zones.$inferInsert>).where(eq(zones.id, id)).returning();
         if (!z) throw new Error(`zone ${id} not found`);
         return toZone(z);
       },
@@ -775,6 +793,14 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
         if (after) conds.push(or(gt(events.starts_at, after.starts_at), and(eq(events.starts_at, after.starts_at), gt(events.id, after.id)))!);
         return (await db.select().from(events).where(conds.length ? and(...conds) : undefined).orderBy(asc(events.starts_at), asc(events.id)).limit(limit)).map(toEvent);
       },
+      async listAdmin({ state, q, venueId, after, limit }) {
+        const conds = [];
+        if (state) conds.push(eq(events.state, state));
+        if (venueId) conds.push(eq(events.venue_id, venueId));
+        if (q) conds.push(ilike(events.title, `%${q.replace(/[%_\\]/g, (c) => `\\${c}`)}%`));
+        if (after) conds.push(or(lt(events.updated_at, after.updated_at), and(eq(events.updated_at, after.updated_at), lt(events.id, after.id)))!);
+        return (await db.select().from(events).where(conds.length ? and(...conds) : undefined).orderBy(desc(events.updated_at), desc(events.id)).limit(limit)).map(toEvent);
+      },
       async update(id, p) {
         const { grace_buffer, ...rest } = p;
         const [e] = await db
@@ -785,6 +811,39 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
         if (!e) throw new Error(`event ${id} not found`);
         return toEvent(e);
       },
+      async setVenue(eventId, venueId) {
+        return transaction(async (s) => {
+          const tx = s.handle as AnyDb;
+          await tx.delete(event_rooms).where(eq(event_rooms.event_id, eventId)); // sessions and rules cascade
+          const [e] = await tx.update(events).set({ venue_id: venueId }).where(eq(events.id, eventId)).returning();
+          if (!e) throw new Error(`event ${eventId} not found`);
+          return toEvent(e);
+        });
+      },
+      async accessRuleVersion(eventId, version) {
+        const r = one(
+          await db.select({ at: access_rule_versions.published_at, by: access_rule_versions.published_by }).from(access_rule_versions)
+            .where(and(eq(access_rule_versions.event_id, eventId), eq(access_rule_versions.version, version))).limit(1),
+        );
+        return r ? { published_at: r.at, published_by: r.by } : null;
+      },
+      async duplicate(i) {
+        return duplicateEvent(db, { eventId: i.eventId, slug: i.slug, title: i.title, startsAt: i.startsAt, actorId: i.actorId });
+      },
+      async deleteDraft(eventId) {
+        return deleteDraftEvent(db, eventId);
+      },
+      async insertSession(r) {
+        await db.insert(sessions).values(r);
+      },
+      async updateSession(id, patch) {
+        const [s] = await db.update(sessions).set(patch).where(eq(sessions.id, id)).returning();
+        if (!s) throw new Error(`session ${id} not found`);
+        return { id: s.id, event_id: s.event_id, room_id: s.room_id, title: s.title, starts_at: s.starts_at, ends_at: s.ends_at };
+      },
+      async deleteSession(id) {
+        return (await db.delete(sessions).where(eq(sessions.id, id)).returning({ id: sessions.id })).length === 1;
+      },
       async setRooms(eventId, list) {
         await db.transaction(async (tx) => {
           const keep = list.map((r) => r.room_id);
@@ -794,7 +853,7 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
           }
         });
       },
-      async replaceAccessRules(eventId, expectedVersion, rules) {
+      async replaceAccessRules(eventId, expectedVersion, rules, by) {
         return db.transaction(async (tx) => {
           const [e] = await tx
             .update(events)
@@ -804,6 +863,11 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
           if (!e) return null;
           await tx.delete(access_rules).where(eq(access_rules.event_id, eventId));
           if (rules.length) await tx.insert(access_rules).values(rules);
+          // The published version, as access_rules_replace() records it (snapshot, who, when).
+          await tx.insert(access_rule_versions).values({
+            event_id: eventId, version: e.v, published_by: by?.actorId ?? null, published_at: by?.now ?? new Date(),
+            rules_jsonb: sql`public.access_rules_snapshot(${eventId}::uuid)`,
+          }).onConflictDoNothing();
           return e.v;
         });
       },
@@ -853,6 +917,17 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
           .groupBy(registrations.attendee_id);
         return new Map(rows.map((r) => [r.a, Number(r.n)]));
       },
+      async countByEvent(ids) {
+        const out = new Map<string, { registered: number; checked_in: number }>(ids.map((id) => [id, { registered: 0, checked_in: 0 }]));
+        if (ids.length === 0) return out;
+        const rs = await db
+          .select({ e: registrations.event_id, n: sql<number>`count(*)::int`, c: sql<number>`count(${registrations.checked_in_at})::int` })
+          .from(registrations)
+          .where(and(inArray(registrations.event_id, [...ids]), ne(registrations.state, "cancelled")))
+          .groupBy(registrations.event_id);
+        for (const r of rs) out.set(r.e, { registered: Number(r.n), checked_in: Number(r.c) });
+        return out;
+      },
     },
 
     staff: {
@@ -862,10 +937,11 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       async byId(id) {
         return one((await db.select().from(staff_assignments).where(eq(staff_assignments.id, id)).limit(1)).map(toAssignment));
       },
-      async list({ checkpointId, userId, offset, limit }) {
+      async list({ checkpointId, userId, eventId, offset, limit }) {
         const conds = [];
         if (checkpointId) conds.push(eq(staff_assignments.checkpoint_id, checkpointId));
         if (userId) conds.push(eq(staff_assignments.user_id, userId));
+        if (eventId) conds.push(eq(staff_assignments.event_id, eventId));
         return (
           await db.select().from(staff_assignments).where(conds.length ? and(...conds) : undefined)
             .orderBy(asc(staff_assignments.shift_start), asc(staff_assignments.id)).offset(offset).limit(limit)
@@ -956,6 +1032,10 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       async forCredential(credentialId) {
         return (await db.select().from(carriers).where(eq(carriers.credential_id, credentialId)).orderBy(asc(carriers.created_at))).map(toCarrier);
       },
+      async forCredentials(ids) {
+        if (ids.length === 0) return [];
+        return (await db.select().from(carriers).where(inArray(carriers.credential_id, [...ids])).orderBy(asc(carriers.created_at))).map(toCarrier);
+      },
       async insert(r) {
         await db.insert(carriers).values(r);
       },
@@ -976,13 +1056,23 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
         const r = await bindCarrier(db, { identifier: i.identifier, credentialId: i.credentialId, actorId: i.actorId, confirm: true, kind: "nfc", now: i.now });
         return { status: r.status, carrier_id: r.carrier_id };
       },
+      // The desk has the new band in hand: it is verified at once (assigned → bound, 01 §5.3), as the
+      // in-memory store does. carrier_rebind / carrier_replace_lost leave it `assigned`, which opens no door.
       async rebind(i) {
-        const r = await rebindCarrier(db, { credentialId: i.credentialId, newIdentifier: i.newIdentifier, disposition: i.disposition, actorId: i.actorId, now: i.now });
-        return { status: r.status, old_carrier_id: r.old_carrier_id, new_carrier_id: r.new_carrier_id };
+        return transaction(async (s) => {
+          const tx = s.handle as AnyDb;
+          const r = await rebindCarrier(tx, { credentialId: i.credentialId, newIdentifier: i.newIdentifier, disposition: i.disposition, actorId: i.actorId, now: i.now });
+          if (r.status === "rebound" && r.new_carrier_id) await tx.update(carriers).set({ state: "bound", bound_at: i.now }).where(and(eq(carriers.id, r.new_carrier_id), eq(carriers.state, "assigned")));
+          return { status: r.status, old_carrier_id: r.old_carrier_id, new_carrier_id: r.new_carrier_id };
+        });
       },
       async replaceLost(i) {
-        const r = await replaceLostBand(db, i);
-        return { status: r.status, old_carrier_id: r.old_carrier_id, new_carrier_id: r.new_carrier_id, old_credential_id: r.old_credential_id, new_credential_id: r.new_credential_id };
+        return transaction(async (s) => {
+          const tx = s.handle as AnyDb;
+          const r = await replaceLostBand(tx, i);
+          if (r.status === "replaced" && r.new_carrier_id) await tx.update(carriers).set({ state: "bound", bound_at: i.now }).where(and(eq(carriers.id, r.new_carrier_id), eq(carriers.state, "assigned")));
+          return { status: r.status, old_carrier_id: r.old_carrier_id, new_carrier_id: r.new_carrier_id, old_credential_id: r.old_credential_id, new_credential_id: r.new_credential_id };
+        });
       },
       async inventory(credentialIds) {
         if (credentialIds && credentialIds.length === 0) {

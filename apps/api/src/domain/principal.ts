@@ -16,6 +16,7 @@ export interface AuthContext {
   tokenVersion?: number | null;
 }
 
+/** Admin, organiser and supervisor sign in as operators (D-23); every other role as staff. */
 export function kindForRole(role: Role): PrincipalKind {
-  return role === "admin" || role === "organiser" ? "operator" : "staff";
+  return role === "admin" || role === "organiser" || role === "supervisor" ? "operator" : "staff";
 }

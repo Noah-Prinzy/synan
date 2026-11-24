@@ -18,20 +18,23 @@ import { ContractError } from "@synan/contracts/errors";
 import { endpoints } from "@synan/contracts/rest";
 import type { AppContext } from "../app.js";
 import { BRAND } from "../brand.js";
-import { currentAssignments } from "../domain/scope.js";
+import { currentAssignments, deskEventIds } from "../domain/scope.js";
 import { mount } from "../http/route.js";
 import { hashPassword, newTotpSecret, verifyTotp } from "../lib/crypto.js";
 import type { StaffAssignmentRow, UserRow } from "../repo/types.js";
 
 const ENROL_TTL_MS = 10 * 60_000;
-const STAFF_ROLES = new Set(["security_staff", "speaker", "crew"]);
+const STAFF_ROLES = new Set(["security_staff", "speaker", "crew", "desk_clerk"]);
+/** The registry entries a role may call, by name (D-23): the console builds its screens from this, never a copy of the matrix. */
+export const capabilitiesOf = (role: string): string[] =>
+  (Object.entries(endpoints) as [string, { access: readonly string[] }][]).filter(([, e]) => e.access.includes(role)).map(([name]) => name).sort();
 const DENIED = new Set(["denied_room", "capacity_block", "revoked", "suspended", "unknown_token", "wristband_required", "pass_spent"]);
 
 export const assignmentDto = (a: StaffAssignmentRow) => ({
   id: a.id, user_id: a.user_id, checkpoint_id: a.checkpoint_id, shift_start: a.shift_start.toISOString(), shift_end: a.shift_end.toISOString(),
   event_id: a.event_id ?? null, handed_over_at: a.handed_over_at?.toISOString() ?? null,
 });
-const staffDto = (u: UserRow) => ({ id: u.id, email: u.email, role: u.role, mfa_enrolled: u.mfa_enrolled_at !== null });
+const staffDto = (u: UserRow) => ({ id: u.id, email: u.email, role: u.role, mfa_enrolled: u.mfa_enrolled_at !== null, display_name: u.display_name || null });
 const invalid = (path: string, message: string) => new ContractError("VALIDATION_FAILED", message, [{ path, message }]);
 const offsetCursor = (c: string | undefined) => {
   if (!c) return 0;
@@ -51,7 +54,7 @@ export function staffRoutes(x: Express, app: AppContext) {
 
   mount(x, app, endpoints.inviteStaff, async ({ body, ctx }) => {
     if (await app.repos.users.byEmail(body.email)) throw new ContractError("CONFLICT", "A user with this address already exists.");
-    const user: UserRow = { id: randomUUID(), email: body.email, password_hash: "", role: body.role, mfa_enrolled_at: null, mfa_secret: null };
+    const user: UserRow = { id: randomUUID(), email: body.email, password_hash: "", role: body.role, mfa_enrolled_at: null, mfa_secret: null, display_name: body.display_name?.trim() || null };
     // The account, its activation token and the email are one unit of work.
     await app.repos.transaction(async (s) => {
       await s.repos.users.insert(user);
@@ -71,11 +74,25 @@ export function staffRoutes(x: Express, app: AppContext) {
     return { ok: true as const };
   });
 
+  /** An assignment with the gate's label and the person's name (operator lists, 06 D6.6). */
+  const labelled = async (rows: StaffAssignmentRow[]) => {
+    const labels = new Map<string, string>();
+    const names = new Map<string, string>();
+    for (const a of rows) {
+      if (!labels.has(a.checkpoint_id)) labels.set(a.checkpoint_id, (await app.repos.venues.checkpoint(a.checkpoint_id))?.label ?? "");
+      if (!names.has(a.user_id)) {
+        const u = await app.repos.users.byId(a.user_id);
+        names.set(a.user_id, u ? u.display_name || u.email : "");
+      }
+    }
+    return rows.map((a) => ({ ...assignmentDto(a), checkpoint_label: labels.get(a.checkpoint_id)!, staff_name: names.get(a.user_id)! }));
+  };
+
   mount(x, app, endpoints.listAssignments, async ({ query }) => {
     const offset = offsetCursor(query.cursor);
-    const rows = await app.repos.staff.list({ checkpointId: query.checkpoint_id, userId: query.user_id, offset, limit: query.limit + 1 });
+    const rows = await app.repos.staff.list({ checkpointId: query.checkpoint_id, userId: query.user_id, eventId: query.event_id, offset, limit: query.limit + 1 });
     const page = rows.slice(0, query.limit);
-    return { items: page.map(assignmentDto), next_cursor: rows.length > query.limit ? String(offset + query.limit) : null };
+    return { items: await labelled(page), next_cursor: rows.length > query.limit ? String(offset + query.limit) : null };
   });
 
   mount(x, app, endpoints.createAssignment, async ({ body, ctx }) => {
@@ -90,12 +107,17 @@ export function staffRoutes(x: Express, app: AppContext) {
       const e = await app.repos.events.byId(body.event_id);
       if (!e || e.venue_id !== cp.venue_id) throw invalid("body.event_id", "event is not at this checkpoint's venue");
     }
+    // A desk clerk works one event's registration desk (D-23): a perimeter desk, tied to the event.
+    if (user.role === "desk_clerk") {
+      if (!body.event_id) throw invalid("body.event_id", "a desk clerk's shift names the event");
+      if (!cp.perimeter_bool) throw invalid("body.checkpoint_id", "a desk is a perimeter checkpoint");
+    }
     const row: StaffAssignmentRow = { id: randomUUID(), user_id: user.id, checkpoint_id: cp.id, shift_start: start, shift_end: end, event_id: body.event_id ?? null, handed_over_at: null };
     if ((await app.repos.staff.insert({ ...row, created_by: ctx!.sub })) === "overlap") {
       throw new ContractError("CONFLICT", "This person already has a shift overlapping that window.");
     }
     await audit(ctx!.sub, "staff_assignment.create", `staff_assignment:${row.id}`, { user_id: user.id, checkpoint_id: cp.id });
-    return assignmentDto(row);
+    return (await labelled([row]))[0]!;
   });
 
   mount(x, app, endpoints.myOperator, async ({ ctx }) => {
@@ -106,7 +128,20 @@ export function staffRoutes(x: Express, app: AppContext) {
     return {
       id: u.id, email: u.email, role: u.role, mfa_enrolled: u.mfa_enrolled_at !== null, mfa_fresh: app.auth.isMfaFresh(ctx!),
       current_shift: shift ? { ...assignmentDto(shift), checkpoint_label: cp?.label ?? "" } : null,
+      // The token's role decides access; report that one (a role change applies at the next refresh).
+      capabilities: capabilitiesOf(ctx!.role ?? u.role),
+      ...(u.role === "desk_clerk" ? { desk_event_ids: await deskEventIds(app, u.id) } : {}),
     };
+  });
+
+  mount(x, app, endpoints.changeStaffRole, async ({ params, body, ctx }) => {
+    const u = await app.repos.users.byId(params.id);
+    if (!u) throw new ContractError("NOT_FOUND");
+    if (u.id === ctx!.sub) throw new ContractError("CONFLICT", "You cannot change your own role.");
+    if (u.role === body.role) return staffDto(u);
+    await app.repos.users.setRole(u.id, body.role);
+    await audit(ctx!.sub, "staff.role_change", `user:${u.id}`, { from: u.role, to: body.role, reason: body.reason });
+    return staffDto({ ...u, role: body.role });
   });
 
   mount(x, app, endpoints.myAssignments, async ({ ctx }) => {

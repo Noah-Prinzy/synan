@@ -9,7 +9,21 @@
  * The tables are checked with `satisfies Record<Code, …>`: adding a code without copy is a type
  * error here, and so is a typo in a key.
  */
-import type { AlertKind, GateTone, ReportKind, ScanResult } from "../enums/index.js";
+import type {
+  AlertKind,
+  AttendeeTier,
+  CarrierState,
+  ChipProfile,
+  CredentialState,
+  EventState,
+  GateTone,
+  InvitationState,
+  RegistrationState,
+  ReportKind,
+  Role,
+  ScanResult,
+  WizardStep,
+} from "../enums/index.js";
 import type { ErrorCode } from "../errors/index.js";
 
 /* ------------------------------------------------------------------ tones */
@@ -117,3 +131,97 @@ export const REPORT_KIND_LABEL = {
   gate_throughput: "Gate throughput",
 } as const satisfies Record<ReportKind, string>;
 export const EXPORT_FORMAT_LABEL = { xlsx: "Excel workbook", csv: "CSV", pdf: "PDF summary" } as const;
+
+/* ------------------------------------------------------------- state words */
+
+/**
+ * How a state reads at a glance: `ok` (as it should be), `warn` (needs a look), `stop` (refused or
+ * ended badly), `idle` (neutral). Screens pair it with a shape and the word, never colour alone.
+ */
+export type StateSignal = "ok" | "warn" | "stop" | "idle";
+
+export interface StateCopy {
+  /** The word for the state, in sentence case. */
+  label: string;
+  /** One plain-language sentence for operators. */
+  description: string;
+  signal: StateSignal;
+}
+
+/** Credential states (01 §5.2). */
+export const CREDENTIAL_STATE_COPY = {
+  issued: { label: "Issued", description: "Issued and not yet used at a gate.", signal: "idle" },
+  active: { label: "Active", description: "In use: seen at a gate at least once.", signal: "ok" },
+  suspended_review: { label: "Under review", description: "Held for a check; gates refuse it until a supervisor clears or revokes it.", signal: "warn" },
+  revoked: { label: "Revoked", description: "Cancelled; gates refuse it.", signal: "stop" },
+  replaced: { label: "Replaced", description: "Superseded by a newer credential, for example after a lost wristband.", signal: "idle" },
+} as const satisfies Readonly<Record<CredentialState, StateCopy>>;
+
+/** Wristband and other carrier states (01 §5.2). */
+export const CARRIER_STATE_COPY = {
+  stock: { label: "Stock", description: "In the box, not yet given to anyone.", signal: "idle" },
+  assigned: { label: "Assigned", description: "Set aside for a named attendee.", signal: "idle" },
+  bound: { label: "Bound", description: "Linked to a credential, not yet scanned.", signal: "ok" },
+  active: { label: "Active", description: "Bound and seen at a gate.", signal: "ok" },
+  retired: { label: "Retired", description: "Out of service.", signal: "idle" },
+  lost: { label: "Lost", description: "Reported lost and replaced; gates refuse it.", signal: "stop" },
+} as const satisfies Readonly<Record<CarrierState, StateCopy>>;
+
+/** Registration states. */
+export const REGISTRATION_STATE_COPY = {
+  pending_approval: { label: "Awaiting approval", description: "Waiting for an organiser to approve it; no pass yet.", signal: "warn" },
+  confirmed: { label: "Confirmed", description: "Registered, with a pass.", signal: "idle" },
+  cancelled: { label: "Cancelled", description: "Cancelled; the pass no longer opens doors.", signal: "idle" },
+} as const satisfies Readonly<Record<RegistrationState, StateCopy>>;
+
+/** Private Invitation states. */
+export const INVITATION_STATE_COPY = {
+  sent: { label: "Sent", description: "Sent and not answered yet.", signal: "idle" },
+  redeemed: { label: "Accepted", description: "Accepted: the invitee is registered.", signal: "ok" },
+  expired: { label: "Expired", description: "Not answered in time; the link no longer works.", signal: "idle" },
+  revoked: { label: "Declined", description: "Declined or withdrawn; the link no longer works.", signal: "idle" },
+} as const satisfies Readonly<Record<InvitationState, StateCopy>>;
+
+/** Event lifecycle states (01 §9). Only live carries a signal colour. */
+export const EVENT_STATE_COPY = {
+  draft: { label: "Draft", description: "Being set up; not visible to attendees.", signal: "idle" },
+  published: { label: "Published", description: "Open for registration; doors not yet open.", signal: "idle" },
+  live: { label: "Live", description: "Doors are open; gates are scanning.", signal: "ok" },
+  closed: { label: "Closed", description: "Over; scan records are deleted when the grace period ends.", signal: "idle" },
+  archived: { label: "Archived", description: "Kept for its reports only.", signal: "idle" },
+} as const satisfies Readonly<Record<EventState, StateCopy>>;
+
+/** Operator and staff roles (01 §3). */
+export const ROLE_COPY = {
+  admin: { label: "Admin", description: "Sets up the organisation, venues and staff, and runs events." },
+  organiser: { label: "Organiser", description: "Runs events: attendees, passes, access rules and reports." },
+  security_staff: { label: "Security staff", description: "Scans at the gates assigned to them, during their shift." },
+  speaker: { label: "Speaker", description: "Presents at sessions; no console access." },
+  crew: { label: "Crew", description: "Works the event on site; no console access." },
+  supervisor: { label: "Supervisor", description: "Runs the live event: alerts, gates, access log, recounts, and clearing or revoking a pass under review." },
+  desk_clerk: { label: "Desk clerk", description: "Works the registration desk of the events they are assigned to: wristbands and passes." },
+} as const satisfies Readonly<Record<Role, { label: string; description: string }>>;
+
+/** Attendee tiers (D-02, 01 §4). */
+export const TIER_LABEL = {
+  VIP: "VIP",
+  ORDINARY: "Ordinary",
+  PRIVATE_INVITE: "Invitation",
+  PUBLIC: "Public",
+} as const satisfies Readonly<Record<AttendeeTier, string>>;
+
+/** NFC chip families (03 §2). */
+export const CHIP_PROFILE_LABEL = {
+  ntag_uid: "NTAG (UID)",
+  ntag424_dna: "NTAG 424 DNA",
+  desfire_ev3: "DESFire EV3",
+} as const satisfies Readonly<Record<ChipProfile, string>>;
+
+/** The event wizard's steps (06 D5). */
+export const WIZARD_STEP_LABEL = {
+  basics: "Basics",
+  venue: "Venue & rooms",
+  access: "Access rules",
+  pass: "Pass template",
+  review: "Review",
+} as const satisfies Readonly<Record<WizardStep, string>>;

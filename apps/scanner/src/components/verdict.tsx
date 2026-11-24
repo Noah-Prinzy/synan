@@ -9,7 +9,7 @@ import { SCAN_RESULT_COPY } from "@synan/contracts/copy";
 import type { GateTone } from "@synan/contracts/enums";
 import { DrawnCheck, RewardRule } from "@synan/ui/components";
 import type { Scan } from "../data/store";
-import { roomNames } from "../data/mock";
+import { roomNames } from "../data/world";
 
 export const toneText: Record<GateTone, string> = {
   green: "text-success",

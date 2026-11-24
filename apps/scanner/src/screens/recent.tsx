@@ -53,10 +53,17 @@ export default function Recent() {
                 </div>
                 <div className="shrink-0 text-right">
                   <p className="font-mono text-13">{time(scan.at)}</p>
-                  <p className={`mt-1 flex items-center justify-end gap-1.5 text-13 ${scan.synced ? "text-muted-foreground" : "text-warning"}`}>
-                    <span aria-hidden="true" className={`size-1.5 ${scan.synced ? "bg-muted-foreground" : "bg-warning"}`} />
-                    {scan.synced ? "Sent" : "Waiting"}
-                  </p>
+                  {scan.refused ? (
+                    <p className="mt-1 flex items-center justify-end gap-1.5 text-13 text-destructive" title={scan.refused}>
+                      <span aria-hidden="true" className="size-1.5 bg-destructive" />
+                      Not sent
+                    </p>
+                  ) : (
+                    <p className={`mt-1 flex items-center justify-end gap-1.5 text-13 ${scan.synced ? "text-muted-foreground" : "text-warning"}`}>
+                      <span aria-hidden="true" className={`size-1.5 ${scan.synced ? "bg-muted-foreground" : "bg-warning"}`} />
+                      {scan.synced ? "Sent" : "Waiting"}
+                    </p>
+                  )}
                 </div>
                 </div>
                 {/* UndoStrip: for 60 s after an admission, in case it was a mistake. */}

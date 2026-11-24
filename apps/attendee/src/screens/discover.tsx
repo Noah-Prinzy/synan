@@ -6,7 +6,8 @@ import { PageShell } from "../components/page";
 import { ErrorState, OfflineState, SkeletonCells, StateBlock } from "../components/states";
 import { getEvents, type EventSummary } from "../data/events";
 import { dateParts, formatDay, formatTime, relativeDays, zoneLabel } from "../data/format";
-import { clock, useResource } from "../data/mock";
+import { now } from "../data/live";
+import { useResource } from "../data/resource";
 
 type Filter = "all" | "live" | "upcoming";
 
@@ -67,7 +68,7 @@ export function Featured({ event }: { event: EventSummary }) {
                 Live now
               </Badge>
             ) : (
-              <Badge tone="neutral">Next up · {relativeDays(event.startsAt, clock.now())}</Badge>
+              <Badge tone="neutral">Next up · {relativeDays(event.startsAt, now())}</Badge>
             )}
           </div>
           <h1
@@ -174,7 +175,7 @@ export function EventCard({ event, index }: { event: EventSummary; index: number
                 Live
               </Badge>
             ) : (
-              <span className="text-13 text-muted-foreground">Opens {relativeDays(event.startsAt, clock.now())}</span>
+              <span className="text-13 text-muted-foreground">Opens {relativeDays(event.startsAt, now())}</span>
             )}
             <span className="font-mono text-13 text-muted-foreground">{formatTime(event.startsAt, event.timezone)}</span>
           </div>

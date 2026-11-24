@@ -136,7 +136,7 @@ export const access_rules = pgTable(
     check(
       "access_rules_subject_valid",
       sql`(${t.subject_kind} = 'tier' AND ${t.subject} IN ('VIP','ORDINARY','PRIVATE_INVITE','PUBLIC'))
-       OR (${t.subject_kind} = 'role' AND ${t.subject} IN ('admin','organiser','security_staff','speaker','crew'))`,
+       OR (${t.subject_kind} = 'role' AND ${t.subject} IN ('admin','organiser','security_staff','speaker','crew','supervisor','desk_clerk'))`,
     ),
     check(
       "access_rules_window_order",

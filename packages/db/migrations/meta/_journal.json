@@ -162,6 +162,41 @@
       "when": 1795447728236,
       "tag": "0022_email_lease_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1795496888862,
+      "tag": "0023_grid_shape_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795496913029,
+      "tag": "0024_layout_drafts",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1795496921096,
+      "tag": "0025_layout_publish_drafts",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1795501158868,
+      "tag": "0026_roles_supervisor_desk_clerk",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1795501624949,
+      "tag": "0027_allowlist_live_codes",
+      "breakpoints": true
     }
   ]
 }

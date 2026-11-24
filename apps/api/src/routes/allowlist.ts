@@ -15,6 +15,7 @@ import { ALLOWLIST_JWS_TYP, endpoints, type AllowlistPayload } from "@synan/cont
 import type { AppContext } from "../app.js";
 import { currentAssignments } from "../domain/scope.js";
 import { mount } from "../http/route.js";
+import { isScheduled } from "../repo/types.js";
 
 export async function signAllowlist(app: AppContext, payload: AllowlistPayload) {
   const { kid, privateKey } = app.keys.active("allowlist");
@@ -26,8 +27,10 @@ export async function signAllowlist(app: AppContext, payload: AllowlistPayload) 
 
 export function allowlistRoutes(x: Express, app: AppContext) {
   mount(x, app, endpoints.allowlist, async ({ params, query, ctx, ip }) => {
-    const e = await app.repos.events.byId(params.id);
-    if (!e) throw new ContractError("NOT_FOUND");
+    const found = await app.repos.events.byId(params.id);
+    // A draft without venue or dates has nothing to admit anyone to: answered like a missing event.
+    if (!found || !isScheduled(found)) throw new ContractError("NOT_FOUND");
+    const e = found;
     const now = app.clock.now();
     let checkpointId = query.checkpoint_id ?? null;
     let from: number;

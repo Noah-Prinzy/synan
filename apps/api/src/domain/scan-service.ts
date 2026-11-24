@@ -132,6 +132,27 @@ export class ScanService {
    */
   forgetProjections() {
     this.projections.clear();
+    this.figureCache.clear();
+  }
+
+  /** Per event: the last replayed on-site / capacity-risk samples (one replay per minute at most). */
+  private figureCache = new Map<string, { key: string; value: Promise<{ onSite: number[]; risk: number[] }> }>();
+
+  /**
+   * People on site and rooms at or over their warning threshold, as they stood at each of `at`
+   * (ascending, ms), by replaying the event's log — the same derivation as the live projection.
+   * Cached per event for the same sample times (the summary asks again within the minute).
+   */
+  async figuresAt(eventId: string, at: number[]): Promise<{ onSite: number[]; risk: number[] }> {
+    const event = await this.repos.events.byId(eventId);
+    if (!event) throw new ContractError("NOT_FOUND", "event not found");
+    const key = `${at[0] ?? ""}|${at.length}`;
+    const hit = this.figureCache.get(event.id);
+    if (hit && hit.key === key) return hit.value;
+    const value = this.replay(event, at).then((r) => r.samples);
+    this.figureCache.set(event.id, { key, value });
+    value.catch(() => this.figureCache.delete(event.id));
+    return value;
   }
 
   /** The live projection of an event. Keyed by the canonical (database) event id only. */
@@ -148,10 +169,19 @@ export class ScanService {
   }
 
   private async build(event: EventRow): Promise<OccupancyProjection> {
+    const { proj } = await this.replay(event, []);
+    this.telemetry.prime(event.id, proj.allRooms(), proj.allZones(), proj.zoneOf.size);
+    return proj;
+  }
+
+  /** Replays the log into a fresh projection, sampling on-site and capacity risk at each of `sampleAt` (ms, ascending). */
+  private async replay(event: EventRow, sampleAt: number[]): Promise<{ proj: OccupancyProjection; samples: { onSite: number[]; risk: number[] } }> {
     const eventId = event.id;
+    const samples = { onSite: [] as number[], risk: [] as number[] };
     const eventRooms = await this.repos.events.rooms(eventId);
     const roomRows = await this.repos.venues.roomsByIds(eventRooms.map((r) => r.room_id));
-    const zones = await this.repos.venues.zonesOfVenue(event.venue_id);
+    // A draft without a venue projects to nothing (it has no rooms, zones or gates).
+    const zones = event.venue_id ? await this.repos.venues.zonesOfVenue(event.venue_id) : [];
     const meta = new Map<string, RoomMeta>();
     for (const r of roomRows) {
       const override = eventRooms.find((er) => er.room_id === r.id)?.capacity_override;
@@ -167,13 +197,19 @@ export class ScanService {
     }
     const proj = new OccupancyProjection(eventId, meta, zones.map((z) => z.id));
     // Rebuild from the append-only log (derivability, 02 §4.4): scans and adjustments merged in time order.
-    const checkpoints = new Map((await this.repos.venues.checkpointsOfVenue(event.venue_id)).map((c) => [c.id, c]));
+    const checkpoints = new Map((event.venue_id ? await this.repos.venues.checkpointsOfVenue(event.venue_id) : []).map((c) => [c.id, c]));
     type Step = { at: number; scan?: ScanRow; adj?: OccupancyAdjustmentRow };
     const steps: Step[] = [
       ...(await this.repos.scans.forEvent(eventId)).map((s) => ({ at: s.occurred_at.getTime() + s.clock_offset_ms, scan: s })),
       ...(await this.repos.occupancy.adjustments(eventId)).map((a) => ({ at: a.at.getTime(), adj: a })),
     ].sort((a, b) => a.at - b.at);
+    const sample = () => {
+      samples.onSite.push(proj.zoneOf.size);
+      samples.risk.push([...proj.rooms.keys()].filter((id) => proj.level(id) !== "ok").length);
+    };
+    let next = 0;
     for (const { at, scan: s, adj } of steps) {
+      while (next < sampleAt.length && at > sampleAt[next]!) (sample(), next++);
       if (adj) {
         if (adj.set_to !== null) proj.setAnchor(adj.room_id, adj.set_to, at);
         else proj.add(adj.room_id, adj.delta);
@@ -191,8 +227,8 @@ export class ScanService {
         if (s.carrier_kind === "qr_email" && s.direction === "in" && !proj.emailRedeemScan.has(eph)) proj.emailRedeemScan.set(eph, s.id);
       } else if (isDenial(s.result)) proj.recordDenial(eph, at);
     }
-    this.telemetry.prime(eventId, proj.allRooms(), proj.allZones(), proj.zoneOf.size);
-    return proj;
+    while (next < sampleAt.length) (sample(), next++);
+    return { proj, samples };
   }
 
   /** An `already_inside` passage: the holder is in this zone (and, at a perimeter, inside it). */
@@ -319,7 +355,11 @@ export class ScanService {
     if (credential.registration_id) {
       const reg = await this.repos.registrations.byId(credential.registration_id);
       if (!reg || reg.event_id !== event.id) return unknown("wrong_event");
-      if (reg.state === "cancelled") return unknown("unknown_credential");
+      // A cancelled (or not yet confirmed) registration's pass is a known credential that no longer opens
+      // doors: `revoked`, not `unknown_token`, so staff can tell a cancelled attendee from a forgery
+      // (01 §5.2). The offline allowlist says the same (allowlist_credentials: effective state revoked).
+      // The stored credential is not changed.
+      if (reg.state !== "confirmed") credential = { ...credential, state: "revoked" };
       tier = reg.tier;
       subject = { kind: "tier", value: reg.tier };
     } else if (credential.staff_user_id) {
@@ -567,7 +607,7 @@ export class ScanService {
     let roomFilled: string | null = null;
     if (credential && credential.state !== "suspended_review" && credential.state !== "revoked" && credential.state !== "replaced") {
       const prev = proj.lastRead.get(eph) ?? null;
-      const transit = await this.transitLookup(event.venue_id);
+      const transit = await this.transitLookup(event.venue_id ?? "");
       if (isImpossibleTravel(prev, { checkpointId: cp.id, atMs: at }, transit)) {
         travelDetected = true;
         becameSuspended = true;

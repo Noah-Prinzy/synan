@@ -1,7 +1,7 @@
 /**
- * Every Admin Command route in docs/06 §2.1, with what each screen is for. One table
- * drives the router, the navigation rail and the honest placeholders, so a route
- * cannot exist without saying what it is.
+ * Every Admin Command route in docs/06 §2.1, with what each screen is for and what a role
+ * needs to open it. One table drives the router, the route guards, the navigation rail and
+ * the honest placeholders, so a route cannot exist without saying what it is and who it is for.
  */
 import {
   Building,
@@ -17,6 +17,7 @@ import {
   Users,
 } from "lucide-react";
 import { createElement, type ReactNode } from "react";
+import type { Capability } from "./access/capabilities";
 
 export interface ScreenSpec {
   /** Path under /admin, router syntax. */
@@ -27,6 +28,8 @@ export interface ScreenSpec {
   purpose: string;
   data: string;
   built?: boolean;
+  /** What the signed-in role needs to open it (docs/01 §3). Absent: any console role. */
+  need?: Capability;
 }
 
 export const SCREENS = {
@@ -37,6 +40,7 @@ export const SCREENS = {
     purpose: "Live map, rooms and feed.",
     data: "stream/telemetry · stream/alerts · stream/scans · GET /dashboard",
     built: true,
+    need: "live.view",
   },
   setup: {
     path: "/setup",
@@ -45,6 +49,7 @@ export const SCREENS = {
     purpose: "Three steps — organization, venue, done — then hands off to the event wizard. Reachable only while the organization has no published venue.",
     data: "POST /organizations · POST /venues",
     built: true,
+    need: "setup.run",
   },
   signIn: {
     path: "/sign-in",
@@ -60,6 +65,7 @@ export const SCREENS = {
     purpose: "Table of venues: name, city, rooms, capacity, active events. One primary action, New venue.",
     data: "GET /venues",
     built: true,
+    need: "venues.edit",
   },
   venueNew: {
     path: "/venues/new",
@@ -68,6 +74,7 @@ export const SCREENS = {
     purpose: "Name, city, time zone, floors. Creating a venue goes straight into the spatial editor so it is never left with no zones.",
     data: "POST /venues",
     built: true,
+    need: "venues.edit",
   },
   venueEditor: {
     path: "/venues/:id",
@@ -76,6 +83,7 @@ export const SCREENS = {
     purpose: "Zones and rooms drawn on the abstract grid, with capacity and thresholds per room. The only screen with a drawing mode; changes are drafts until Publish layout.",
     data: "GET /venues/:id · PUT /zones · PUT /rooms/:id",
     built: true,
+    need: "venues.edit",
   },
   events: {
     path: "/events",
@@ -84,6 +92,7 @@ export const SCREENS = {
     purpose: "Table of events with state, registrations and last edit. Duplicate is the prominent row action.",
     data: "GET /events",
     built: true,
+    need: "events.list",
   },
   eventNew: {
     path: "/events/new/:step?",
@@ -92,6 +101,7 @@ export const SCREENS = {
     purpose: "Basics → Venue & rooms → Access rules → Pass template → Review. Publish stays disabled until every requirement is met.",
     data: "draft endpoints",
     built: true,
+    need: "events.edit",
   },
   eventOverview: {
     path: "/events/:id/overview",
@@ -100,6 +110,7 @@ export const SCREENS = {
     purpose: "The KPI strip scoped to this event, and the readiness checklist.",
     data: "GET /events/:id/summary",
     built: true,
+    need: "events.view",
   },
   eventSchedule: {
     path: "/events/:id/schedule",
@@ -108,6 +119,7 @@ export const SCREENS = {
     purpose: "Sessions by room and time.",
     data: "GET /events/:id/sessions",
     built: true,
+    need: "events.view",
   },
   eventRooms: {
     path: "/events/:id/rooms",
@@ -116,6 +128,7 @@ export const SCREENS = {
     purpose: "Tier × room matrix of permit and deny. Changes show a diff and need an explicit republish.",
     data: "GET · PUT /events/:id/access-rules",
     built: true,
+    need: "rules.view",
   },
   eventAttendees: {
     path: "/events/:id/attendees",
@@ -124,6 +137,7 @@ export const SCREENS = {
     purpose: "The attendee table scoped to this event.",
     data: "GET /attendees (scoped)",
     built: true,
+    need: "attendees.view",
   },
   eventCredentials: {
     path: "/events/:id/credentials",
@@ -132,6 +146,7 @@ export const SCREENS = {
     purpose: "Band inventory and provisioning for this event.",
     data: "GET /credentials (scoped)",
     built: true,
+    need: "credentials.view",
   },
   eventStaff: {
     path: "/events/:id/staff",
@@ -140,6 +155,7 @@ export const SCREENS = {
     purpose: "Shift assignments per checkpoint, conflicts, and handover.",
     data: "GET /staff-assignments",
     built: true,
+    need: "staff.manage",
   },
   eventReports: {
     path: "/events/:id/reports",
@@ -148,6 +164,7 @@ export const SCREENS = {
     purpose: "Reports for this event and their export jobs.",
     data: "GET /reports?eventId=",
     built: true,
+    need: "reports.view",
   },
   eventSummary: {
     path: "/events/:id/summary",
@@ -156,6 +173,7 @@ export const SCREENS = {
     purpose: "How the event went, on one page, with the Excel workbook and other downloads (D-21).",
     data: "GET /events/:id/post-event-summary · POST /reports/:id/export",
     built: true,
+    need: "reports.view",
   },
   eventSettings: {
     path: "/events/:id/settings",
@@ -164,6 +182,7 @@ export const SCREENS = {
     purpose: "Time zone, capacity policy overrides, retention, and the danger zone.",
     data: "PATCH /events/:id",
     built: true,
+    need: "events.edit",
   },
   attendees: {
     path: "/attendees",
@@ -171,13 +190,16 @@ export const SCREENS = {
     title: "Attendees",
     purpose: "Dense table with a detail sheet: resend pass, revoke, rebind band, change tier (second factor), view audit.",
     data: "GET /attendees",
+    need: "attendees.view",
   },
-  credentials: {
-    path: "/credentials",
+  desk: {
+    path: "/desk",
     code: "D8",
-    title: "Wristbands & provisioning",
-    purpose: "Inventory by state, and the provisioning console: scan band, find registration, verify, bind. Replacement revokes the old band.",
-    data: "GET /credentials/inventory",
+    title: "Wristband desk",
+    purpose: "The registration desk: find an attendee, bind or rebind a band, mark a band lost and bind the replacement, resend a pass; band stock at a glance. /credentials leads here.",
+    data: "GET /attendees · GET /credentials/inventory · POST /carriers/bind · POST /carriers/:id/rebind · POST /credentials/:id/resend",
+    built: true,
+    need: "desk.use",
   },
   accessLog: {
     path: "/access-log",
@@ -185,6 +207,7 @@ export const SCREENS = {
     title: "Access log",
     purpose: "Virtualised, searchable scan stream: time, checkpoint, credential, result, latency.",
     data: "GET /scans · stream/scans",
+    need: "scans.view",
   },
   alerts: {
     path: "/alerts",
@@ -192,6 +215,7 @@ export const SCREENS = {
     title: "Security alerts",
     purpose: "Inbox by severity. The detail sheet shows the triggering scan, the rule, and a resolution note; an alert leaves the list only when resolved.",
     data: "GET /breach-alerts · stream/alerts",
+    need: "alerts.view",
   },
   staff: {
     path: "/staff",
@@ -199,6 +223,7 @@ export const SCREENS = {
     title: "Staff & shifts",
     purpose: "Staff, roles, assigned checkpoint and shift. Overlapping assignments are rejected inline.",
     data: "GET /staff",
+    need: "staff.manage",
   },
   gates: {
     path: "/gates",
@@ -206,6 +231,7 @@ export const SCREENS = {
     title: "Gate health",
     purpose: "Every checkpoint: link state, heartbeat age, queue depth, clock offset, throughput. Faults first.",
     data: "stream/scans · GET /checkpoints",
+    need: "gates.view",
   },
   gateDetail: {
     path: "/gates/:id",
@@ -213,6 +239,7 @@ export const SCREENS = {
     title: "Gate detail",
     purpose: "One checkpoint: link history, throughput by 5 minutes, failures by result, last 50 scans, assigned staff.",
     data: "GET /checkpoints/:id/scans",
+    need: "gates.view",
   },
   reports: {
     path: "/reports",
@@ -220,6 +247,7 @@ export const SCREENS = {
     title: "Reports",
     purpose: "Generated reports with state and download. Export runs as a job with progress.",
     data: "GET /reports",
+    need: "reports.view",
   },
   eventReport: {
     path: "/reports/:eventId",
@@ -227,6 +255,7 @@ export const SCREENS = {
     title: "Event report",
     purpose: "One tab per report type, charted on the same hairline grid.",
     data: "GET /reports/:eventId · GET /reports/:eventId/:kind",
+    need: "reports.view",
   },
   settings: {
     path: "/settings/:tab?",
@@ -234,6 +263,7 @@ export const SCREENS = {
     title: "Settings",
     purpose: "Organization, email, integrations and webhooks, retention and privacy, audit log, API keys.",
     data: "various",
+    need: "settings.manage",
   },
 } as const satisfies Record<string, ScreenSpec>;
 
@@ -241,45 +271,73 @@ export type ScreenId = keyof typeof SCREENS;
 
 const icon = (component: typeof LayoutGrid): ReactNode => createElement(component, { size: 16, strokeWidth: 1.5 });
 
+export interface NavEntry {
+  to: string;
+  label: string;
+  icon: ReactNode;
+  end?: boolean;
+  /** What the signed-in role needs to see this entry (the screen it opens). */
+  need: Capability;
+}
+
+export interface NavSection {
+  label: string;
+  items: NavEntry[];
+}
+
 /** The six top-level ideas (docs/06 §2.1): watch, configure, people, access, response, records. */
-export const NAV_GROUPS = [
+export const NAV_GROUPS: NavSection[] = [
   {
     label: "Watch",
     items: [
-      { to: "/", label: "Command Center", icon: icon(LayoutGrid), end: true },
-      { to: "/gates", label: "Gate health", icon: icon(DoorOpen) },
+      { to: "/", label: "Command Center", icon: icon(LayoutGrid), end: true, need: SCREENS.command.need },
+      { to: "/gates", label: "Gate health", icon: icon(DoorOpen), need: SCREENS.gates.need },
     ],
   },
   {
     label: "Configure",
     items: [
-      { to: "/events", label: "Events", icon: icon(CalendarDays) },
-      { to: "/venues", label: "Venues", icon: icon(Building) },
+      { to: "/events", label: "Events", icon: icon(CalendarDays), need: SCREENS.events.need },
+      { to: "/venues", label: "Venues", icon: icon(Building), need: SCREENS.venues.need },
     ],
   },
   {
     label: "People",
     items: [
-      { to: "/attendees", label: "Attendees", icon: icon(Users) },
-      { to: "/staff", label: "Staff & shifts", icon: icon(IdCard) },
+      { to: "/attendees", label: "Attendees", icon: icon(Users), need: SCREENS.attendees.need },
+      { to: "/staff", label: "Staff & shifts", icon: icon(IdCard), need: SCREENS.staff.need },
     ],
   },
   {
     label: "Access",
     items: [
-      { to: "/credentials", label: "Wristbands", icon: icon(Nfc) },
-      { to: "/access-log", label: "Access log", icon: icon(ScrollText) },
+      { to: "/desk", label: "Wristband desk", icon: icon(Nfc), need: SCREENS.desk.need },
+      { to: "/access-log", label: "Access log", icon: icon(ScrollText), need: SCREENS.accessLog.need },
     ],
   },
   {
     label: "Response",
-    items: [{ to: "/alerts", label: "Alerts", icon: icon(Siren) }],
+    items: [{ to: "/alerts", label: "Alerts", icon: icon(Siren), need: SCREENS.alerts.need }],
   },
   {
     label: "Records",
     items: [
-      { to: "/reports", label: "Reports", icon: icon(FileChartColumn) },
-      { to: "/settings", label: "Settings", icon: icon(Settings) },
+      { to: "/reports", label: "Reports", icon: icon(FileChartColumn), need: SCREENS.reports.need },
+      { to: "/settings", label: "Settings", icon: icon(Settings), need: SCREENS.settings.need },
     ],
   },
 ];
+
+/**
+ * The navigation a role sees: the entries it may open; a group with nothing left is dropped.
+ * `Attendees` opens the selected event's attendee table, because the event is the context of
+ * every screen (docs/06 §2.2) and the organisation-wide console (D7) is not built yet.
+ */
+export function navFor(can: (capability: Capability) => boolean, eventId: string | null): NavSection[] {
+  return NAV_GROUPS.map((group) => ({
+    label: group.label,
+    items: group.items
+      .filter((item) => can(item.need))
+      .map((item) => (item.to === "/attendees" && eventId ? { ...item, to: `/events/${eventId}/attendees` } : item)),
+  })).filter((group) => group.items.length > 0);
+}

@@ -19,7 +19,10 @@ export const NOTE = {
   passCleared: (event: string) => ({ kind: "pass" as const, title: "Your pass works again", body: `The check on your pass for ${event} is complete.` }),
   bandBound: (event: string) => ({ kind: "pass" as const, title: "Wristband linked", body: `A wristband is now linked to your pass for ${event}. If this was not you, contact the organiser.` }),
   sessionFull: (session: string) => ({ kind: "capacity" as const, title: `${session} is full`, body: `${session} has reached capacity. Staff will let people in as space frees up.` }),
-  sessionChanged: (session: string, startsAt: Date) => ({ kind: "session" as const, title: "Schedule change", body: `${session} now starts at ${startsAt.toISOString()}.` }),
+  /** A new time, in the event's own time zone (e.g. "Tue 25 Nov, 14:30"). */
+  sessionChanged: (session: string, startsAt: Date, timeZone = "UTC") => ({ kind: "session" as const, title: "Schedule change", body: `${session} now starts at ${localTime(startsAt, timeZone)}.` }),
+  /** A different room: the notice never names it (03 §5); the agenda in the app shows where. */
+  sessionMoved: (session: string) => ({ kind: "session" as const, title: "Schedule change", body: `${session} has moved to another room. The agenda in the app shows where.` }),
   exportReady: () => ({ kind: "security" as const, title: "Your data export is ready", body: "Download it from your account page. It is kept for 7 days." }),
   exportDeclined: () => ({ kind: "security" as const, title: "Your data export was declined", body: "See your account page for the reason." }),
   erasureDeclined: () => ({ kind: "security" as const, title: "Your erasure request was declined", body: "See your account page for the reason." }),
@@ -27,6 +30,17 @@ export const NOTE = {
 };
 
 type Note = { kind: NotificationKindT; title: string; body: string };
+
+/** "Tue 25 Nov, 14:30" in the given zone (falls back to UTC for an unknown zone). */
+export function localTime(at: Date, timeZone: string): string {
+  const fmt = (zone: string) =>
+    new Intl.DateTimeFormat("en-GB", { timeZone: zone, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(at);
+  try {
+    return fmt(timeZone);
+  } catch {
+    return `${fmt("UTC")} UTC`;
+  }
+}
 
 export class NotificationService {
   /** Sessions already announced as full (one notice per session). */

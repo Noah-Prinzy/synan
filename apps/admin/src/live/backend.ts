@@ -12,9 +12,10 @@
  *   ?scenario=<name>    play a named scenario on load;  &loop=1 to repeat it
  *   ?fps=1              show the frame-time sampler
  *   ?setup=fresh        no organisation or venues yet (D0 first run, empty venue list)
+ *   ?as=<role>          sign in as admin, organiser, supervisor, desk_clerk, security_staff, speaker or crew
  */
 import { DEMO_NOW, MockClock } from "@synan/mock";
-import { createCommandMock } from "@synan/mock/command";
+import { createCommandMock, SESSION_ROLES, type SessionRole } from "@synan/mock/command";
 import type { LiveTransport } from "./transport";
 
 /**
@@ -40,6 +41,36 @@ export const devParams = {
 
 export const clock = new MockClock(DEMO_NOW);
 
+const DEV_ROLE_KEY = "synan.admin.dev-role";
+
+/**
+ * Development only: the role to sign in as (?as=supervisor, or the last role picked in the
+ * dev tools). A production build always starts from the real session.
+ */
+function devRole(): SessionRole | undefined {
+  if (!DEV_TOOLS) return undefined;
+  let wanted = params.get("as");
+  if (!wanted) {
+    try {
+      wanted = window.localStorage.getItem(DEV_ROLE_KEY);
+    } catch {
+      wanted = null;
+    }
+  }
+  return SESSION_ROLES.find((role) => role === wanted);
+}
+
+/** Development only: keep the previewed role across reloads. */
+export function rememberDevRole(role: SessionRole): void {
+  if (!DEV_TOOLS) return;
+  try {
+    if (role === "admin") window.localStorage.removeItem(DEV_ROLE_KEY);
+    else window.localStorage.setItem(DEV_ROLE_KEY, role);
+  } catch {
+    /* the preview lasts for this page only */
+  }
+}
+
 export const backend = createCommandMock({
   clock,
   venueSize: devParams.venue,
@@ -47,6 +78,7 @@ export const backend = createCommandMock({
   latencyMs: devParams.slow ? 2500 : 300,
   failFirstLoad: devParams.fail,
   freshOrganization: devParams.freshSetup,
+  role: devRole(),
 });
 
 export const api = backend.api;

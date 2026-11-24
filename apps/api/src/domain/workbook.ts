@@ -57,7 +57,8 @@ export function summaryPdf(s: DbPostEventSummary): Buffer {
   let y = 56;
   p.text(48, y, s.event.title, 18, true);
   y += 20;
-  p.text(48, y, `${s.event.starts_at.toISOString().slice(0, 10)} to ${s.event.ends_at.toISOString().slice(0, 10)} (${s.event.timezone})${s.provisional ? "   PROVISIONAL" : ""}`, 9);
+  const day = (d: Date | null) => d?.toISOString().slice(0, 10) ?? "date not set";
+  p.text(48, y, `${day(s.event.starts_at)} to ${day(s.event.ends_at)} (${s.event.timezone})${s.provisional ? "   PROVISIONAL" : ""}`, 9);
   y += 30;
   const cells: [string, string][] = [
     ["Registered", String(h.registered)], ["Checked in", String(h.checked_in)], ["No-shows", String(h.no_shows)],

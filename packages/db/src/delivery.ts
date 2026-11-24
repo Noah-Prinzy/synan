@@ -265,7 +265,8 @@ export async function broadcastNotification(
   if (!expires) {
     const ev = await db.select({ ends: events.ends_at }).from(events).where(eq(events.id, i.eventId)).limit(1);
     if (!ev[0]) throw new Error(`event ${i.eventId} does not exist`);
-    expires = new Date(ev[0].ends.getTime() + 7 * 86_400_000);
+    // A draft without dates: 30 days from now, like a personal notification.
+    expires = new Date((ev[0].ends ?? new Date((i.now ?? new Date()).getTime() + 23 * 86_400_000)).getTime() + 7 * 86_400_000);
   }
   const [r] = await db
     .insert(notifications)

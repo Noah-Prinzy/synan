@@ -153,7 +153,7 @@ describe("offline allowlist", () => {
     expect(crew.permitted_room_ids).toEqual([]); // crew may enter B, but only A's door was asked for
     const cancelled = r.entries.filter((e) => e.revoked);
     expect(cancelled).toHaveLength(1);
-    expect(Object.keys(r.entries[0]!).sort()).toEqual(["credential_hash", "dead_nfc_hashes", "nfc_hashes", "permitted_room_ids", "qr_email_spent", "revoked", "state", "tier"]);
+    expect(Object.keys(r.entries[0]!).sort()).toEqual(["credential_hash", "dead_nfc_hashes", "nfc_hashes", "permitted_room_ids", "qr_email_hashes", "qr_email_spent", "revoked", "state", "tier"]);
     const whole = await allowlistEntries(db, ev.eventId, null);
     expect(whole.entries.find((e) => e.tier === null)!.permitted_room_ids).toEqual([ev.roomB]);
   });

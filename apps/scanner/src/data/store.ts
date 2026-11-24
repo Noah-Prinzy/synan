@@ -12,6 +12,8 @@ import { SCAN_RESULT_COPY } from "@synan/contracts/copy";
 import { QR_PREFIX_EMAIL, parseSignedQr } from "@synan/contracts/qr";
 import type { AttendeeTier, ScanResult } from "@synan/contracts/enums";
 import { BANDS, QR_REFS, gateById, roomState, type Gate, type Holder } from "./mock";
+import { API_MODE } from "./api/config";
+import { runtime } from "./api/runtime";
 
 export interface Scan {
   id: string;
@@ -34,6 +36,8 @@ export interface Scan {
   /** An operator undid this admission (a correction record; the scan is never deleted). */
   undone: boolean;
   credential: string | null;
+  /** API mode: the server refused to record this scan (never counted), with its reason. */
+  refused?: string | null;
 }
 
 interface State {
@@ -41,16 +45,20 @@ interface State {
   shiftStartedAt: number | null;
   scans: Scan[];
   lastSyncAt: number | null;
-  allowlistAt: number;
+  /** When the pass list was issued (device time); null when this device holds no trusted list. */
+  allowlistAt: number | null;
   clockOffsetMs: number;
   spentEmailCodes: string[];
   sound: boolean;
   vibrate: boolean;
   /** Development: behave as if the network were down (?offline=1). */
   forceOffline: boolean;
+  /** API mode: the server answered recently (not persisted). */
+  apiReachable: boolean;
 }
 
-const KEY = "syn.scanner.v1";
+// API mode keeps its scans in IndexedDB (data/api); only settings and the gate live here.
+const KEY = API_MODE ? "syn.scanner.api.v1" : "syn.scanner.v1";
 const KEEP = 200;
 
 function initial(): State {
@@ -65,13 +73,15 @@ function initial(): State {
     sound: true,
     vibrate: true,
     forceOffline: false,
+    apiReachable: true,
   };
 }
 
 function load(): State {
   try {
     const raw = window.localStorage.getItem(KEY);
-    return raw ? { ...initial(), ...(JSON.parse(raw) as Partial<State>) } : initial();
+    const loaded = raw ? { ...initial(), ...(JSON.parse(raw) as Partial<State>) } : initial();
+    return API_MODE ? { ...loaded, scans: [], apiReachable: true, allowlistAt: null } : loaded;
   } catch {
     return initial();
   }
@@ -83,7 +93,8 @@ const listeners = new Set<() => void>();
 function set(patch: Partial<State>): void {
   state = { ...state, ...patch };
   try {
-    window.localStorage.setItem(KEY, JSON.stringify(state));
+    const { apiReachable: _reachable, ...persisted } = state;
+    window.localStorage.setItem(KEY, JSON.stringify(API_MODE ? { ...persisted, scans: [] } : persisted));
   } catch {
     /* storage full or blocked: keep going in memory, the queue must not stop */
   }
@@ -106,7 +117,7 @@ export function getState(): State {
 /* ------------------------------------------------------------------ link */
 
 function linkUp(): boolean {
-  return navigator.onLine && !state.forceOffline;
+  return navigator.onLine && !state.forceOffline && (!API_MODE || state.apiReachable);
 }
 
 function subscribeLink(listener: () => void): () => void {
@@ -128,9 +139,11 @@ export function useOnline(): boolean {
 
 export function pairGate(gate: Gate): void {
   set({ gateId: gate.id, shiftStartedAt: state.shiftStartedAt ?? Date.now() });
+  if (API_MODE) runtime.pair(gate);
 }
 
-export function endShift(): void {
+export async function endShift(): Promise<void> {
+  if (API_MODE) await runtime.endShift(runtime.gateById(state.gateId));
   set({ gateId: null, shiftStartedAt: null });
 }
 
@@ -140,7 +153,8 @@ export function setPreference(key: "sound" | "vibrate", value: boolean): void {
 
 export function setForceOffline(value: boolean): void {
   set({ forceOffline: value });
-  if (!value) void sync();
+  if (API_MODE) runtime.forceOffline(value);
+  else if (!value) void sync();
 }
 
 /* -------------------------------------------------------------- decision */
@@ -219,8 +233,12 @@ function decideResult(presented: Presented, gate: Gate, now: number): Omit<Scan,
 
 let seq = 0;
 
-/** Decide a read at this gate, record it, and queue it when offline. Instant either way. */
-export function decide(presented: Presented, gate: Gate): Scan {
+/**
+ * Decide a read at this gate, record it, and queue it when offline. Mock: instant. API mode: a
+ * promise — the server's verdict while the link is up, the local one (LOCAL) otherwise.
+ */
+export function decide(presented: Presented, gate: Gate): Scan | Promise<Scan> {
+  if (API_MODE) return runtime.decide(presented, gate);
   const now = Date.now();
   const decided = decideResult(presented, gate, now);
   const offline = !linkUp();
@@ -244,6 +262,7 @@ export function decide(presented: Presented, gate: Gate): Scan {
 /** Undo an admission made in error, within 60 s: writes a correction, never deletes. */
 export const UNDO_WINDOW_MS = 60_000;
 export function undo(id: string): void {
+  if (API_MODE) return void runtime.undo(id);
   set({ scans: state.scans.map((scan) => (scan.id === id ? { ...scan, undone: true, synced: !linkUp() ? false : scan.synced } : scan)) });
 }
 
@@ -257,6 +276,7 @@ let syncing: Promise<void> | null = null;
 
 /** Send the queue (mock: 700 ms). Rejects when the link is down. */
 export function sync(): Promise<void> {
+  if (API_MODE) return runtime.syncNow();
   if (!linkUp()) return Promise.reject(new Error("offline"));
   if (syncing) return syncing;
   syncing = new Promise<void>((resolve) => {
@@ -276,7 +296,7 @@ export function sync(): Promise<void> {
 }
 
 // Sync as soon as the link returns.
-if (typeof window !== "undefined") {
+if (typeof window !== "undefined" && !API_MODE) {
   window.addEventListener("online", () => {
     if (queued().length > 0) void sync().catch(() => {});
   });
@@ -284,3 +304,8 @@ if (typeof window !== "undefined") {
 
 /** Allowlist older than the fail-open window (O-05: 15 minutes). */
 export const STALE_MS = 15 * 60_000;
+
+// API mode: the runtime writes the state the screens read (scans, sync, pass list, clock, link).
+if (API_MODE && typeof window !== "undefined") {
+  runtime.connect({ get: () => state, patch: (p) => set(p) });
+}

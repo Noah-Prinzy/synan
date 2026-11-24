@@ -6,7 +6,7 @@ import Scan from "./screens/scan";
 import Recent from "./screens/recent";
 import Queue from "./screens/queue";
 import Help from "./screens/help";
-import { gateById } from "./data/mock";
+import { gateById, useApi } from "./data/world";
 import { setForceOffline, useOnline, useScanner } from "./data/store";
 import { unlockAudio } from "./data/feedback";
 
@@ -65,6 +65,10 @@ export default function App() {
 /** No gate yet: choosing one is the first thing a device does. */
 function RequireGate({ children }: { children: ReactNode }) {
   const { gateId } = useScanner();
+  const api = useApi();
+  // API mode: the gate list comes back from IndexedDB a moment after start; wait for it, so a
+  // reload (offline too) returns to the same gate instead of the picker.
+  if (api && !api.ready) return null;
   if (!gateById(gateId)) return <Navigate to="/pair" replace />;
   return <>{children}</>;
 }

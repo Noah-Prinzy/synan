@@ -12,9 +12,10 @@
 import type { Express } from "express";
 import { ContractError } from "@synan/contracts/errors";
 import { endpoints } from "@synan/contracts/rest";
+import { CREDENTIAL_STATE_VALUES } from "@synan/contracts/enums";
 import type { AppContext } from "../app.js";
 import { carrierDto, credentialRef } from "../domain/credential-service.js";
-import { currentCheckpoints, mayRunDesk } from "../domain/scope.js";
+import { currentCheckpoints, deskEventIds, mayWorkDeskFor } from "../domain/scope.js";
 import { nfcIdentifier } from "../domain/scan-service.js";
 import { mount } from "../http/route.js";
 import { NOTE } from "../domain/notifications.js";
@@ -57,12 +58,14 @@ export function carrierRoutes(x: Express, app: AppContext) {
     return { items: await Promise.all(page.map((c) => app.credentials.toDto(c))), next_cursor: rows.length > query.limit ? page.at(-1)!.id : null };
   });
 
-  mount(x, app, endpoints.inventory, async ({ query }) => {
+  mount(x, app, endpoints.inventory, async ({ query, ctx }) => {
     if (!query.event_id) return app.repos.carriers.inventory();
     const e = await app.repos.events.byId(query.event_id);
-    if (!e) throw new ContractError("NOT_FOUND");
+    if (!e || !(await mayWorkDeskFor(app, ctx!, e))) throw new ContractError("NOT_FOUND");
     const regs = (await app.repos.registrations.forEvent(e.id)).map((r) => r.id);
-    return app.repos.carriers.inventory((await app.repos.credentials.forRegistrations(regs)).map((c) => c.id));
+    const creds = await app.repos.credentials.forRegistrations(regs);
+    const credentials = Object.fromEntries(CREDENTIAL_STATE_VALUES.map((s) => [s, creds.filter((c) => c.state === s).length])) as Record<(typeof CREDENTIAL_STATE_VALUES)[number], number>;
+    return { ...(await app.repos.carriers.inventory(creds.map((c) => c.id))), credentials };
   });
 
   mount(x, app, endpoints.importCarriers, async ({ body, ctx }) => {
@@ -82,7 +85,7 @@ export function carrierRoutes(x: Express, app: AppContext) {
   mount(x, app, endpoints.bindCarrier, async ({ body, ctx }) => {
     const reg = await app.repos.registrations.byId(body.registration_id);
     const e = reg ? await app.repos.events.byId(reg.event_id) : null;
-    if (!reg || !e || !(await mayRunDesk(app, ctx!, e.venue_id))) throw new ContractError("NOT_FOUND");
+    if (!reg || !e || !e.venue_id || !(await mayWorkDeskFor(app, ctx!, e))) throw new ContractError("NOT_FOUND");
     if (reg.state !== "confirmed") throw new ContractError("CONFLICT", "The registration is not confirmed.");
     const cred = await app.repos.credentials.forRegistration(reg.id);
     if (!cred) throw new ContractError("NO_CREDENTIAL");
@@ -96,6 +99,12 @@ export function carrierRoutes(x: Express, app: AppContext) {
     const old = (await app.repos.carriers.byId(params.id)) ?? null;
     if (!old || old.kind !== "nfc" || !old.credential_id || !old.identifier) throw new ContractError("NOT_FOUND");
     const cred = (await app.repos.credentials.byId(old.credential_id))!;
+    if (ctx!.role === "desk_clerk") {
+      // A desk clerk replaces bands only for the events at their desk (D-23).
+      const reg = cred.registration_id ? await app.repos.registrations.byId(cred.registration_id) : null;
+      const e = reg ? await app.repos.events.byId(reg.event_id) : null;
+      if (!e || !(await mayWorkDeskFor(app, ctx!, e))) throw new ContractError("NOT_FOUND");
+    }
     const newIdentifier = nfcIdentifier(body.identifier);
     if (body.disposition === "damaged") {
       const r = await app.repos.carriers.rebind({ credentialId: cred.id, newIdentifier, disposition: "retired", actorId: ctx!.sub, now: now() });
@@ -125,7 +134,8 @@ export function carrierRoutes(x: Express, app: AppContext) {
     const band = await app.repos.carriers.byIdentifier("nfc", nfcIdentifier(body.identifier));
     if (!band || band.state !== "stock") throw invalid("body.identifier", "this band is not in stock");
     // Staff hand out codes only while staffing a perimeter desk.
-    if (ctx!.kind !== "operator" && !(await currentCheckpoints(app, ctx!.sub)).some((c) => c.perimeter_bool)) {
+    if (ctx!.role === "desk_clerk" ? (await deskEventIds(app, ctx!.sub)).length === 0
+      : ctx!.kind !== "operator" && !(await currentCheckpoints(app, ctx!.sub)).some((c) => c.perimeter_bool)) {
       throw new ContractError("CHECKPOINT_NOT_ASSIGNED");
     }
     const r = await app.repos.deskCodes.create({ bandIdentifier: band.identifier!, createdBy: ctx!.sub, now: now() });

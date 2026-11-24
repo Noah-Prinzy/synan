@@ -31,6 +31,9 @@ import type {
   EventRow,
   GateRateRollupRow,
   InvitationRow,
+  LayoutRoomRow,
+  LayoutZoneRow,
+  PublishLayoutOutcome,
   OccupancyAdjustmentRow,
   WebhookEndpointRow,
   DeviceRow,
@@ -86,6 +89,8 @@ export class MemoryTables {
   notificationReads = new Map<string, Date>();
   deliveries = new Map<string, MemDelivery>();
   accessRules = new Map<string, AccessRuleRow>();
+  /** `${event}:${version}` → when and by whom that access-rule version was published (access_rule_versions). */
+  accessRuleVersions = new Map<string, { published_at: Date; published_by: string | null }>();
   staffAssignments = new Map<string, StaffAssignmentRow>();
   credentials = new Map<string, CredentialRow>();
   carriers = new Map<string, CarrierRow>();
@@ -145,15 +150,46 @@ const LIVE_CARRIER = new Set(["assigned", "bound", "active"]);
 /** Blind index stand-in for the in-memory store (it does not encrypt; SQL uses the keyed HMAC). */
 const memEmailHash = (email: string) => createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
 
+/**
+ * Mirrors @synan/db's venue_layout_touch trigger (0025): every zone or room change raises the venue's
+ * layout version and stamps it; a zone's new floor label joins the venue's floors.
+ */
+export function touchLayout(t: MemoryTables, venueId: string, floor?: string | null) {
+  const v = t.venues.get(venueId);
+  if (!v) return;
+  if (floor && floor.trim() && !(v.floors ?? []).includes(floor)) v.floors = [...(v.floors ?? []), floor];
+  v.layout_version = (v.layout_version ?? 0) + 1;
+  v.layout_published_at = new Date();
+}
+
+/** A venue row with every layout field present (the SQL columns' defaults). */
+const venueOut = (v: VenueRow): VenueRow =>
+  clone({ ...v, floors: v.floors ?? [], capacity_default: v.capacity_default ?? null, layout_version: v.layout_version ?? 0, layout_published_at: v.layout_published_at ?? null });
+/** An event row with every draft field present (the SQL columns' defaults). */
+const eventOut = (e: EventRow): EventRow =>
+  clone({
+    ...e, wizard_step: e.wizard_step ?? "basics", published_at: e.published_at ?? null, updated_by: e.updated_by ?? null,
+    created_at: e.created_at ?? new Date(0), updated_at: e.updated_at ?? e.created_at ?? new Date(0),
+  });
+
 function memoryFixtures(t: MemoryTables): FixtureWriter {
   return {
     async organization(r) { t.organizations.set(r.id, clone(r)); },
-    async venue(r) { t.venues.set(r.id, clone(r)); },
-    async zone(r) { t.zones.set(r.id, clone(r)); },
-    async room(r) { t.rooms.set(r.id, clone(r)); },
+    async venue(r) { t.venues.set(r.id, venueOut(r)); },
+    async zone(r) {
+      t.zones.set(r.id, clone({ ...r, sort_order: r.sort_order ?? 0 }));
+      touchLayout(t, r.venue_id, r.floor);
+    },
+    async room(r) {
+      t.rooms.set(r.id, clone(r));
+      touchLayout(t, r.venue_id);
+    },
     async checkpoint(r) { t.checkpoints.set(r.id, clone(r)); },
     async transitTime(r) { t.transitTimes.push(clone(r)); },
-    async event(r) { t.events.set(r.id, clone(r)); },
+    async event(r) {
+      const now = new Date();
+      t.events.set(r.id, eventOut({ ...r, created_at: r.created_at ?? now, updated_at: r.updated_at ?? now }));
+    },
     async eventRoom(r) { t.eventRooms.push(clone(r)); },
     async session(r) { t.sessions.set(r.id, clone(r)); },
     async registration(r) { t.registrations.set(r.id, clone(r)); },
@@ -170,6 +206,12 @@ function memoryFixtures(t: MemoryTables): FixtureWriter {
   };
 }
 const correctedMs = (s: ScanRow) => s.occurred_at.getTime() + s.clock_offset_ms;
+/** Events by start, then id; events without dates last (PostgreSQL sorts NULLs last ascending). */
+const startMs = (e: EventRow) => e.starts_at?.getTime() ?? Number.POSITIVE_INFINITY;
+const byStart = (a: EventRow, b: EventRow) => startMs(a) - startMs(b) || a.id.localeCompare(b.id);
+/** Keyset on (starts_at, id); an event without dates never follows a cursor (`starts_at > x` is not true for NULL). */
+const afterStart = (e: EventRow, after: { starts_at: Date; id: string } | undefined) =>
+  !after || (e.starts_at !== null && (e.starts_at.getTime() > after.starts_at.getTime() || (e.starts_at.getTime() === after.starts_at.getTime() && e.id > after.id)));
 
 export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos & { tables: MemoryTables } {
   // Revocation epoch, mirroring @synan/db 0012's triggers: bumped whenever access shrinks.
@@ -184,6 +226,17 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
     } else {
       for (const e of t.events.values()) if (e.state === "published" || e.state === "live") e.revocation_epoch += 1;
     }
+  };
+  /**
+   * Removes an event's rooms matching `drop` with their sessions and access rules, as the database's
+   * ON DELETE CASCADE from event_rooms does (and its access_rules trigger bumps the revocation epoch).
+   */
+  const dropEventRooms = (eventId: string, drop: (roomId: string) => boolean) => {
+    let rules = 0;
+    for (const [k, r] of t.accessRules) if (r.event_id === eventId && drop(r.room_id)) t.accessRules.delete(k), rules++;
+    if (rules) bumpEvent(eventId);
+    for (const [k, s] of t.sessions) if (s.event_id === eventId && drop(s.room_id)) t.sessions.delete(k);
+    t.eventRooms = t.eventRooms.filter((r) => r.event_id !== eventId || !drop(r.room_id));
   };
   /** The non-retired NFC carrier with this identifier hash (carriers_identifier_uq). */
   const liveNfc = (h: string) => [...t.carriers.values()].find((c) => c.kind === "nfc" && c.identifier === h && c.state !== "retired");
@@ -257,6 +310,10 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       async setPassword(id, hash) {
         const u = t.users.get(id);
         if (u) u.password_hash = hash;
+      },
+      async setRole(id, role) {
+        const u = t.users.get(id);
+        if (u) u.role = role;
       },
       async startMfaEnrolment(id, secret, now) {
         t.mfaPending.set(id, { secret, expiresAt: new Date(now.getTime() + 10 * 60_000) });
@@ -376,7 +433,7 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       },
       async venue(id) {
         const v = t.venues.get(id);
-        return v ? clone(v) : null;
+        return v ? venueOut(v) : null;
       },
       async transitTimes(venueId) {
         return t.transitTimes.filter((x) => x.venue_id === venueId).map(clone);
@@ -389,7 +446,7 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
           .sort((a, b) => a.id.localeCompare(b.id))
           .filter((v) => !after || v.id > after)
           .slice(0, limit)
-          .map(clone);
+          .map(venueOut);
       },
       async zone(id) {
         const z = t.zones.get(id);
@@ -402,19 +459,24 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
         const v = t.venues.get(id);
         if (!v) throw new Error(`venue ${id} not found`);
         Object.assign(v, clone(p));
-        return clone(v);
+        return venueOut(v);
       },
       async updateZone(id, p) {
         const z = t.zones.get(id);
         if (!z) throw new Error(`zone ${id} not found`);
         Object.assign(z, clone(p));
+        touchLayout(t, z.venue_id, z.floor);
         return clone(z);
       },
       async updateRoom(id, p) {
         const r = t.rooms.get(id);
         if (!r) throw new Error(`room ${id} not found`);
         Object.assign(r, clone(p));
+        touchLayout(t, r.venue_id);
         return clone(r);
+      },
+      async publishLayout(i) {
+        return memoryPublishLayout(t, i);
       },
       async updateCheckpoint(id, p) {
         const c = t.checkpoints.get(id);
@@ -430,29 +492,24 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
           .filter((e) => e.listed_bool && (e.state === "published" || e.state === "live"))
           .filter((e) => !state || e.state === state)
           .filter((e) => !needle || e.title.toLowerCase().includes(needle))
-          .sort((a, b) => a.starts_at.getTime() - b.starts_at.getTime() || a.id.localeCompare(b.id))
-          .filter(
-            (e) =>
-              !after ||
-              e.starts_at.getTime() > after.starts_at.getTime() ||
-              (e.starts_at.getTime() === after.starts_at.getTime() && e.id > after.id),
-          )
+          .sort(byStart)
+          .filter((e) => afterStart(e, after))
           .slice(0, limit)
-          .map(clone);
+          .map(eventOut);
       },
       async bySlug(slug) {
-        for (const e of t.events.values()) if (e.slug === slug) return clone(e);
+        for (const e of t.events.values()) if (e.slug === slug) return eventOut(e);
         return null;
       },
       async byId(id) {
         const e = t.events.get(id);
-        return e ? clone(e) : null;
+        return e ? eventOut(e) : null;
       },
       async rooms(eventId) {
         return t.eventRooms.filter((r) => r.event_id === eventId).map(clone);
       },
       async sessions(eventId) {
-        return [...t.sessions.values()].filter((s) => s.event_id === eventId).map(clone);
+        return [...t.sessions.values()].filter((s) => s.event_id === eventId).sort((a, b) => a.starts_at.getTime() - b.starts_at.getTime()).map(clone);
       },
       async accessRules(eventId) {
         return [...t.accessRules.values()].filter((r) => r.event_id === eventId).map(clone);
@@ -461,10 +518,20 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
         const needle = q?.toLowerCase();
         return [...t.events.values()]
           .filter((e) => (!state || e.state === state) && (!needle || e.title.toLowerCase().includes(needle)))
-          .sort((a, b) => a.starts_at.getTime() - b.starts_at.getTime() || a.id.localeCompare(b.id))
-          .filter((e) => !after || e.starts_at.getTime() > after.starts_at.getTime() || (e.starts_at.getTime() === after.starts_at.getTime() && e.id > after.id))
+          .sort(byStart)
+          .filter((e) => afterStart(e, after))
           .slice(0, limit)
-          .map(clone);
+          .map(eventOut);
+      },
+      async listAdmin({ state, q, venueId, after, limit }) {
+        const needle = q?.toLowerCase();
+        const rows = [...t.events.values()].map(eventOut);
+        const key = (e: EventRow) => e.updated_at!.getTime();
+        return rows
+          .filter((e) => (!state || e.state === state) && (!venueId || e.venue_id === venueId) && (!needle || e.title.toLowerCase().includes(needle)))
+          .sort((a, b) => key(b) - key(a) || b.id.localeCompare(a.id))
+          .filter((e) => !after || key(e) < after.updated_at.getTime() || (key(e) === after.updated_at.getTime() && e.id < after.id))
+          .slice(0, limit);
       },
       async update(id, p) {
         const e = t.events.get(id);
@@ -472,19 +539,71 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
         // Mirrors the database trigger: closing stamps closed_at (starts the retention clock).
         if (p.state === "closed" && e.state !== "closed" && !e.closed_at) e.closed_at = new Date(Date.now());
         Object.assign(e, clone(p));
-        return clone(e);
+        e.updated_at = new Date(); // events_touch
+        return eventOut(e);
+      },
+      async setVenue(eventId, venueId) {
+        const e = t.events.get(eventId);
+        if (!e) throw new Error(`event ${eventId} not found`);
+        dropEventRooms(eventId, () => true);
+        e.venue_id = venueId;
+        e.updated_at = new Date();
+        return eventOut(e);
       },
       async setRooms(eventId, rooms) {
+        const keep = new Set(rooms.map((r) => r.room_id));
+        dropEventRooms(eventId, (roomId) => !keep.has(roomId));
         t.eventRooms = t.eventRooms.filter((r) => r.event_id !== eventId).concat(rooms.map(clone));
       },
-      async replaceAccessRules(eventId, expectedVersion, rules) {
+      async replaceAccessRules(eventId, expectedVersion, rules, by) {
         const e = t.events.get(eventId);
         if (!e || e.access_rules_version !== expectedVersion) return null;
         for (const [id, r] of t.accessRules) if (r.event_id === eventId) t.accessRules.delete(id);
         for (const r of rules) t.accessRules.set(r.id, clone(r));
         e.access_rules_version = expectedVersion + 1;
         e.revocation_epoch += 1; // a republish can shrink access (access_rules_bump_epoch)
+        t.accessRuleVersions.set(`${eventId}:${e.access_rules_version}`, { published_at: by?.now ?? new Date(), published_by: by?.actorId ?? null });
         return e.access_rules_version;
+      },
+      async accessRuleVersion(eventId, version) {
+        const v = t.accessRuleVersions.get(`${eventId}:${version}`);
+        return v ? clone(v) : null;
+      },
+      async duplicate(i) {
+        return memoryDuplicateEvent(t, auditAppend, i);
+      },
+      async deleteDraft(eventId) {
+        const e = t.events.get(eventId);
+        if (!e) return "not_found";
+        if (e.state !== "draft") return "not_draft";
+        if ([...t.registrations.values()].some((r) => r.event_id === eventId)) return "has_registrations";
+        if (
+          (await self.reports.list({ eventId, offset: 0, limit: 1 })).length > 0 ||
+          [...t.alerts.values()].some((a) => a.event_id === eventId) ||
+          t.adjustments.some((a) => a.event_id === eventId)
+        ) return "has_history";
+        for (const [k, x] of t.invitations) if (x.event_id === eventId) t.invitations.delete(k);
+        for (const [k, x] of t.staffAssignments) if (x.event_id === eventId) t.staffAssignments.delete(k);
+        for (const [k, x] of t.reportSchedules) if (x.event_id === eventId) t.reportSchedules.delete(k);
+        for (const [k, x] of t.notifications) if (x.event_id === eventId) t.notifications.delete(k);
+        dropEventRooms(eventId, () => true);
+        t.eventRooms = t.eventRooms.filter((r) => r.event_id !== eventId);
+        for (const k of t.accessRuleVersions.keys()) if (k.startsWith(`${eventId}:`)) t.accessRuleVersions.delete(k);
+        for (const [k, x] of t.gateRates) if (x.event_id === eventId) t.gateRates.delete(k);
+        t.events.delete(eventId);
+        return "deleted";
+      },
+      async insertSession(row) {
+        t.sessions.set(row.id, clone(row));
+      },
+      async updateSession(id, patch) {
+        const s = t.sessions.get(id);
+        if (!s) throw new Error(`session ${id} not found`);
+        Object.assign(s, clone(patch));
+        return clone(s);
+      },
+      async deleteSession(id) {
+        return t.sessions.delete(id);
       },
       async allowlist(eventId, { from, to, checkpointId }) {
         const e = t.events.get(eventId);
@@ -531,6 +650,16 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
         }
         return out;
       },
+      async countByEvent(ids) {
+        const out = new Map<string, { registered: number; checked_in: number }>(ids.map((id) => [id, { registered: 0, checked_in: 0 }]));
+        for (const r of t.registrations.values()) {
+          const c = out.get(r.event_id);
+          if (!c || r.state === "cancelled") continue;
+          c.registered++;
+          if (r.checked_in_at) c.checked_in++;
+        }
+        return out;
+      },
     },
     staff: {
       async assignmentsFor(userId) {
@@ -540,9 +669,9 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
         const a = t.staffAssignments.get(id);
         return a ? clone(a) : null;
       },
-      async list({ checkpointId, userId, offset, limit }) {
+      async list({ checkpointId, userId, eventId, offset, limit }) {
         return [...t.staffAssignments.values()]
-          .filter((a) => (!checkpointId || a.checkpoint_id === checkpointId) && (!userId || a.user_id === userId))
+          .filter((a) => (!checkpointId || a.checkpoint_id === checkpointId) && (!userId || a.user_id === userId) && (!eventId || a.event_id === eventId))
           .sort((a, b) => a.shift_start.getTime() - b.shift_start.getTime() || (a.id < b.id ? -1 : 1))
           .slice(offset, offset + limit)
           .map(clone);
@@ -624,6 +753,10 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       },
       async forCredential(credentialId) {
         return [...t.carriers.values()].filter((c) => c.credential_id === credentialId).map(clone);
+      },
+      async forCredentials(ids) {
+        const want = new Set(ids);
+        return [...t.carriers.values()].filter((c) => c.credential_id !== null && want.has(c.credential_id)).map(clone);
       },
       async insert(row) {
         t.carriers.set(row.id, clone(row));
@@ -990,6 +1123,106 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
 }
 
 /** Mirrors @synan/db allowlist_rooms + allowlist_credentials (migration 0012). */
+/** Mirrors @synan/db venue_layout_publish (0025), status for status. */
+function memoryPublishLayout(
+  t: MemoryTables,
+  i: { venueId: string; expectedVersion: number; floors: string[]; zones: LayoutZoneRow[]; rooms: LayoutRoomRow[]; now: Date },
+): PublishLayoutOutcome {
+  const v = t.venues.get(i.venueId);
+  if (!v) throw new Error(`venue ${i.venueId} does not exist`);
+  const out: PublishLayoutOutcome = { status: "ok", layout_version: v.layout_version ?? 0, zones_added: 0, zones_removed: 0, rooms_added: 0, rooms_removed: 0, blocking: [] };
+  if ((v.layout_version ?? 0) !== i.expectedVersion) return { ...out, status: "version_conflict" };
+  const zoneIds = new Set(i.zones.map((z) => z.id));
+  const roomIds = new Set(i.rooms.map((r) => r.id));
+  if (i.zones.some((z) => t.zones.get(z.id) && t.zones.get(z.id)!.venue_id !== i.venueId) || i.rooms.some((r) => t.rooms.get(r.id) && t.rooms.get(r.id)!.venue_id !== i.venueId)) {
+    return { ...out, status: "foreign_id" };
+  }
+  const removedRooms = [...t.rooms.values()].filter((r) => r.venue_id === i.venueId && !roomIds.has(r.id));
+  const removedZones = [...t.zones.values()].filter((z) => z.venue_id === i.venueId && !zoneIds.has(z.id));
+  const blocking: PublishLayoutOutcome["blocking"] = [];
+  for (const r of removedRooms) {
+    const inUse =
+      t.eventRooms.some((er) => er.room_id === r.id && t.events.get(er.event_id)?.state !== "draft") ||
+      t.adjustments.some((a) => a.room_id === r.id) ||
+      [...t.alerts.values()].some((a) => a.room_id === r.id);
+    if (inUse) blocking.push({ kind: "room", id: r.id, reason: "in_use" });
+    if ([...t.checkpoints.values()].some((c) => c.room_id === r.id)) blocking.push({ kind: "room", id: r.id, reason: "has_checkpoints" });
+  }
+  for (const z of removedZones) {
+    if ([...t.checkpoints.values()].some((c) => c.zone_id === z.id)) blocking.push({ kind: "zone", id: z.id, reason: "has_checkpoints" });
+  }
+  for (const r of i.rooms) {
+    if ([...t.checkpoints.values()].some((c) => c.room_id === r.id && c.zone_id !== r.zone_id)) blocking.push({ kind: "room", id: r.id, reason: "doors_in_other_zone" });
+  }
+  if (blocking.length) {
+    blocking.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    return { ...out, status: "blocked", blocking };
+  }
+  out.zones_added = i.zones.filter((z) => !t.zones.has(z.id)).length;
+  out.rooms_added = i.rooms.filter((r) => !t.rooms.has(r.id)).length;
+  i.zones.forEach((z, n) => {
+    t.zones.set(z.id, { id: z.id, venue_id: i.venueId, name: z.name, floor: z.floor?.trim() ? z.floor.trim() : null, geometry_jsonb: clone(z.geometry), sort_order: n });
+  });
+  for (const r of i.rooms) {
+    t.rooms.set(r.id, {
+      id: r.id, venue_id: i.venueId, zone_id: r.zone_id, name: r.name, capacity: r.capacity, warn_at_pct: r.warn_at_pct, block_at_pct: r.block_at_pct,
+      capacity_policy: r.capacity_policy, continuous_bool: r.continuous, geometry_jsonb: clone(r.geometry),
+    });
+  }
+  // Drafts let go of removed rooms, with their sessions and rules (event_rooms cascade).
+  const gone = new Set(removedRooms.map((r) => r.id));
+  const drafts = new Set(t.eventRooms.filter((er) => gone.has(er.room_id)).map((er) => er.event_id));
+  for (const eventId of drafts) {
+    let rules = 0;
+    for (const [k, r] of t.accessRules) if (r.event_id === eventId && gone.has(r.room_id)) t.accessRules.delete(k), rules++;
+    if (rules) t.events.get(eventId)!.revocation_epoch += 1;
+    for (const [k, s] of t.sessions) if (s.event_id === eventId && gone.has(s.room_id)) t.sessions.delete(k);
+  }
+  t.eventRooms = t.eventRooms.filter((er) => !gone.has(er.room_id));
+  for (const r of removedRooms) t.rooms.delete(r.id);
+  for (const z of removedZones) t.zones.delete(z.id);
+  out.rooms_removed = removedRooms.length;
+  out.zones_removed = removedZones.length;
+  v.floors = [...i.floors];
+  v.layout_version = i.expectedVersion + 1;
+  v.layout_published_at = i.now;
+  out.layout_version = v.layout_version;
+  return out;
+}
+
+/** Mirrors @synan/db event_duplicate (0025): a draft copy, shifted or without dates; audited `event.duplicate`. */
+function memoryDuplicateEvent(
+  t: MemoryTables,
+  audit: (e: Pick<AuditRow, "actor_id" | "action" | "target" | "meta_jsonb" | "at">) => AuditRow,
+  i: { eventId: string; slug: string; title: string; startsAt: Date | null; actorId: string | null; now: Date },
+): string {
+  const e = t.events.get(i.eventId);
+  if (!e) throw new Error(`event ${i.eventId} does not exist`);
+  const shift = i.startsAt && e.starts_at ? i.startsAt.getTime() - e.starts_at.getTime() : null;
+  const at = (d: Date | null) => (d && shift !== null ? new Date(d.getTime() + shift) : null);
+  const id = randomUUID();
+  const now = new Date();
+  t.events.set(id, {
+    ...clone(e), id, slug: i.slug, title: i.title, state: "draft", starts_at: at(e.starts_at), ends_at: at(e.ends_at),
+    access_rules_version: 0, revocation_epoch: 0, closed_at: null, wizard_step: "basics", published_at: null,
+    updated_by: i.actorId, created_at: now, updated_at: now,
+  });
+  for (const er of t.eventRooms.filter((r) => r.event_id === i.eventId)) t.eventRooms.push({ ...er, event_id: id });
+  if (shift !== null) {
+    for (const s of [...t.sessions.values()].filter((s) => s.event_id === i.eventId)) {
+      const sid = randomUUID();
+      t.sessions.set(sid, { ...s, id: sid, event_id: id, starts_at: at(s.starts_at)!, ends_at: at(s.ends_at)! });
+    }
+  }
+  for (const r of [...t.accessRules.values()].filter((r) => r.event_id === i.eventId)) {
+    if (shift === null && (r.window_start || r.window_end)) continue;
+    const rid = randomUUID();
+    t.accessRules.set(rid, { ...r, id: rid, event_id: id, window_start: shift === null ? null : at(r.window_start), window_end: shift === null ? null : at(r.window_end) });
+  }
+  audit({ actor_id: i.actorId, action: "event.duplicate", target: `event:${id}`, meta_jsonb: { from: i.eventId, dates: shift !== null }, at: i.now });
+  return id;
+}
+
 function memoryAllowlist(t: MemoryTables, e: EventRow, from: number, to: number, checkpointId: string | null): AllowlistData {
   let roomIds = t.eventRooms.filter((r) => r.event_id === e.id).map((r) => r.room_id);
   if (checkpointId) {
@@ -1017,13 +1250,15 @@ function memoryAllowlist(t: MemoryTables, e: EventRow, from: number, to: number,
     const nfc = carriers.filter((k) => k.kind === "nfc");
     entries.push({
       credential_hash: c.token_hash,
-      nfc_hashes: nfc.filter((k) => LIVE_CARRIER.has(k.state)).map((k) => k.identifier!).sort(),
+      // An `assigned` band is not yet verified at the desk and opens nothing (0027).
+      nfc_hashes: nfc.filter((k) => k.state === "bound" || k.state === "active").map((k) => k.identifier!).sort(),
       tier: kind === "tier" ? (subject as AttendeeTier) : null,
       permitted_room_ids: roomsFor(kind, subject),
       revoked: effective === "revoked" || effective === "replaced",
       state: effective,
       dead_nfc_hashes: nfc.filter((k) => k.state === "lost" || k.state === "retired").map((k) => k.identifier!).sort(),
       qr_email_spent: carriers.some((k) => k.kind === "qr_email" && k.redeemed_at !== null),
+      qr_email_hashes: carriers.filter((k) => k.kind === "qr_email" && k.redeemed_at === null && k.state !== "retired" && k.identifier).map((k) => k.identifier!).sort(),
     });
   };
   for (const c of t.credentials.values()) {

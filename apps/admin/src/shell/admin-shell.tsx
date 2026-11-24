@@ -1,8 +1,10 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { AppShell, NavRail, navItemClass } from "@synan/ui/shell";
+import { useSession } from "../access/session";
 import { DEV_TOOLS } from "../live/backend";
-import { NAV_GROUPS } from "../routes";
+import { useCommand } from "../live/context";
+import { navFor } from "../routes";
 import { AlertStrip } from "./alert-strip";
 import { ScreenBoundary } from "./screen-boundary";
 import { AdminStatusBar } from "./status-bar";
@@ -42,17 +44,24 @@ export function AdminShell() {
   const location = useLocation();
   const [preferExpanded, setPreferExpanded] = useState(readNavPreference);
   const expanded = wide && preferExpanded;
+  const { can } = useSession();
+  const { event } = useCommand();
+  // The rail, the menu, the alert strip and the status bar are the role's own (D-23): a role
+  // with one screen has no menu at all, and only a role that watches the floor gets its chrome.
+  const groups = useMemo(() => navFor(can, event?.id ?? null), [can, event?.id]);
+  const navigable = groups.reduce((n, group) => n + group.items.length, 0) > 1;
 
   return (
     <AppShell
-      top={<AdminTopBar menu={<PhoneNav />} />}
-      strip={<AlertStrip />}
+      top={<AdminTopBar menu={navigable ? <PhoneNav groups={groups} /> : null} />}
+      strip={can("alerts.view") ? <AlertStrip /> : null}
       nav={
+        navigable ? (
         // Below 640px the rail gives way to the Menu cell in the top bar (PhoneNav).
         <div className="hidden h-full sm:block">
         <NavRail
           label="Admin"
-          groups={NAV_GROUPS}
+          groups={groups}
           expanded={expanded}
           onToggle={
             wide
@@ -79,8 +88,9 @@ export function AdminShell() {
           )}
         />
         </div>
+        ) : null
       }
-      status={<AdminStatusBar />}
+      status={can("live.view") ? <AdminStatusBar /> : null}
     >
       <ScreenBoundary resetKey={location.pathname}>
         <Outlet />

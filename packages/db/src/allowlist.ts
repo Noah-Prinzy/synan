@@ -25,11 +25,13 @@ export interface AllowlistEntry {
   subject: string;
   /** Credential state; `revoked` when the registration is no longer confirmed or the staff user is disabled. */
   effective_state: "issued" | "active" | "suspended_review" | "revoked" | "replaced";
-  /** Hashes of live bands (assigned, bound, active). */
+  /** Hashes of live bands (bound, active; an `assigned` band is not yet verified and opens nothing, 0027). */
   nfc_hashes: string[];
   /** Hashes of lost or retired bands: a gate answers these as `revoked`, not `unknown_token`. */
   dead_nfc_hashes: string[];
   qr_email_spent: boolean;
+  /** Carrier hashes of the emailed codes still usable (unused, not superseded): any other emailed code is spent. */
+  qr_email_hashes: string[];
   /** Rooms with any permitted window in the requested window (convenience; `subjects` has the windows). */
   permitted_room_ids: string[];
 }
@@ -83,6 +85,7 @@ export async function buildAllowlist(
           nfc_hashes: (c.nfc_hashes as string[]) ?? [],
           dead_nfc_hashes: (c.dead_nfc_hashes as string[]) ?? [],
           qr_email_spent: Boolean(c.qr_email_spent),
+          qr_email_hashes: (c.qr_email_hashes as string[]) ?? [],
           permitted_room_ids: (subjects[key] ?? []).map((x) => x.room_id),
         };
       });
@@ -121,6 +124,7 @@ export interface AllowlistContractEntry {
   /** Lost or retired bands of this credential: answer `revoked`, not `unknown_token`. */
   dead_nfc_hashes: string[];
   qr_email_spent: boolean;
+  qr_email_hashes: string[];
 }
 
 /**
@@ -153,6 +157,7 @@ export async function allowlistEntries(
       state: e.effective_state,
       dead_nfc_hashes: e.dead_nfc_hashes,
       qr_email_spent: e.qr_email_spent,
+      qr_email_hashes: e.qr_email_hashes,
     })),
   };
 }

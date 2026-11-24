@@ -1,86 +1,45 @@
-// Auth mock layer using localStorage
-import { portal } from "./mock";
-const STORAGE_KEY = "syn.session";
-const MAGIC_PREFIX = "syn-magic-";
+/**
+ * The attendee's session (A9). Email link only (03 §3). The source decides where the session
+ * lives: the mock keeps `{ email, name }` in localStorage; the real API keeps its token pair
+ * (data/api/session.ts). Either way a change fires SESSION_EVENT, and useSession re-renders.
+ */
+import { useSyncExternalStore } from "react";
+import { backend, type Session, type VerifyOutcome } from "./backend";
+import { clearResources } from "./resource";
+import { SESSION_EVENT } from "./shared";
 
-interface Session {
-  email: string;
-  name: string;
-}
-
-function getStoredSession(): Session | null {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    return stored ? JSON.parse(stored) : null;
-  } catch {
-    return null;
-  }
-}
-
-function setStoredSession(session: Session | null): void {
-  if (session) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-  } else {
-    localStorage.removeItem(STORAGE_KEY);
-  }
-  notify();
-}
+export type { Session };
 
 export function getSession(): Session | null {
-  return getStoredSession();
+  return backend.readSession();
 }
 
-export function signIn(email: string): Session {
-  // In a real app this would trigger an email send
-  // For mock purposes we create a session immediately
-  const emailTrimmed = email.trim();
-  const session: Session = {
-    email: emailTrimmed,
-    name: portal.holderName,
-  };
-  setStoredSession(session);
-  return session;
+/** POST /auth/email-link. Always answers the same, whether or not the address is known. */
+export function requestSignInLink(email: string, next: string): Promise<void> {
+  return backend.requestSignInLink(email.trim(), next);
 }
 
-export function verifyToken(token: string): Session | null {
-  // Mock token format: syn-magic-<email>
-  if (token.startsWith(MAGIC_PREFIX)) {
-    const email = token.slice(MAGIC_PREFIX.length);
-    const emailTrimmed = decodeURIComponent(email).trim();
-    const session: Session = {
-      email: emailTrimmed,
-      name: portal.holderName,
-    };
-    setStoredSession(session);
-    return session;
-  }
-  return null;
+/** POST /auth/verify: redeem the emailed link's token. Starts the session. */
+export async function verifyToken(token: string, next: string): Promise<VerifyOutcome> {
+  const outcome = await backend.verifyLink(token, next);
+  // What the server answers depends on who is signed in (the mock's answers do not).
+  if (outcome.ok && backend.mode === "api") clearResources();
+  return outcome;
 }
 
-/** Mock: tokens starting syn-expired- are expired; anything else not syn-magic- is invalid. */
-export function linkProblem(token: string): "expired" | "invalid" {
-  return token.startsWith("syn-expired-") ? "expired" : "invalid";
-}
-
-/** PATCH /users/:id/profile (full_name). Mock: the session keeps the new name. */
-export async function updateName(name: string): Promise<void> {
-  const current = getStoredSession();
-  if (!current) throw new Error("signed out");
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  setStoredSession({ ...current, name: name.trim() });
+/** PATCH /users/:id/profile (full_name). The session keeps the new name. */
+export function updateName(name: string): Promise<void> {
+  return backend.updateName(name);
 }
 
 export function signOut(): void {
-  setStoredSession(null);
+  backend.signOut();
+  if (backend.mode === "api") clearResources();
 }
 
-// React hook for session state
-import { useSyncExternalStore } from "react";
-
-const SESSION_EVENT = "syn:session";
-
-function notify(): void {
-  window.dispatchEvent(new Event(SESSION_EVENT));
+/** Mock build only: the path standing in for the emailed link. */
+export function emailedLinkFor(email: string, next: string): string | null {
+  return backend.emailedLinkFor(email, next);
 }
 
 function subscribe(listener: () => void): () => void {
@@ -99,8 +58,10 @@ function subscribe(listener: () => void): () => void {
 let cached: Session | null = null;
 let loaded = false;
 
+/** Keeps the same object while the email and name are unchanged, so a token refresh re-renders nothing. */
 function refreshSnapshot(): Session | null {
-  cached = getStoredSession();
+  const next = backend.readSession();
+  if (!loaded || next?.email !== cached?.email || next?.name !== cached?.name) cached = next;
   loaded = true;
   return cached;
 }

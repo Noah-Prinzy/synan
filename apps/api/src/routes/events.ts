@@ -4,9 +4,9 @@ import { endpoints, type EventDetail, type EventSummary } from "@synan/contracts
 import type { AppContext } from "../app.js";
 import type { AuthContext } from "../domain/principal.js";
 import { mount } from "../http/route.js";
-import type { EventRow } from "../repo/types.js";
+import { isScheduled, type EventRow, type ScheduledEvent, type SessionRow } from "../repo/types.js";
 
-const encodeCursor = (e: EventRow) => Buffer.from(JSON.stringify({ s: e.starts_at.toISOString(), i: e.id })).toString("base64url");
+const encodeCursor = (e: ScheduledEvent) => Buffer.from(JSON.stringify({ s: e.starts_at.toISOString(), i: e.id })).toString("base64url");
 function decodeCursor(c: string | undefined): { starts_at: Date; id: string } | undefined {
   if (!c) return undefined;
   try {
@@ -19,7 +19,8 @@ function decodeCursor(c: string | undefined): { starts_at: Date; id: string } | 
   }
 }
 
-export async function summary(app: AppContext, e: EventRow): Promise<EventSummary> {
+/** The public card. Only for an event with its venue and dates (drafts without them are operator-only, GET /admin/events). */
+export async function summary(app: AppContext, e: ScheduledEvent): Promise<EventSummary> {
   const venue = await app.repos.venues.venue(e.venue_id);
   return {
     id: e.id,
@@ -80,60 +81,50 @@ export function eventRoutes(x: Express, app: AppContext) {
         limit: query.limit + 1,
       });
     }
-    const page = rows.slice(0, query.limit);
+    // Drafts without dates sort last and have no public card: they are listed by GET /admin/events.
+    const scheduled = rows.filter(isScheduled);
+    const page = scheduled.slice(0, query.limit);
     return {
       items: await Promise.all(page.map((e) => summary(app, e))),
-      next_cursor: rows.length > query.limit ? encodeCursor(page[page.length - 1]!) : null,
+      next_cursor: scheduled.length > query.limit ? encodeCursor(page[page.length - 1]!) : null,
     };
   });
 
   mount(x, app, endpoints.getEvent, async ({ params, ctx }) => {
     const e = await app.repos.events.bySlug(params.slug);
-    if (!e || !(await canSeeEvent(app, e, ctx))) throw new ContractError("NOT_FOUND");
+    if (!e || !isScheduled(e) || !(await canSeeEvent(app, e, ctx))) throw new ContractError("NOT_FOUND");
     return detailOf(app, e);
   });
 
   mount(x, app, endpoints.eventSessions, async ({ params, ctx }) => {
     const e = await app.repos.events.byId(params.id);
     if (!e || !(await canSeeEvent(app, e, ctx))) throw new ContractError("NOT_FOUND");
-    const sessions = await app.repos.events.sessions(e.id);
-    return {
-      items: sessions.map((s) => ({
-        id: s.id,
-        event_id: s.event_id,
-        room_id: s.room_id,
-        title: s.title,
-        starts_at: s.starts_at.toISOString(),
-        ends_at: s.ends_at.toISOString(),
-      })),
-    };
+    return { items: (await app.repos.events.sessions(e.id)).map(sessionDto) };
   });
 }
 
 /** Public detail of an event (the caller has already checked visibility). */
-export async function detailOf(app: AppContext, e: EventRow): Promise<EventDetail> {
-  {
-    const eventRooms = await app.repos.events.rooms(e.id);
-    const rooms = await app.repos.venues.roomsByIds(eventRooms.map((r) => r.room_id));
-    const sessions = await app.repos.events.sessions(e.id);
-    const detail: EventDetail = {
-      ...(await summary(app, e)),
-      description: e.description,
-      rooms: rooms.map((r) => ({
-        room_id: r.id,
-        name: r.name,
-        zone_id: r.zone_id,
-        capacity: eventRooms.find((er) => er.room_id === r.id)?.capacity_override ?? r.capacity,
-      })),
-      sessions: sessions.map((s) => ({
-        id: s.id,
-        event_id: s.event_id,
-        room_id: s.room_id,
-        title: s.title,
-        starts_at: s.starts_at.toISOString(),
-        ends_at: s.ends_at.toISOString(),
-      })),
-    };
-    return detail;
-  }
+export async function detailOf(app: AppContext, e: ScheduledEvent): Promise<EventDetail> {
+  return { ...(await summary(app, e)), ...(await roomsAndSessions(app, e)) };
+}
+
+export const sessionDto = (s: SessionRow) => ({
+  id: s.id, event_id: s.event_id, room_id: s.room_id, title: s.title, starts_at: s.starts_at.toISOString(), ends_at: s.ends_at.toISOString(),
+});
+
+/** Description, rooms (with the capacity in force) and sessions; `overrides` adds each room's own override (operator views). */
+export async function roomsAndSessions(app: AppContext, e: EventRow, overrides = false) {
+  const eventRooms = await app.repos.events.rooms(e.id);
+  const rooms = await app.repos.venues.roomsByIds(eventRooms.map((r) => r.room_id));
+  const sessions = await app.repos.events.sessions(e.id);
+  return {
+    description: e.description,
+    rooms: rooms
+      .map((r) => {
+        const override = eventRooms.find((er) => er.room_id === r.id)?.capacity_override ?? null;
+        return { room_id: r.id, name: r.name, zone_id: r.zone_id, capacity: override ?? r.capacity, ...(overrides ? { capacity_override: override } : {}) };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    sessions: sessions.map(sessionDto),
+  };
 }

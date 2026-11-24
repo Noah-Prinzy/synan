@@ -205,14 +205,18 @@ export async function gateHealth(db: DbOrTx, venueId: string, opts: { eventId?: 
 
 /* ------------------------------------------------------- events: admin and jobs */
 
-/** Duplicates an event as a draft starting at `startsAt` (rooms, sessions, rules shifted; no attendees). */
+/**
+ * Duplicates an event as a draft starting at `startsAt` (rooms, sessions, rules shifted; no attendees).
+ * With `startsAt` null the copy has no dates and no sessions, and keeps only the rules without a time
+ * window. Audited (`event.duplicate`) by the database.
+ */
 export async function duplicateEvent(
   db: DbOrTx,
-  i: { eventId: string; slug: string; title: string; startsAt: Date; actorId?: string | null },
+  i: { eventId: string; slug: string; title: string; startsAt: Date | null; actorId?: string | null },
 ): Promise<string> {
   const r = await rows<{ id: string }>(
     db,
-    sql`select public.event_duplicate(${i.eventId}::uuid, ${i.slug}, ${i.title}, ${i.startsAt.toISOString()}::timestamptz, ${i.actorId ?? null}::uuid) as id`,
+    sql`select public.event_duplicate(${i.eventId}::uuid, ${i.slug}, ${i.title}, ${i.startsAt?.toISOString() ?? null}::timestamptz, ${i.actorId ?? null}::uuid) as id`,
   );
   return String(r[0]!.id);
 }

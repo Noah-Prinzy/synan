@@ -3,10 +3,29 @@ import { webcrypto } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { BRAND } from "../src/brand.js";
 import { Id } from "../src/common.js";
-import { DENY_RESULTS, ERROR_COPY, SCAN_RESULT_COPY, SCAN_RESULT_TONE } from "../src/copy/index.js";
+import {
+  CARRIER_STATE_COPY,
+  CREDENTIAL_STATE_COPY,
+  DENY_RESULTS,
+  ERROR_COPY,
+  EVENT_STATE_COPY,
+  INVITATION_STATE_COPY,
+  REGISTRATION_STATE_COPY,
+  ROLE_COPY,
+  SCAN_RESULT_COPY,
+  SCAN_RESULT_TONE,
+} from "../src/copy/index.js";
 import { ErrorCode } from "../src/errors/index.js";
 import * as errorsModule from "../src/errors/index.js";
-import { SCAN_RESULT_VALUES } from "../src/enums/index.js";
+import {
+  CARRIER_STATE_VALUES,
+  CREDENTIAL_STATE_VALUES,
+  EVENT_STATE_VALUES,
+  InvitationState,
+  RegistrationState,
+  ROLE_VALUES,
+  SCAN_RESULT_VALUES,
+} from "../src/enums/index.js";
 import {
   base64urlDecode,
   base64urlEncode,
@@ -23,7 +42,51 @@ const subtle = webcrypto.subtle;
 
 describe("REST registry", () => {
   it("covers every endpoint in docs/02 §5 (68) plus 36 additive endpoints (email-link, logout, me/registration, credentials/:id/scans, venue update, checkpoint create/update, event state, event admin view, kiosk registration, desk code, staff invite and activation, shift handover, gate heartbeat, MFA enrolment and confirmation, six webhook endpoints, six device endpoints, five data-request endpoints, post-event summary, operator profile) and 6 more (four report-schedule endpoints, notification mark-read, operator broadcast) and the attendee's own pass resend", () => {
-    expect(Object.keys(endpoints)).toHaveLength(111);
+    expect(Object.keys(endpoints)).toHaveLength(111 + 9 + 1);
+  });
+  it("pins every role's endpoints (D-23): a new endpoint must be placed in this matrix deliberately", () => {
+    const allowed = (role: string) =>
+      (Object.entries(endpoints) as [string, { access: readonly string[] }][])
+        .filter(([, e]) => !e.access.includes("public") && e.access.includes(role)).map(([name]) => name).sort();
+    const signedIn = ["logout", "mfaEnrol", "mfaEnrolConfirm", "mfaVerify", "myOperator", "wsTicket"];
+    expect(allowed("supervisor")).toEqual([
+      ...signedIn, "ackAlert", "checkpointScans", "clearReview", "dashboard", "eventRegistrations", "eventSummary", "gateHealth", "getVenue",
+      "listAlerts", "listAttendees", "listCheckpoints", "listCredentials", "listScans", "recountRoom", "resolveAlert", "revoke",
+    ].sort());
+    expect(allowed("desk_clerk")).toEqual([
+      ...signedIn, "bindCarrier", "deskCode", "eventRegistrations", "inventory", "myAssignments", "rebindCarrier", "resend",
+    ].sort());
+    expect(allowed("security_staff")).toEqual([
+      ...signedIn, "ackAlert", "allowlist", "bindCarrier", "deskCode", "gateHeartbeat", "handover", "kioskRegister", "listAlerts", "listCheckpoints",
+      "myAssignments", "postScans",
+    ].sort());
+    for (const role of ["speaker", "crew"]) expect(allowed(role)).toEqual([...signedIn, "myAssignments"].sort());
+    // Admin reaches every endpoint an operator or staff role reaches, except the scanner's own and the attendee's.
+    const scannerOnly = new Set(["postScans", "gateHeartbeat", "myAssignments", "deviceHeartbeat"]);
+    for (const [name, e] of Object.entries(endpoints) as [string, { access: readonly string[] }][]) {
+      const staffish = e.access.some((a) => ["organiser", "supervisor", "desk_clerk"].includes(a));
+      if (staffish && !scannerOnly.has(name)) expect(e.access, name).toContain("admin");
+    }
+  });
+  it("adds nine endpoints for Admin Command's configure screens (06 D0, D2–D6)", () => {
+    const added = [
+      "currentOrganization", "publishLayout", "listEventsAdmin", "eventReadiness", "duplicateEvent", "deleteEvent",
+      "createSession", "updateSession", "deleteSession",
+    ] as const;
+    for (const name of added) expect(endpoints[name].access).toEqual(expect.arrayContaining(["admin"]));
+    for (const name of ["publishLayout", "duplicateEvent", "deleteEvent", "createSession", "updateSession", "deleteSession"] as const) {
+      expect(endpoints[name].audited, name).toBe(true);
+    }
+    // A draft may be written before it has a venue or dates.
+    expect(endpoints.createEvent.body.safeParse({ slug: "a-draft", title: "A draft", timezone: "Africa/Kampala" }).success).toBe(true);
+    expect(endpoints.createEvent.body.safeParse({ slug: "a-draft", title: "A draft", timezone: "Mars/Olympus" }).success).toBe(false);
+    // Geometry is typed on read as on write: whole grid units only.
+    expect(endpoints.publishLayout.body.safeParse({
+      expected_version: 0, floors: ["Ground"],
+      zones: [{ id: webcrypto.randomUUID(), name: "Z", floor: "Ground", geometry: { kind: "rect", x: 0.5, y: 0, w: 2, h: 2 } }], rooms: [],
+    }).success).toBe(false);
+    expect(endpoints.duplicateEvent.body.safeParse(undefined).success).toBe(true);
+    expect(endpoints.eventRegistrations.query.parse({ unbound: "false" }).unbound).toBe(false);
   });
   it("canonicalises ids to lower case at the boundary", () => {
     const upper = "3F2504E0-4F89-41D3-9A0C-0305E82C3301";
@@ -52,6 +115,19 @@ describe("copy", () => {
       expect(SCAN_RESULT_TONE[r]).toBe(SCAN_RESULT_COPY[r].tone);
     }
     expect([...DENY_RESULTS].sort()).toEqual(SCAN_RESULT_VALUES.filter((r) => !SCAN_RESULT_COPY[r].admits).sort());
+  });
+  it("has state words for credentials, carriers, registrations, invitations, events and roles, without the product name", () => {
+    const tables = [CREDENTIAL_STATE_COPY, CARRIER_STATE_COPY, REGISTRATION_STATE_COPY, INVITATION_STATE_COPY, EVENT_STATE_COPY, ROLE_COPY];
+    const pairs: [object, readonly string[]][] = [
+      [CREDENTIAL_STATE_COPY, CREDENTIAL_STATE_VALUES], [CARRIER_STATE_COPY, CARRIER_STATE_VALUES], [REGISTRATION_STATE_COPY, RegistrationState.options],
+      [INVITATION_STATE_COPY, InvitationState.options], [EVENT_STATE_COPY, EVENT_STATE_VALUES], [ROLE_COPY, ROLE_VALUES],
+    ];
+    for (const [table, values] of pairs) expect(Object.keys(table).sort()).toEqual([...values].sort());
+    for (const t of tables) for (const c of Object.values(t) as { label: string; description: string }[]) {
+      expect(c.label.length).toBeGreaterThan(0);
+      expect(c.description.endsWith(".")).toBe(true);
+    }
+    expect(JSON.stringify(tables).toLowerCase()).not.toContain(BRAND.name.toLowerCase());
   });
   it("errors/ re-exports the same objects", () => {
     expect(errorsModule.SCAN_RESULT_COPY).toBe(SCAN_RESULT_COPY);

@@ -5,8 +5,8 @@ import { Email, Id, IsoDateTime, Ok } from "../common.js";
 import { PrincipalKind, Role, SigningKeyPurpose, WsChannel } from "../enums/index.js";
 import { endpoint, PUBLIC, type Access } from "./endpoint.js";
 
-const ANY_SIGNED_IN: readonly Access[] = ["attendee", "admin", "organiser", "security_staff", "speaker", "crew"];
-const ANY_USER: readonly Access[] = ["admin", "organiser", "security_staff", "speaker", "crew"];
+const ANY_SIGNED_IN: readonly Access[] = ["attendee", "admin", "organiser", "security_staff", "speaker", "crew", "supervisor", "desk_clerk"];
+const ANY_USER: readonly Access[] = ["admin", "organiser", "security_staff", "speaker", "crew", "supervisor", "desk_clerk"];
 
 /** The authenticated identity as the client sees it. Never contains a DB id for attendees. */
 export const Principal = z.object({

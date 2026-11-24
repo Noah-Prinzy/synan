@@ -1,8 +1,8 @@
 /** Organisation and venue endpoints (02 §5, 02 §4.1). */
 import { z } from "zod";
 import { Email, IanaTimezone, Id, IsoDateTime, pageOf, PageQuery } from "../common.js";
-import { CapacityPolicy, CarrierKind, CheckpointDirection, GateLinkState, ScanResult } from "../enums/index.js";
-import { ADMIN_ONLY, endpoint, IdParam, OPERATORS, type Access } from "./endpoint.js";
+import { CapacityPolicy, CarrierKind, CheckpointDirection, EventState, GateLinkState, ScanResult } from "../enums/index.js";
+import { ADMIN_ONLY, endpoint, IdParam, OPERATORS, SUPERVISE, type Access } from "./endpoint.js";
 
 /**
  * Map geometry on the venue's abstract grid (integer grid units, origin top-left). Shapes of rooms
@@ -24,8 +24,12 @@ export type GridPoint = z.infer<typeof GridPoint>;
 /** The grid's extent: the smallest box holding every room and zone shape of the venue. */
 export const VenueGrid = z.object({ w: z.number().int().min(0), h: z.number().int().min(0) });
 export type VenueGrid = z.infer<typeof VenueGrid>;
-/** Read shape: a grid shape, or (older data) any object, or null. Writes accept GridShape only. */
-export const Geometry = z.union([GridShape, z.record(z.string(), z.unknown())]).nullable();
+/**
+ * A room's or zone's shape: a GridShape, or null when not drawn. The database enforces the shape
+ * (`grid_shape_valid`, migration 0023), so reads are typed exactly like writes.
+ */
+export const Geometry = GridShape.nullable();
+export type Geometry = z.infer<typeof Geometry>;
 
 export const Organization = z.object({
   id: Id,
@@ -36,6 +40,21 @@ export const Organization = z.object({
 export type Organization = z.infer<typeof Organization>;
 export const CreateOrganization = Organization.omit({ id: true });
 
+/**
+ * GET /organizations/current — the operator's organisation (single organisation in v1, O-01), and
+ * whether first-run setup (06 D0) still applies: it does while no venue has a published layout.
+ */
+export const SetupStatus = z.object({
+  organization: Organization.nullable(),
+  has_published_venue: z.boolean(),
+  /** Venues of the organisation, published layout or not. */
+  venues: z.number().int().min(0),
+});
+export type SetupStatus = z.infer<typeof SetupStatus>;
+
+/** A floor label, e.g. "Ground", "Level 1", "Mezzanine". */
+export const FloorName = z.string().trim().min(1).max(50);
+
 export const Venue = z.object({
   id: Id,
   org_id: Id,
@@ -44,10 +63,53 @@ export const Venue = z.object({
   timezone: IanaTimezone,
   /** Shown in discovery (venues.city). Optional for backward compatibility. */
   city: z.string().max(100).nullable().optional(),
+  /* ---- additive; always present in server responses ---- */
+  /** Floor labels in display order (06 D2b, D3). A zone's `floor` is one of them. */
+  floors: z.array(z.string().max(50)).optional(),
+  /** Capacity proposed for a new room in the editor; null: none. */
+  capacity_default: z.number().int().min(1).nullable().optional(),
+  /** Version of the layout (floors, zones, rooms); rises with every change. PUT /venues/:id/layout names it. */
+  layout_version: z.number().int().min(0).optional(),
+  /** When the layout last changed; null while nothing has been drawn. */
+  layout_published_at: IsoDateTime.nullable().optional(),
 });
 export type Venue = z.infer<typeof Venue>;
-export const UpdateVenue = Venue.omit({ id: true, org_id: true }).partial();
-export const CreateVenue = Venue.omit({ id: true, org_id: true });
+export const UpdateVenue = z
+  .object({
+    name: z.string().trim().min(1).max(200),
+    address: z.string().max(500),
+    timezone: IanaTimezone,
+    city: z.string().max(100).nullable(),
+    capacity_default: z.number().int().min(1).nullable(),
+  })
+  .partial();
+/** Floors (unique, case-insensitively) default to none; zones add theirs as they are drawn. */
+export const CreateVenue = z.object({
+  name: z.string().trim().min(1).max(200),
+  address: z.string().max(500).default(""),
+  timezone: IanaTimezone,
+  city: z.string().trim().max(100).nullable().optional(),
+  floors: z.array(FloorName).max(50).optional(),
+  capacity_default: z.number().int().min(1).nullable().optional(),
+});
+export type CreateVenue = z.infer<typeof CreateVenue>;
+
+/** What D2 shows per venue. */
+export const VenueCounts = z.object({
+  zones: z.number().int().min(0),
+  rooms: z.number().int().min(0),
+  checkpoints: z.number().int().min(0),
+  /** Sum of the rooms' capacities. */
+  capacity: z.number().int().min(0),
+  /** Events held here, in any state. */
+  events: z.number().int().min(0),
+  /** Events held here that are published or live. */
+  active_events: z.number().int().min(0),
+});
+export type VenueCounts = z.infer<typeof VenueCounts>;
+export const VenueListItem = Venue.extend({ counts: VenueCounts });
+export type VenueListItem = z.infer<typeof VenueListItem>;
+export const VenueListQuery = PageQuery.extend({ q: z.string().max(100).optional() });
 
 export const Zone = z.object({
   id: Id,
@@ -111,6 +173,57 @@ export const Checkpoint = z.object({
 });
 export type Checkpoint = z.infer<typeof Checkpoint>;
 
+/** An event held at a venue, so the editor can warn before changing a venue in use. */
+export const VenueEventRef = z.object({ id: Id, title: z.string(), state: EventState });
+/** GET /venues/:id: the venue, its layout (zones in display order: by floor, then position), gates and events. */
+export const VenueDetail = Venue.extend({
+  zones: z.array(Zone),
+  rooms: z.array(Room),
+  checkpoints: z.array(Checkpoint),
+  /** Derived from the room and zone shapes; null when none has a shape. */
+  grid: VenueGrid.nullable().optional(),
+  /** Additive: events held here, newest first. */
+  events: z.array(VenueEventRef).optional(),
+});
+export type VenueDetail = z.infer<typeof VenueDetail>;
+
+/** One zone of a whole-layout publish. A new zone carries a new (client-chosen) id. */
+export const LayoutZone = z.object({
+  id: Id,
+  name: z.string().trim().min(1).max(200),
+  /** One of the layout's `floors`, or null. */
+  floor: z.string().trim().max(50).nullable(),
+  geometry: GridShape.nullable(),
+});
+export type LayoutZone = z.infer<typeof LayoutZone>;
+/** One room of a whole-layout publish; `zone_id` names a zone of the same publish. */
+export const LayoutRoom = z.object({
+  id: Id,
+  zone_id: Id,
+  name: z.string().trim().min(1).max(200),
+  capacity: z.number().int().min(0),
+  warn_at_pct: z.number().int().min(1).max(1000).default(85),
+  block_at_pct: z.number().int().min(1).max(1000).default(100),
+  continuous: z.boolean().default(false),
+  capacity_policy: CapacityPolicy.default("block"),
+  geometry: GridShape.nullable(),
+});
+export type LayoutRoom = z.infer<typeof LayoutRoom>;
+/**
+ * PUT /venues/:id/layout: the whole layout as drawn in the editor (06 D3), applied in one step. Zones
+ * and rooms left out are removed; a zone or room still in use (an event past draft, recorded
+ * history, gates or doors on it) cannot be, and the publish is refused naming it. Refused with
+ * CONFLICT when `expected_version` is not the current `layout_version`.
+ */
+export const PublishLayout = z.object({
+  expected_version: z.number().int().min(0),
+  /** Floor labels in display order; unique, case-insensitively. */
+  floors: z.array(FloorName).min(1).max(50),
+  zones: z.array(LayoutZone).min(1).max(500),
+  rooms: z.array(LayoutRoom).max(2000),
+});
+export type PublishLayout = z.infer<typeof PublishLayout>;
+
 export const CheckpointQuery = PageQuery.extend({ venue_id: Id.optional(), event_id: Id.optional() });
 export const CreateCheckpoint = Checkpoint.omit({ id: true });
 export type CreateCheckpoint = z.infer<typeof CreateCheckpoint>;
@@ -170,26 +283,34 @@ export const GateHealth = z.object({
 });
 export type GateHealth = z.infer<typeof GateHealth>;
 
-const OPS_AND_SECURITY: readonly Access[] = ["admin", "organiser", "security_staff"];
+const OPS_AND_SECURITY: readonly Access[] = ["admin", "organiser", "supervisor", "security_staff"];
 
 export const venueEndpoints = {
   createOrganization: endpoint({ method: "POST", path: "/organizations", access: ADMIN_ONLY, audited: true, body: CreateOrganization, response: Organization, status: 201 }),
-  listVenues: endpoint({ method: "GET", path: "/venues", access: OPERATORS, query: PageQuery, response: pageOf(Venue) }),
+  /** Not in 02 §5: the organisation and whether first-run setup (06 D0) still applies. */
+  currentOrganization: endpoint({ method: "GET", path: "/organizations/current", access: OPERATORS, response: SetupStatus }),
+  /** Ordered by name. Each venue carries its counts (06 D2). */
+  listVenues: endpoint({ method: "GET", path: "/venues", access: OPERATORS, query: VenueListQuery, response: pageOf(VenueListItem) }),
   createVenue: endpoint({ method: "POST", path: "/venues", access: ADMIN_ONLY, audited: true, body: CreateVenue, response: Venue, status: 201 }),
   /** `grid` (additive) is derived from the room and zone shapes; null when none has a grid shape. */
-  getVenue: endpoint({ method: "GET", path: "/venues/:id", access: OPERATORS, params: IdParam, response: Venue.extend({ zones: z.array(Zone), rooms: z.array(Room), checkpoints: z.array(Checkpoint), grid: VenueGrid.nullable().optional() }) }),
+  getVenue: endpoint({ method: "GET", path: "/venues/:id", access: SUPERVISE, params: IdParam, response: VenueDetail }),
+  /**
+   * Not in 02 §5: whole-layout publish (06 D3). While an event at the venue is live, a fresh second
+   * factor is required (capacities and rooms feed live decisions), as for republishing access rules.
+   */
+  publishLayout: endpoint({ method: "PUT", path: "/venues/:id/layout", access: ADMIN_ONLY, audited: true, params: IdParam, body: PublishLayout, response: VenueDetail }),
   listZones: endpoint({ method: "GET", path: "/venues/:id/zones", access: OPERATORS, params: IdParam, response: z.object({ items: z.array(Zone) }) }),
   createZone: endpoint({ method: "POST", path: "/venues/:id/zones", access: ADMIN_ONLY, audited: true, params: IdParam, body: CreateZone, response: Zone, status: 201 }),
   updateZone: endpoint({ method: "PUT", path: "/zones/:id", access: ADMIN_ONLY, audited: true, params: IdParam, body: UpdateZone, response: Zone }),
   createRoom: endpoint({ method: "POST", path: "/rooms", access: ADMIN_ONLY, audited: true, body: CreateRoom, response: Room, status: 201 }),
   updateRoom: endpoint({ method: "PUT", path: "/rooms/:id", access: ADMIN_ONLY, audited: true, params: IdParam, body: UpdateRoom, response: Room }),
-  recountRoom: endpoint({ method: "POST", path: "/rooms/:id/recount", access: OPERATORS, audited: true, params: IdParam, body: RecountRequest, response: RecountResult }),
+  recountRoom: endpoint({ method: "POST", path: "/rooms/:id/recount", access: SUPERVISE, audited: true, params: IdParam, body: RecountRequest, response: RecountResult }),
   listCheckpoints: endpoint({ method: "GET", path: "/checkpoints", access: OPS_AND_SECURITY, query: CheckpointQuery, response: pageOf(Checkpoint) }),
-  checkpointScans: endpoint({ method: "GET", path: "/checkpoints/:id/scans", access: OPERATORS, params: IdParam, query: CheckpointScansQuery, response: pageOf(ScanRecord) }),
+  checkpointScans: endpoint({ method: "GET", path: "/checkpoints/:id/scans", access: SUPERVISE, params: IdParam, query: CheckpointScansQuery, response: pageOf(ScanRecord) }),
   /** Not in 02 §5: create and edit gates (the layout needs them; only GET /checkpoints was listed). */
   createCheckpoint: endpoint({ method: "POST", path: "/checkpoints", access: ADMIN_ONLY, audited: true, body: CreateCheckpoint, response: Checkpoint, status: 201 }),
   updateCheckpoint: endpoint({ method: "PUT", path: "/checkpoints/:id", access: ADMIN_ONLY, audited: true, params: IdParam, body: UpdateCheckpoint, response: Checkpoint }),
   /** Not in 02 §5: edit a venue's name, address, timezone or city. */
   updateVenue: endpoint({ method: "PUT", path: "/venues/:id", access: ADMIN_ONLY, audited: true, params: IdParam, body: UpdateVenue, response: Venue }),
-  gateHealth: endpoint({ method: "GET", path: "/gates/health", access: OPERATORS, query: z.object({ event_id: Id }), response: z.object({ items: z.array(GateHealth) }) }),
+  gateHealth: endpoint({ method: "GET", path: "/gates/health", access: SUPERVISE, query: z.object({ event_id: Id }), response: z.object({ items: z.array(GateHealth) }) }),
 } as const;

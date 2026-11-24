@@ -152,6 +152,14 @@ attendee sheet has no name or email columns.
   as the chain anchor, so `auditVerify` still passes) and `alertsPrune({ olderThanMonths, now })` (breach alerts
   older than 12 months, minimum 12, with their finished webhook deliveries; one audit entry per run). Both run
   from a job worker (`app_api`), daily.
+- **Venue layouts and drafts** (`src/layout.ts`, 0023–0025): zone and room `geometry_jsonb` is the contracts
+  `GridShape` (typed `GridShape`; a CHECK enforces it). Every zone or room write raises `venues.layout_version` and
+  stamps `layout_published_at` (trigger); a zone with a new floor label appends it to `venues.floors`.
+  `publishVenueLayout` replaces floors, zones (list order → `sort_order`) and rooms in one step if the version is
+  current (`ok | version_conflict | foreign_id | blocked`, with what blocks: a room used past draft or with history,
+  gates or doors on what would go, doors left in another zone); a draft lets go of a removed room. A draft event may
+  lack venue and dates; `deleteDraftEvent` deletes a draft with nothing recorded under it; `duplicateEvent` with
+  `startsAt: null` copies without dates, sessions or windowed rules.
 - **Gate positions**: `checkpoints.position_jsonb` is the contracts `GridPoint` (`{ x, y, side }`, integers
   0–10 000, side n/e/s/w; a CHECK enforces the shape), typed `CheckpointPosition`; `gateHealth` returns it as
   `position`. The venue grid extent is derived, not stored.
@@ -221,6 +229,11 @@ live in hand-written migrations that `push` does not know about.
 | `0020_delivery_functions.sql` | Hand-written: schedule claim and finish, exported-file record / due / mark deleted, email claim and finish, notifications for an attendee, delivery cleanup, device token-version trigger, erasure removing notifications |
 | `0021_email_lease_checkpoint_position.sql` | Generated: `email_outbox.claimed_at`, `checkpoints.position_jsonb` with the `GridPoint` check |
 | `0022_email_lease_retention.sql` | Hand-written: email claim lease and `email_due`, cleanup of abandoned sends, `gate_health` with position, `alerts_prune` |
+| `0023_grid_shape_check.sql` | Hand-written: `grid_unit_valid()`, `grid_shape_valid()` (needed by 0024's checks) |
+| `0024_layout_drafts.sql` | Generated: `venues.floors` / `capacity_default` / `layout_version` / `layout_published_at`, `zones.sort_order`, GridShape checks on zone and room geometry, `events.venue_id` / `starts_at` / `ends_at` nullable for drafts (`events_scheduled_unless_draft`), `events.wizard_step` / `published_at` / `updated_by` |
+| `0025_layout_publish_drafts.sql` | Hand-written: backfill, layout-version trigger on zones and rooms, `venue_layout_publish`, `event_delete_draft`, `event_duplicate` without dates |
+| `0026_roles_supervisor_desk_clerk.sql` | Generated: `user_role` gains `supervisor` and `desk_clerk` (D-23); the access-rule role check accepts them |
+| `0027_allowlist_live_codes.sql` | Hand-written: `allowlist_credentials` leaves out `assigned` bands and adds `qr_email_hashes` (emailed codes still usable) |
 
 ## SQL functions
 

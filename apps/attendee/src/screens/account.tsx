@@ -2,8 +2,10 @@ import { pageTitle } from "@synan/ui/brand";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useSession, signOut } from "../data/auth";
-import { getPass, reportLostBand, tierLabel } from "../data/pass";
-import { usePortalVersion, useResource } from "../data/mock";
+import { loadPass, reportLostBand, tierLabel, usePass, type Pass } from "../data/pass";
+import { requestDataExport, requestErasure } from "../data/account";
+import { failureCopy } from "../data/failure-copy";
+import { useResource } from "../data/resource";
 import { PageHeader, PageShell, RuledRow } from "../components/page";
 import { ErrorState, OfflineState, SkeletonCells } from "../components/states";
 import { ActionButton, Badge, buttonClass } from "@synan/ui/components";
@@ -67,14 +69,15 @@ export default function Account() {
     document.title = pageTitle("Account");
   }, []);
 
-  usePortalVersion();
   const session = useSession();
   const navigate = useNavigate();
   const [confirmLost, setConfirmLost] = useState(false);
   const [confirmErase, setConfirmErase] = useState(false);
   const [requested, setRequested] = useState<string | null>(null);
   // Load once for the screen's loading/error/offline states; then read live.
-  const account = useResource("account", () => getPass());
+  const account = useResource("account", loadPass);
+  const live = usePass();
+  const pass = live.status === "ready" ? live.data : null;
 
   // RequireSession guards this route; this keeps the type narrow.
   if (!session) return null;
@@ -94,7 +97,8 @@ export default function Account() {
       ) : (
         <AccountRows
           email={session.email}
-          name={session.name.includes("@") || !session.name.includes(" ") ? getPass().holder : session.name}
+          name={(session.name.includes("@") || !session.name.includes(" ")) && pass ? pass.holder : session.name}
+          pass={pass}
           onLost={() => setConfirmLost(true)}
           onExport={() => setRequested("We'll email you a copy of your data, usually within a day.")}
           onErase={() => setConfirmErase(true)}
@@ -107,7 +111,12 @@ export default function Account() {
       )}
 
       {confirmLost ? (
-        <ConfirmDialog title="Mark your band as lost?" confirmLabel="Mark band lost" onConfirm={reportLostBand} onClose={() => setConfirmLost(false)}>
+        <ConfirmDialog
+          title="Mark your band as lost?"
+          confirmLabel="Mark band lost"
+          onConfirm={() => void reportLostBand().catch((error: unknown) => setRequested(failureCopy(error).message))}
+          onClose={() => setConfirmLost(false)}
+        >
           The band stops working at every door immediately. Your pass stays valid: collect a replacement band at the
           desk, or bind one here with the desk code.
         </ConfirmDialog>
@@ -116,7 +125,12 @@ export default function Account() {
         <ConfirmDialog
           title="Delete your data?"
           confirmLabel="Delete my data"
-          onConfirm={() => setRequested("Erasure requested. We'll email you when it's done.")}
+          onConfirm={() =>
+            void requestErasure().then(
+              () => setRequested("Erasure requested. We'll email you when it's done."),
+              (error: unknown) => setRequested(failureCopy(error).message),
+            )
+          }
           onClose={() => setConfirmErase(false)}
         >
           We'll delete your profile, registrations and pass. This can't be undone, and you won't be able to enter
@@ -130,6 +144,7 @@ export default function Account() {
 function AccountRows({
   email,
   name,
+  pass,
   onLost,
   onExport,
   onErase,
@@ -138,19 +153,21 @@ function AccountRows({
 }: {
   email: string;
   name: string;
+  /** Null only against the real API, for someone signed in with no pass issued. */
+  pass: Pass | null;
   onLost: () => void;
   onExport: () => void;
   onErase: () => void;
   requested: string | null;
   onSignOut: () => void;
 }) {
-  const pass = getPass();
   return (
     <>
       <RuledRow label="Profile">
         <ProfileBlock name={name} email={email} />
       </RuledRow>
 
+      {pass ? (
       <RuledRow label="Pass and wristband">
         <dl className="grid gap-5 sm:grid-cols-3">
           <div>
@@ -192,6 +209,7 @@ function AccountRows({
           ) : null}
         </div>
       </RuledRow>
+      ) : null}
 
       <RuledRow label="Privacy and your data" id="privacy">
         <p className="max-w-[62ch] text-17 leading-relaxed text-muted-foreground">
@@ -205,7 +223,7 @@ function AccountRows({
             doneLabel="Requested"
             failedLabel="Try again"
             action={async () => {
-              await new Promise((resolve) => setTimeout(resolve, 500));
+              await requestDataExport();
               onExport();
             }}
             className="min-h-11 px-4 text-13"

@@ -1,7 +1,9 @@
 import { BRAND, pageTitle } from "@synan/ui/brand";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { linkProblem, verifyToken, useSession, getSession, signOut } from "../data/auth";
+import { emailedLinkFor, getSession, requestSignInLink, signOut, useSession, verifyToken } from "../data/auth";
+import type { VerifyOutcome } from "../data/backend";
+import { failureCopy } from "../data/failure-copy";
 import { PageShell, Eyebrow, Panel } from "../components/page";
 import { ActionButton, buttonClass } from "@synan/ui/components";
 import { fieldClass } from "../components/form-styles";
@@ -63,18 +65,28 @@ function SignInScreen() {
       setError("Enter the email you registered with.");
       return;
     }
-    if (!/^[^s@]+@[^s@]+.[^s@]+$/.test(email.trim())) {
+    // The same check as registration (data/registration.ts). It was missing its backslashes, so
+    // any address with an "s" in it was refused.
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setError("That email doesn't look complete. Check for a missing @ or dot.");
       return;
     }
 
     setState("submitting");
 
-    // Small delay to show submitting state. The session starts only when the link is
-    // opened (/verify), never when it is requested.
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    // The session starts only when the link is opened (/verify), never when it is requested.
+    try {
+      await requestSignInLink(email, next);
+    } catch (failure) {
+      setState("idle");
+      setError(failureCopy(failure).message);
+      return;
+    }
     setState("sent");
   };
+
+  // Mock build only: no email is sent, so the link is shown here.
+  const emailedLink = import.meta.env.DEV ? emailedLinkFor(email.trim(), next) : null;
 
   if (state === "sent") {
     return (
@@ -85,14 +97,14 @@ function SignInScreen() {
           <p className="mt-4 text-17 leading-relaxed text-muted-foreground">
             We sent a sign-in link to {email.trim()}. It should arrive within a minute. Open it on this device to go straight to your pass.
           </p>
-          {import.meta.env.DEV ? (
+          {emailedLink ? (
           <Panel className="mt-8">
             <p className="text-13 font-medium text-muted-foreground">
               Mock build · the link in the email
             </p>
             <p className="mt-2 break-all font-mono text-11 tracking-[0.08em]">
               <Link
-                to={`/verify?token=syn-magic-${encodeURIComponent(email.trim())}&next=${encodeURIComponent(next)}`}
+                to={emailedLink}
                 className="underline underline-offset-4"
               >
                 /verify?token=syn-magic-{email.trim()}
@@ -103,7 +115,7 @@ function SignInScreen() {
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <ActionButton
               doneLabel="Sent again"
-              action={() => new Promise((resolve) => setTimeout(resolve, 500))}
+              action={() => requestSignInLink(email, next)}
               className="min-h-12 px-5 text-15"
             >
               Send the link again
@@ -174,31 +186,62 @@ function SignInScreen() {
   );
 }
 
+/**
+ * A link works once: the redemption is kept per token, so a second effect run (React's
+ * development double-run, or a re-render) shares the first answer instead of spending the
+ * link again and reporting it as used.
+ */
+const redemptions = new Map<string, Promise<VerifyOutcome>>();
+function redeem(token: string, next: string): Promise<VerifyOutcome> {
+  let pending = redemptions.get(token);
+  if (!pending) {
+    pending = verifyToken(token, next);
+    redemptions.set(token, pending);
+  }
+  return pending;
+}
+
 function VerifyScreen() {
   useEffect(() => {
     document.title = pageTitle("Verify");
   }, []);
 
   const [searchParams] = useSearchParams();
+  const { hash } = useLocation();
   const navigate = useNavigate();
-  const token = searchParams.get("token");
-  const next = safeNext(searchParams.get("next"));
+  // The API's link carries the token in the fragment (/auth/verify#token=…&return_to=…), so it
+  // never reaches a server log or a Referer; the mock's link uses the query (/verify?token=…).
+  const fragment = new URLSearchParams(hash.slice(1));
+  const token = fragment.get("token") ?? searchParams.get("token");
+  const requested = safeNext(fragment.get("return_to") ?? searchParams.get("next"));
   const [state, setState] = useState<"validating" | "invalid" | "success">(
     token ? "validating" : "invalid",
   );
+  const [problem, setProblem] = useState<"expired" | "invalid" | "unreachable">("invalid");
+  const [next, setNext] = useState(requested);
 
   // All hooks run on every render; verifying starts the session, then a 3-second
   // confirmation precedes the redirect (docs/06 A9).
   useEffect(() => {
     if (!token) return;
-    if (!verifyToken(token)) {
-      setState("invalid");
-      return;
-    }
-    setState("success");
-    const timer = window.setTimeout(() => navigate(next, { replace: true }), 3000);
-    return () => window.clearTimeout(timer);
-  }, [token, next, navigate]);
+    let live = true;
+    let timer: number | undefined;
+    redeem(token, requested).then((outcome) => {
+      if (!live) return;
+      if (!outcome.ok) {
+        setProblem(outcome.problem);
+        setState("invalid");
+        return;
+      }
+      setNext(outcome.next);
+      setState("success");
+      timer = window.setTimeout(() => navigate(outcome.next, { replace: true }), 3000);
+    });
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [token, requested, navigate]);
 
   if (state === "validating") {
     return (
@@ -223,15 +266,15 @@ function VerifyScreen() {
   }
 
   // Expired and invalid links read differently (copy from contracts, docs/02 §7).
-  const problem = !token ? { title: "This link is incomplete", message: "The sign-in link is missing its code. Request a new one." } : ERROR_COPY[linkProblem(token) === "expired" ? "LINK_EXPIRED" : "LINK_INVALID"];
+  const copy = !token ? { title: "This link is incomplete", message: "The sign-in link is missing its code. Request a new one." } : ERROR_COPY[problem === "expired" ? "LINK_EXPIRED" : problem === "unreachable" ? "INTERNAL" : "LINK_INVALID"];
 
   return (
     <AuthLayout>
       <div>
         <Eyebrow>Sign in</Eyebrow>
-        <h1 className="mt-2 font-display text-40 leading-tight">{problem.title}</h1>
+        <h1 className="mt-2 font-display text-40 leading-tight">{copy.title}</h1>
         <p role="alert" className="mt-4 text-17 leading-relaxed text-muted-foreground">
-          {problem.message}
+          {copy.message}
         </p>
         <div className="mt-8">
           <Link to="/sign-in" className={buttonClass("primary", "md")}>
@@ -289,7 +332,8 @@ export default function Auth() {
     return <AlreadySignedInScreen />;
   }
 
-  if (location.pathname === "/verify") {
+  // /auth/verify is where the API's emailed link points (ATTENDEE_APP_ORIGIN + /auth/verify#token=…).
+  if (location.pathname === "/verify" || location.pathname === "/auth/verify") {
     return <VerifyScreen />;
   }
 

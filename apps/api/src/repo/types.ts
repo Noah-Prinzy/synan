@@ -33,6 +33,7 @@ import type {
   ScanResult,
   Severity,
   SigningKeyPurpose,
+  WizardStep,
 } from "@synan/contracts/enums";
 
 export interface UserRow {
@@ -43,6 +44,8 @@ export interface UserRow {
   mfa_enrolled_at: Date | null;
   /** PROPOSED: base32 TOTP secret (encrypted at rest in the real store). */
   mfa_secret: string | null;
+  /** users.display_name; null (or absent) when none was given. */
+  display_name?: string | null;
 }
 
 export interface AttendeeRow {
@@ -59,10 +62,25 @@ export interface VenueRow {
   name: string;
   address: string;
   timezone: string;
-  /** PROPOSED column `venues.city` (not in @connexia/db yet; the Drizzle repo returns null). */
+  /** venues.city, shown in discovery. */
   city: string | null;
+  /* Layout fields (migration 0024). Optional on writes through the fixture writer; reads always carry them. */
+  /** Floor labels in display order. */
+  floors?: string[];
+  capacity_default?: number | null;
+  /** Rises with every zone or room change (database trigger; mirrored in memory). */
+  layout_version?: number;
+  layout_published_at?: Date | null;
 }
-export interface ZoneRow { id: string; venue_id: string; name: string; floor: string | null; geometry_jsonb: Record<string, unknown> | null }
+export interface ZoneRow {
+  id: string;
+  venue_id: string;
+  name: string;
+  floor: string | null;
+  geometry_jsonb: GridShapeRow | null;
+  /** Position in the zone list, set by a layout publish (default 0). */
+  sort_order?: number;
+}
 export interface RoomRow {
   id: string;
   venue_id: string;
@@ -74,7 +92,7 @@ export interface RoomRow {
   continuous_bool: boolean;
   /** PROPOSED column: block | admit_with_alert (01 §7 names the policy; 02 §4.1 has no column). */
   capacity_policy: CapacityPolicy;
-  geometry_jsonb: Record<string, unknown> | null;
+  geometry_jsonb: GridShapeRow | null;
 }
 export interface CheckpointRow {
   id: string;
@@ -88,19 +106,23 @@ export interface CheckpointRow {
   /** checkpoints.position_jsonb: where the gate sits on the venue grid (contracts GridPoint); null/absent = not placed. */
   position_jsonb?: GridPointRow | null;
 }
+/** A room's or zone's shape (contracts GridShape; the database checks it, 0023). */
+export type GridShapeRow = { kind: "rect"; x: number; y: number; w: number; h: number } | { kind: "polygon"; points: [number, number][] };
 export interface GridPointRow { x: number; y: number; side: "n" | "e" | "s" | "w" }
 export interface TransitTimeRow { venue_id: string; from_checkpoint_id: string; to_checkpoint_id: string; min_seconds: number }
 
 export interface EventRow {
   id: string;
   org_id: string;
-  venue_id: string;
+  /** Null only on a draft that has not chosen its venue (events_scheduled_unless_draft). */
+  venue_id: string | null;
   slug: string;
   title: string;
   /** PROPOSED: public description shown on the event page. */
   description: string | null;
-  starts_at: Date;
-  ends_at: Date;
+  /** Null only on a draft whose dates are not set yet. */
+  starts_at: Date | null;
+  ends_at: Date | null;
   timezone: string;
   state: EventState;
   listed_bool: boolean;
@@ -116,7 +138,19 @@ export interface EventRow {
   revocation_epoch: number;
   /** Set when the event closes; starts the retention clock (03 §6). */
   closed_at: Date | null;
+  /* Draft and editing fields (migration 0024). Optional on writes through the fixture writer; reads always carry them. */
+  /** The furthest wizard step reached (default basics). */
+  wizard_step?: WizardStep;
+  published_at?: Date | null;
+  /** The operator who last changed the event, its rooms, sessions or rules. */
+  updated_by?: string | null;
+  created_at?: Date;
+  /** Database time on SQL (a trigger stamps every update); wall-clock time in memory. */
+  updated_at?: Date;
 }
+/** An event with its venue and dates: every event past draft, and a draft once they are set. */
+export type ScheduledEvent = EventRow & { venue_id: string; starts_at: Date; ends_at: Date };
+export const isScheduled = (e: EventRow): e is ScheduledEvent => e.venue_id !== null && e.starts_at !== null && e.ends_at !== null;
 export interface EventRoomRow { event_id: string; room_id: string; capacity_override: number | null }
 export interface SessionRow { id: string; event_id: string; room_id: string; title: string; starts_at: Date; ends_at: Date }
 
@@ -341,6 +375,7 @@ export interface UsersRepo {
   /** Ordered by id, keyset on id. */
   list(opts: { after?: string; limit: number }): Promise<UserRow[]>;
   setPassword(id: string, passwordHash: string): Promise<void>;
+  setRole(id: string, role: Role): Promise<void>;
   /** Pending MFA enrolment, held encrypted on the user (SQL: @synan/db startMfaEnrolment and friends). */
   startMfaEnrolment(id: string, secret: string, now: Date): Promise<void>;
   readPendingMfaSecret(id: string, now: Date): Promise<string | null>;
@@ -398,10 +433,32 @@ export interface VenuesRepo {
   listVenues(opts: { after?: string; limit: number }): Promise<VenueRow[]>;
   zone(id: string): Promise<ZoneRow | null>;
   roomsOfVenue(venueId: string): Promise<RoomRow[]>;
-  updateVenue(id: string, patch: Partial<Omit<VenueRow, "id" | "org_id">>): Promise<VenueRow>;
+  /** Name, address, timezone, city, capacity_default (floors and the layout version change through zones, rooms and publishLayout). */
+  updateVenue(id: string, patch: Partial<Pick<VenueRow, "name" | "address" | "timezone" | "city" | "capacity_default">>): Promise<VenueRow>;
   updateZone(id: string, patch: Partial<Omit<ZoneRow, "id" | "venue_id">>): Promise<ZoneRow>;
   updateRoom(id: string, patch: Partial<Omit<RoomRow, "id" | "venue_id">>): Promise<RoomRow>;
   updateCheckpoint(id: string, patch: Partial<Omit<CheckpointRow, "id" | "venue_id">>): Promise<CheckpointRow>;
+  /**
+   * The whole layout in one step if `expectedVersion` is still current (SQL: @synan/db
+   * publishVenueLayout / venue_layout_publish; memory: a mirror). Statuses as there.
+   */
+  publishLayout(i: {
+    venueId: string; expectedVersion: number; floors: string[]; zones: LayoutZoneRow[]; rooms: LayoutRoomRow[]; now: Date;
+  }): Promise<PublishLayoutOutcome>;
+}
+export interface LayoutZoneRow { id: string; name: string; floor: string | null; geometry: GridShapeRow | null }
+export interface LayoutRoomRow {
+  id: string; zone_id: string; name: string; capacity: number; warn_at_pct: number; block_at_pct: number;
+  capacity_policy: CapacityPolicy; continuous: boolean; geometry: GridShapeRow | null;
+}
+export interface PublishLayoutOutcome {
+  status: "ok" | "version_conflict" | "foreign_id" | "blocked";
+  layout_version: number;
+  zones_added: number;
+  zones_removed: number;
+  rooms_added: number;
+  rooms_removed: number;
+  blocking: { kind: "zone" | "room"; id: string; reason: "in_use" | "has_checkpoints" | "doors_in_other_zone" }[];
 }
 export interface EventsRepo {
   /** Published or live, listed, ordered by starts_at, keyset-paginated on (starts_at, id). */
@@ -411,16 +468,32 @@ export interface EventsRepo {
   rooms(eventId: string): Promise<EventRoomRow[]>;
   sessions(eventId: string): Promise<SessionRow[]>;
   accessRules(eventId: string): Promise<AccessRuleRow[]>;
-  /** Every event (operators), optionally by state; ordered by starts_at, id; keyset on (starts_at, id). */
+  /**
+   * Every event (operators), optionally by state; ordered by starts_at, id; keyset on (starts_at, id).
+   * Events without dates (drafts) sort last, among themselves by id.
+   */
   listAll(opts: { state?: EventState; q?: string; after?: { starts_at: Date; id: string }; limit: number }): Promise<EventRow[]>;
-  update(id: string, patch: Partial<Omit<EventRow, "id" | "org_id" | "venue_id">>): Promise<EventRow>;
-  /** Replace the event's rooms (draft or published only; the caller checks). */
+  /** Every event, drafts included, most recently changed first; keyset on (updated_at, id) descending. */
+  listAdmin(opts: { state?: EventState; q?: string; venueId?: string; after?: { updated_at: Date; id: string }; limit: number }): Promise<EventRow[]>;
+  update(id: string, patch: Partial<Omit<EventRow, "id" | "org_id" | "venue_id" | "created_at" | "updated_at">>): Promise<EventRow>;
+  /** A draft's venue: its rooms go, and with them their sessions and access rules (as the database cascades). */
+  setVenue(eventId: string, venueId: string): Promise<EventRow>;
+  /** Replace the event's rooms (draft or published only; the caller checks). Removed rooms take their sessions and rules. */
   setRooms(eventId: string, rooms: EventRoomRow[]): Promise<void>;
   /**
-   * Atomically replace the rule set if the stored version equals `expectedVersion`. Returns the new
-   * version, or null when another republish won (optimistic concurrency).
+   * Atomically replace the rule set if the stored version equals `expectedVersion`, recording who
+   * published the new version and when. Returns the new version, or null when another republish won.
    */
-  replaceAccessRules(eventId: string, expectedVersion: number, rules: AccessRuleRow[]): Promise<number | null>;
+  replaceAccessRules(eventId: string, expectedVersion: number, rules: AccessRuleRow[], by?: { actorId: string | null; now: Date }): Promise<number | null>;
+  /** When and by whom a stored access-rule version was published; null when it was never recorded. */
+  accessRuleVersion(eventId: string, version: number): Promise<{ published_at: Date; published_by: string | null } | null>;
+  /** A draft copy (SQL: @synan/db duplicateEvent, which audits `event.duplicate`; memory: a mirror). */
+  duplicate(i: { eventId: string; slug: string; title: string; startsAt: Date | null; actorId: string | null; now: Date }): Promise<string>;
+  /** SQL: @synan/db deleteDraftEvent. The caller audits. */
+  deleteDraft(eventId: string): Promise<"deleted" | "not_found" | "not_draft" | "has_registrations" | "has_history">;
+  insertSession(row: SessionRow): Promise<void>;
+  updateSession(id: string, patch: Partial<Pick<SessionRow, "room_id" | "title" | "starts_at" | "ends_at">>): Promise<SessionRow>;
+  deleteSession(id: string): Promise<boolean>;
   /**
    * The offline allowlist (01 §8) in the contract's flat shape, read in one snapshot: every credential
    * of the event with its effective state and band hashes, and the rooms (behind `checkpointIds`, or
@@ -441,12 +514,14 @@ export interface RegistrationsRepo {
   update(id: string, patch: Partial<Pick<RegistrationRow, "tier" | "state">>): Promise<RegistrationRow>;
   /** Registration counts per attendee (cancelled excluded). */
   countByAttendee(attendeeIds: readonly string[]): Promise<Map<string, number>>;
+  /** Per event: registrations not cancelled, and how many of them checked in. */
+  countByEvent(eventIds: readonly string[]): Promise<Map<string, { registered: number; checked_in: number }>>;
 }
 export interface StaffRepo {
   assignmentsFor(userId: string): Promise<StaffAssignmentRow[]>;
   byId(id: string): Promise<StaffAssignmentRow | null>;
   /** Ordered by shift_start then id; keyset on id is not stable here, so the cursor is an offset. */
-  list(opts: { checkpointId?: string; userId?: string; offset: number; limit: number }): Promise<StaffAssignmentRow[]>;
+  list(opts: { checkpointId?: string; userId?: string; eventId?: string; offset: number; limit: number }): Promise<StaffAssignmentRow[]>;
   /** `overlap` when the person already has an assignment overlapping this window (staff_assignments_no_overlap). */
   insert(row: StaffAssignmentRow & { created_by: string | null }): Promise<"ok" | "overlap">;
   markHandedOver(id: string, at: Date): Promise<void>;
@@ -473,6 +548,8 @@ export interface CarriersRepo {
   byIdentifier(kind: CarrierKind, identifier: string): Promise<CarrierRow | null>;
   byId(id: string): Promise<CarrierRow | null>;
   forCredential(credentialId: string): Promise<CarrierRow[]>;
+  /** Every carrier of these credentials (any state). */
+  forCredentials(credentialIds: readonly string[]): Promise<CarrierRow[]>;
   insert(row: CarrierRow): Promise<void>;
   update(id: string, patch: Partial<Pick<CarrierRow, "state" | "redeemed_at" | "bound_at" | "credential_id">>): Promise<CarrierRow>;
   /** Atomically set redeemed_at if still null. Returns false if it was already redeemed. */
@@ -672,6 +749,8 @@ export interface AllowlistData {
     state: CredentialState;
     dead_nfc_hashes: string[];
     qr_email_spent: boolean;
+    /** Carrier hashes of the emailed codes still usable (0027). */
+    qr_email_hashes: string[];
   }[];
 }
 

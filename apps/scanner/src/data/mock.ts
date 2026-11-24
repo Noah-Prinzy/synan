@@ -28,6 +28,17 @@ export type Gate = MockGate & {
   /** NOT IN CONTRACTS as one object: GET /me/assignments returns checkpoint + shift. */
   shift: { starts: string; ends: string; now: boolean };
   roomName: string | null;
+  /** API mode only (data/api/runtime.ts): what the checkpoint and the assignment say. */
+  api?: {
+    eventId: string;
+    venueId: string;
+    zoneId: string;
+    direction: "in" | "out" | "both";
+    assignmentId: string;
+    /** Server time, ms. */
+    shiftStart: number;
+    shiftEnd: number;
+  };
 };
 
 const roomName = (roomId: string | null) => passEvent.rooms.find((room) => room.room_id === roomId)?.name ?? null;

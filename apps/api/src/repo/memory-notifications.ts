@@ -47,7 +47,8 @@ export function memoryNotifications(t: MemoryTables): NotificationsRepo {
       const id = randomUUID();
       t.notifications.set(id, {
         id, attendee_id: null, event_id: i.eventId, audience_tier: i.tier, kind: i.kind, title: i.title, body: i.body,
-        created_at: i.now, expires_at: new Date(e.ends_at.getTime() + 7 * DAY), seq: seq++,
+        // A draft without dates: 30 days from now (@synan/db broadcastNotification).
+        created_at: i.now, expires_at: new Date((e.ends_at?.getTime() ?? i.now.getTime() + 23 * DAY) + 7 * DAY), seq: seq++,
       });
       return id;
     },

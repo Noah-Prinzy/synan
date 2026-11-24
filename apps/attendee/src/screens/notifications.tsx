@@ -1,8 +1,9 @@
 import { pageTitle } from "@synan/ui/brand";
 import { useEffect } from "react";
-import { getNotifications, markAllRead, type Notification } from "../data/notifications";
-import { useResource, usePortalVersion } from "../data/mock";
-import { getPass } from "../data/pass";
+import { getNotifications, loadNotifications, markAllRead, type Notification } from "../data/notifications";
+import { useDataVersion } from "../data/live";
+import { useResource } from "../data/resource";
+import { usePass } from "../data/pass";
 import { PageHeader, PageShell } from "../components/page";
 import { ErrorState, OfflineState, SkeletonCells, StateBlock } from "../components/states";
 
@@ -65,11 +66,13 @@ export default function Notifications() {
 
   // Load once (the screen's loading/error/offline states); afterwards read live, so
   // "Mark all read" updates in place without a reload.
-  usePortalVersion();
-  const notifications = useResource("notifications", getNotifications);
+  useDataVersion();
+  const notifications = useResource("notifications", loadNotifications);
   const list = notifications.status === "ready" ? getNotifications() : [];
   const unread = list.filter((item) => !item.read).length;
-  const timeZone = getPass().event.timezone;
+  // Times read in the event's zone; without a pass on this device, in the device's own zone.
+  const pass = usePass();
+  const timeZone = pass.status === "ready" ? pass.data.event.timezone : Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   return (
     <PageShell bleed>
@@ -80,7 +83,7 @@ export default function Notifications() {
           unread > 0 ? (
             <button
               type="button"
-              onClick={markAllRead}
+              onClick={() => void markAllRead()}
               className="inline-flex min-h-11 items-center text-15 text-muted-foreground underline-offset-4 transition-colors duration-120 ease-standard hover:text-foreground hover:underline motion-reduce:transition-none"
             >
               Mark all <span className="mx-1 font-mono">{unread}</span> read

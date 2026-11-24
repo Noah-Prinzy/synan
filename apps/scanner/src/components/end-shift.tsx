@@ -46,7 +46,7 @@ export function EndShift({ open, onClose }: { open: boolean; onClose: () => void
           doneLabel="Shift ended"
           keepDone
           action={async () => {
-            endShift();
+            await endShift();
             await new Promise((resolve) => window.setTimeout(resolve, 500));
             navigate("/pair", { replace: true, state: { ended: true } });
           }}

@@ -3,7 +3,7 @@
  * never colour alone. Belongs in `@synan/contracts/copy` next to the scan results; kept here
  * until contracts carries operator copy for credentials, carriers and roles.
  */
-import type { CarrierState, CredentialState, RegistrationState, Role } from "@synan/contracts/enums";
+import type { CarrierState, CredentialState, RegistrationState } from "@synan/contracts/enums";
 import type { SignalState } from "@synan/ui/data";
 
 export const CREDENTIAL_VIEW: Record<CredentialState, { label: string; shape: SignalState; tone: string }> = {
@@ -33,13 +33,8 @@ export const CARRIER_VIEW: Record<CarrierState, { label: string; detail: string 
 
 export const CARRIER_ORDER: CarrierState[] = ["stock", "assigned", "bound", "active", "lost", "retired"];
 
-export const ROLE_LABEL: Record<Role, string> = {
-  admin: "Admin",
-  organiser: "Organiser",
-  security_staff: "Security staff",
-  speaker: "Speaker",
-  crew: "Crew",
-};
+/** Role names live with the capability map (one place for everything about roles). */
+export { ROLE_LABEL } from "../../access/capabilities";
 
 export const CHIP_PROFILE_LABEL: Record<string, string> = {
   ntag_uid: "NTAG (UID)",

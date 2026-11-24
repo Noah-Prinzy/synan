@@ -3,10 +3,10 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { registerServiceWorker } from "@synan/ui/mobile";
 import App from "./App";
-import { applyDevParams } from "./data/mock";
+import { backend } from "./data/backend";
 import "./index.css";
 
-applyDevParams(window.location.search);
+backend.applyDevParams(window.location.search);
 
 // The static frame in index.html stays until the app's own header is in the DOM, then goes
 // in the same frame (a MutationObserver callback runs before the next paint).

@@ -105,7 +105,7 @@ export const BroadcastNotificationResult = z.object({ id: Id, event_id: Id, tier
 
 export const DataRequestAccepted = z.object({ request_id: Id, state: z.enum(["queued"]) });
 
-const STAFF_SELF: readonly Access[] = ["security_staff", "speaker", "crew"];
+const STAFF_SELF: readonly Access[] = ["security_staff", "speaker", "crew", "desk_clerk"];
 
 export const meEndpoints = {
   myCredential: endpoint({ method: "GET", path: "/me/credential", access: ATTENDEE, query: MeCredentialQuery, response: MyCredential }),

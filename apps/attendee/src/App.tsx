@@ -45,6 +45,8 @@ export default function App() {
         <Route path="/account" element={<Gate><Account /></Gate>} />
         <Route path="/sign-in" element={<Auth />} />
         <Route path="/verify" element={<Auth />} />
+        {/* Where the API's emailed sign-in link lands: /auth/verify#token=…&return_to=… */}
+        <Route path="/auth/verify" element={<Auth />} />
         {DevControls ? <Route path="/dev/controls" element={<DevControls />} /> : null}
         <Route path="*" element={<NotFound />} />
       </Routes>

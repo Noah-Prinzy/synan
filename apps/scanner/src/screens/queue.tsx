@@ -10,6 +10,7 @@ import type { ScanResult } from "@synan/contracts/enums";
 import { ResultChip } from "@synan/ui/data";
 import { ActionButton } from "@synan/ui/components";
 import { STALE_MS, sync, useOnline, useScanner } from "../data/store";
+import { useApi } from "../data/world";
 
 function age(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
@@ -31,6 +32,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 export default function Queue() {
   const { scans, lastSyncAt, allowlistAt, clockOffsetMs } = useScanner();
   const online = useOnline();
+  const api = useApi();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -41,7 +43,8 @@ export default function Queue() {
   const oldest = waiting.reduce<number | null>((min, scan) => (min === null || scan.at < min ? scan.at : min), null);
   const byResult = new Map<ScanResult, number>();
   for (const scan of waiting) byResult.set(scan.result, (byResult.get(scan.result) ?? 0) + 1);
-  const stale = now - allowlistAt > STALE_MS;
+  // API mode with no trusted list: every offline read is refused (fail closed), nothing fails open.
+  const stale = allowlistAt !== null && now - allowlistAt > STALE_MS;
   const clockFault = Math.abs(clockOffsetMs) > 120_000;
 
   return (
@@ -56,7 +59,7 @@ export default function Queue() {
       {stale && !online ? (
         <p role="alert" className="mx-4 mb-4 border border-destructive px-4 py-3 text-15 sm:mx-6">
           <span aria-hidden="true" className="mr-2 font-mono text-destructive">✕</span>
-          The pass list on this device is <span className="font-mono">{age(now - allowlistAt)}</span> old. Known passes are
+          The pass list on this device is <span className="font-mono">{age(now - (allowlistAt ?? now))}</span> old. Known passes are
           still let in, and each one raises an alert. Call your supervisor.
         </p>
       ) : null}
@@ -68,7 +71,7 @@ export default function Queue() {
         <Row label="Oldest">{oldest === null ? "—" : <span className="font-mono">{age(now - oldest)}</span>}</Row>
         <Row label="Last sent">{lastSyncAt === null ? "Not yet" : <span className="font-mono">{age(now - lastSyncAt)} ago</span>}</Row>
         <Row label="Pass list">
-          <span className={`font-mono ${stale ? "text-destructive" : ""}`}>{age(now - allowlistAt)} old</span>
+          {allowlistAt === null ? "—" : <span className={`font-mono ${stale ? "text-destructive" : ""}`}>{age(now - allowlistAt)} old</span>}
         </Row>
         <Row label="Clock offset">
           <span className={`font-mono ${clockFault ? "text-warning" : ""}`}>
@@ -105,11 +108,33 @@ export default function Queue() {
 
       <section aria-labelledby="conflicts" className="border-t border-border px-4 py-5 sm:px-6">
         <h2 id="conflicts" className="text-17 font-medium">Conflicts found at the last sync</h2>
-        <p className="mt-1 text-15 text-muted-foreground">
-          {lastSyncAt === null
-            ? "None yet. If another gate admitted the same pass while both were offline, it is listed here after sync."
-            : "None. Every scan from this device matched what the server knew."}
-        </p>
+        {api && api.conflicts.length > 0 ? (
+          <ul className="mt-3 border-t border-border">
+            {api.conflicts.map((c) => (
+              <li key={c.id} className="border-b border-border py-3">
+                <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <ResultChip result={c.shown} className="text-12" />
+                  {c.recorded && c.recorded !== c.shown ? (
+                    <>
+                      <span aria-hidden="true" className="text-muted-foreground">→</span>
+                      <ResultChip result={c.recorded} className="text-12" />
+                    </>
+                  ) : null}
+                  <span className="font-mono text-13 text-muted-foreground">{c.identifier}</span>
+                </p>
+                <p className="mt-1 text-15 text-muted-foreground">
+                  {c.refused ?? (c.alerts > 0 ? `Raised ${c.alerts === 1 ? "an alert" : `${c.alerts} alerts`} for the supervisor.` : "Recorded differently by the server.")}
+                </p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-1 text-15 text-muted-foreground">
+            {lastSyncAt === null
+              ? "None yet. If another gate admitted the same pass while both were offline, it is listed here after sync."
+              : "None. Every scan from this device matched what the server knew."}
+          </p>
+        )}
         <p className="sr-only">{SCAN_RESULT_COPY.offline_queued.instruction}</p>
       </section>
     </div>

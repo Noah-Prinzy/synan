@@ -20,7 +20,7 @@ export function credentialRef(): string {
   return createHash("sha256").update(randomBytes(32)).digest().subarray(0, 16).toString("base64url");
 }
 
-function hint(c: CarrierRow): string {
+export function hint(c: CarrierRow): string {
   if (c.kind === "nfc") return `band ••${(c.identifier ?? "").slice(-4)}`;
   if (c.kind === "qr_email") return "emailed code";
   return "app pass";
@@ -147,6 +147,8 @@ export class CredentialService {
     const cid = randomToken(16);
     const now = this.clock.now();
     const carrierId = randomUUID();
+    // Registrations exist only for published events, which always have dates (a draft has none to register for).
+    if (!event.ends_at) throw new ContractError("CONFLICT", "The event has no dates yet.");
     const code = await this.qr.emailCode(cred.token_hash, cid, now, event.ends_at.getTime() + 24 * 3600 * 1000);
     // The new code, the retirement of the old ones and the email are one unit of work: the email
     // exists only if the carrier does, and the carrier only with its email queued.

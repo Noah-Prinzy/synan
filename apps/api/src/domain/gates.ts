@@ -55,6 +55,7 @@ export class GateService {
   async health(event: EventRow): Promise<GateHealth[]> {
     const { repos, clock } = this.deps;
     const now = clock.now();
+    if (!event.venue_id) return []; // a draft without a venue has no gates
     const rows = await repos.devices.gateHealth(event.venue_id, { eventId: event.id, now: new Date(now) });
     const rates = await repos.rollups.gateRates(event.id);
     const minute = Math.floor(now / 60_000) * 60_000 - 60_000;

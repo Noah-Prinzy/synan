@@ -131,7 +131,8 @@ describe("slice 2 · events and the guarded lifecycle", () => {
   it("publish refuses without a pass template, listing what is missing; then publishes", async () => {
     const refused = await h.call<{ error: { issues: { path: string }[] } }>("POST", `/events/${ev.id}/publish`, { token: organiser });
     expect(errCode(refused.body)).toBe("CONFLICT");
-    expect(refused.body.error.issues.map((i) => i.path)).toEqual(["pass_template"]);
+    // Issues name the readiness checklist's blocking lines (GET /events/:id/readiness).
+    expect(refused.body.error.issues.map((i) => i.path)).toEqual(["pass"]);
     await h.call("PATCH", `/events/${ev.id}`, { token: organiser, body: { pass_template: { layout: "standard" }, profile_schema: [{ key: "company", label: "Company", type: "text", required: false, hint: "Where you work" }] } });
     const ok = await h.call<EventAdmin>("POST", `/events/${ev.id}/publish`, { token: organiser });
     expect(ok.body.state).toBe("published");

@@ -1,17 +1,30 @@
 import { Wordmark, pageTitle } from "@synan/ui/brand";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
-import { currentCode, type PortalCodeBatch } from "@synan/mock";
 import { PageShell } from "../components/page";
+import { ErrorState, SkeletonCells } from "../components/states";
 import { useOnline } from "../components/use-online";
-import { getCodes, getPass, tierLabel, type CredentialState, type Pass } from "../data/pass";
+import {
+  currentCode,
+  emailPassCopy,
+  getCodes,
+  initialCodes,
+  tierLabel,
+  usePass,
+  watchPass,
+  type CredentialState,
+  type Pass,
+  type PortalCodeBatch,
+} from "../data/pass";
 import { formatDay, formatTime } from "../data/format";
-import { clock, realtime, usePortalVersion } from "../data/mock";
+import { useNow } from "../data/live";
 import { ActionButton, Badge, DrawnCheck, buttonClass, type BadgeTone } from "@synan/ui/components";
 import { useDevicePreference, useWakeLock } from "@synan/ui/mobile";
-import { emailPassCopy } from "../data/pass";
 
+
+/** Real API only, and rare: someone signed in with no pass issued. */
+const NoPass = lazy(() => import("./no-pass"));
 
 const toneFor: Record<CredentialState, BadgeTone> = {
   READY: "success",
@@ -30,49 +43,39 @@ const descriptionFor: Record<CredentialState, string> = {
   REPLACED: "This pass was replaced. Your access now lives on the wristband issued at the desk.",
 };
 
-/** Mock-clock "now", ticking once a second while the tab is visible (docs/05 §5). */
-function useNow(): number {
-  const [now, setNow] = useState(() => clock.now());
-  useEffect(() => {
-    let id: number | null = null;
-    const start = () => {
-      if (id === null) id = window.setInterval(() => setNow(clock.now()), 1000);
-      setNow(clock.now());
-    };
-    const stop = () => {
-      if (id !== null) window.clearInterval(id);
-      id = null;
-    };
-    const onVisibility = () => (document.visibilityState === "visible" ? start() : stop());
-    const unsubscribe = clock.subscribe(() => setNow(clock.now()));
-    onVisibility();
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      stop();
-      unsubscribe();
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, []);
-  return now;
-}
-
 /**
  * The rotating signed codes (D-05, D-12). A batch covers the next 15 minutes, so the
  * QR keeps rotating offline; it is refreshed while online when fewer than five remain.
+ * Against the real API the first batch may still be on its way (`waiting`).
  */
 function useRotatingCode(online: boolean) {
   const now = useNow();
-  const [batch, setBatch] = useState<PortalCodeBatch>(() => getCodes());
-  const remaining = batch.codes.filter((code) => Date.parse(code.expires_at) > now).length;
+  const [batch, setBatch] = useState<PortalCodeBatch | null>(() => initialCodes());
+  const [failed, setFailed] = useState(false);
+  const remaining = batch ? batch.codes.filter((code) => Date.parse(code.expires_at) > now).length : 0;
 
   useEffect(() => {
-    if (online && remaining < 5) setBatch(getCodes());
+    if (!online || remaining >= 5) return;
+    let live = true;
+    Promise.resolve(getCodes()).then(
+      (next) => {
+        if (!live) return;
+        setBatch(next);
+        setFailed(false);
+      },
+      () => {
+        if (live) setFailed(true);
+      },
+    );
+    return () => {
+      live = false;
+    };
   }, [online, remaining]);
 
-  const code = currentCode(batch, now);
-  const ttlMs = batch.rotate_every_s * 1000;
+  const code = batch ? currentCode(batch, now) : null;
+  const ttlMs = (batch?.rotate_every_s ?? 60) * 1000;
   const leftMs = code ? Date.parse(code.expires_at) - now : 0;
-  return { code, leftMs, ttlMs, exhausted: code === null };
+  return { code, leftMs, ttlMs, exhausted: code === null, waiting: batch === null && online && !failed };
 }
 
 function prefersReducedMotion(): boolean {
@@ -109,7 +112,16 @@ function NextCodeRule({ leftMs, ttlMs, codeKey }: { leftMs: number; ttlMs: numbe
 }
 
 function QrBlock({ holder, online }: { holder: string; online: boolean }) {
-  const { code, leftMs, ttlMs, exhausted } = useRotatingCode(online);
+  const { code, leftMs, ttlMs, exhausted, waiting } = useRotatingCode(online);
+
+  if (waiting) {
+    // The first codes are on their way: the empty frame holds the QR's place.
+    return (
+      <div aria-busy="true" className="flex flex-col items-center px-6 pt-5 pb-6 sm:pt-8 sm:pb-8">
+        <div className="aspect-square w-full max-w-75 border border-qr-ink bg-qr-field short-landscape:max-w-[min(18.75rem,calc(100dvh-11rem))]" />
+      </div>
+    );
+  }
 
   if (exhausted || !code) {
     return (
@@ -221,7 +233,8 @@ export function PassTicket({
   const bandFirst = pass.state === "READY" && pass.band !== null;
   const notify = (message: string) => onNotice?.(message);
 
-  const qr = <QrBlock holder={pass.holder} online={online} />;
+  // Keyed by event: a different pass (several held) starts from its own codes.
+  const qr = <QrBlock key={pass.eventId} holder={pass.holder} online={online} />;
 
   return (
     <article
@@ -338,23 +351,41 @@ export default function Pass() {
     document.title = pageTitle("My pass");
   }, []);
 
-  usePortalVersion();
   const [params] = useSearchParams();
-  const pass = getPass(params.get("state"));
+  const resource = usePass(params.get("state"));
+  const pass = resource.status === "ready" ? resource.data : null;
   const online = useOnline();
   const [notice, setNotice] = useState<string | null>(null);
   const showNotice = useCallback((message: string) => setNotice(message), []);
 
   // stream/me: a revocation or hold lands here while the screen is open (P-16).
   const [announcement, setAnnouncement] = useState("");
-  const firstState = useRef(pass.state);
+  const firstState = useRef<CredentialState | null>(null);
+  if (pass && firstState.current === null) firstState.current = pass.state;
   useEffect(() => {
-    return realtime.subscribe("/stream/me", (message) => {
-      if (message.type !== "pass.status") return;
-      if (message.data.state === "revoked") setAnnouncement("Your pass was revoked.");
-      if (message.data.state === "suspended_review") setAnnouncement("Your pass is on hold for review.");
+    return watchPass((state) => {
+      if (state === "revoked") setAnnouncement("Your pass was revoked.");
+      if (state === "suspended_review") setAnnouncement("Your pass is on hold for review.");
     });
   }, []);
+
+  if (!pass) {
+    // Real API only: the mock always has the pass. Nothing kept on this device yet, or no pass issued.
+    return (
+      <PageShell bleed>
+        <h1 className="sr-only">My pass</h1>
+        {resource.status === "loading" ? (
+          <SkeletonCells count={1} />
+        ) : resource.status === "none" ? (
+          <Suspense fallback={null}>
+            <NoPass />
+          </Suspense>
+        ) : (
+          <ErrorState what="your pass" onRetry={resource.retry} />
+        )}
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell bleed>

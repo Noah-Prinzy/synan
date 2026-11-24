@@ -1,11 +1,9 @@
 /**
- * A3: the event's profile schema (GET /events/:slug/profile-schema, served by
- * @synan/mock in the contract ProfileField shape) adapted to the form's field
- * kinds, plus client-side validation and the resumable draft.
+ * A3: the event and its profile schema (GET /events/:slug/profile-schema, in the contract
+ * ProfileField shape) adapted to the form's field kinds, plus client-side validation, the
+ * resumable draft, and sending it (data/backend.ts decides where to).
  */
-import type { ProfileField as ContractProfileField } from "@synan/mock";
-import { getEvents, type EventSummary } from "./events";
-import { portal } from "./mock";
+import { backend, type RegistrationForm, type Session, type SubmitOutcome } from "./backend";
 
 export type ProfileField =
   | { kind: "text"; id: string; label: string; required: boolean; placeholder?: string; hint?: string }
@@ -24,29 +22,27 @@ export function emptyDraft(): RegistrationDraft {
   return { name: "", email: "", phone: "", answers: {}, zoneConsent: false };
 }
 
-/** Self-service registration is for listed, open events only. */
-export function findEvent(slug: string): EventSummary | undefined {
-  return getEvents().find((event) => event.slug === slug);
+/**
+ * The event (self-service registration is for listed, open events only, so `event` is undefined
+ * otherwise) and its profile fields.
+ */
+export function loadRegistration(slug: string): RegistrationForm | Promise<RegistrationForm> {
+  return backend.loadRegistration(slug);
 }
 
-function toField(field: ContractProfileField): ProfileField {
-  const hint = field.hint ?? undefined;
-  const placeholder = field.placeholder ?? undefined;
-  const base = { id: field.key, label: field.label, required: field.required };
-  if (field.type === "select") return { ...base, kind: "select", options: field.options ?? [], hint };
-  if (field.type === "multiselect") return { ...base, kind: "multi", options: field.options ?? [], hint };
-  // text, email, phone, date and checkbox all render as text until the form grows those kinds.
-  return { ...base, kind: "text", placeholder, hint };
-}
-
-export function profileFor(slug: string): ProfileField[] {
-  const profile = portal.profile(slug);
-  if (!profile) return [];
-  return profile.fields.map(toField);
-}
-
+/** Known only to the mock: the real API answers the same for a known and an unknown address. */
 export function isDuplicateEmail(email: string): boolean {
-  return portal.isRegisteredEmail(email);
+  return backend.isDuplicateEmail(email);
+}
+
+/** POST /users/register (or POST /registrations when already signed in as that address). */
+export function submitRegistration(slug: string, draft: RegistrationDraft, session: Session | null): Promise<SubmitOutcome> {
+  return backend.submitRegistration(slug, draft, session);
+}
+
+/** Mock build only: the path that stands in for the emailed link. */
+export function emailedLinkFor(email: string, next: string): string | null {
+  return backend.emailedLinkFor(email, next);
 }
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

@@ -6,14 +6,15 @@ import { PageHeader, PageShell } from "../components/page";
 import { ErrorState, OfflineState, SkeletonCells, StateBlock } from "../components/states";
 import { useSession } from "../data/auth";
 import { formatLongDay, formatTime, zoneLabel } from "../data/format";
-import { useResource } from "../data/mock";
+import { useResource } from "../data/resource";
 import {
   clearDraft,
-  findEvent,
+  emailedLinkFor,
   isDuplicateEmail,
   loadDraft,
-  profileFor,
+  loadRegistration,
   saveDraft,
+  submitRegistration,
   validateIdentity,
   validateProfile,
   type ProfileField,
@@ -23,6 +24,8 @@ import type { EventSummary } from "../data/events";
 import { checkboxClass, fieldClass, optionClass, selectClass } from "../components/form-styles";
 
 export type Step = "identity" | "profile" | "confirm";
+
+const noFields: ProfileField[] = [];
 
 /** Step names say what the person does there, not what the system calls it. */
 const steps: { id: Step; label: string }[] = [
@@ -166,8 +169,10 @@ export default function Register({ step }: { step: Step }) {
   const { slug = "" } = useParams();
   const navigate = useNavigate();
   const session = useSession();
-  const event = findEvent(slug);
-  const fields = profileFor(slug);
+  // The event and GET /events/:slug/profile-schema — the form waits for them (loading / error / offline).
+  const schema = useResource(`register:${slug}`, () => loadRegistration(slug));
+  const event = schema.status === "ready" ? schema.data.event : undefined;
+  const fields = schema.status === "ready" ? schema.data.fields : noFields;
 
   const [draft, setDraft] = useState<RegistrationDraft>(() => loadDraft(slug));
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -175,8 +180,6 @@ export default function Register({ step }: { step: Step }) {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState<null | { email: string }>(null);
   const [failed, setFailed] = useState<null | "offline" | "error">(null);
-  // GET /events/:slug/profile-schema — the form waits for it (loading / error / offline).
-  const schema = useResource(`register:${slug}`, () => fields.length);
 
   const activeIndex = steps.findIndex((item) => item.id === step);
 
@@ -259,20 +262,17 @@ export default function Register({ step }: { step: Step }) {
     navigate(`/events/${slug}/register/confirm`);
   }
 
-  function submitConfirm(formEvent: FormEvent) {
+  async function submitConfirm(formEvent: FormEvent) {
     formEvent.preventDefault();
     if (sending) return;
     setFailed(null);
     setSending(true);
-    window.setTimeout(() => {
-      setSending(false);
-      // Mock: an address containing "+fail@" simulates a server failure.
-      if (!navigator.onLine) return setFailed("offline");
-      if (draft.email.includes("+fail@")) return setFailed("error");
-      clearDraft(slug);
-      setSent({ email: draft.email.trim() });
-      window.scrollTo({ top: 0 });
-    }, 700);
+    const outcome = await submitRegistration(slug, draft, session);
+    setSending(false);
+    if (!outcome.ok) return setFailed(outcome.reason);
+    clearDraft(slug);
+    setSent({ email: draft.email.trim() });
+    window.scrollTo({ top: 0 });
   }
 
   if (schema.status !== "ready") {
@@ -329,7 +329,8 @@ export default function Register({ step }: { step: Step }) {
     // POST /users/register answers 202 and emails a link: the pass opens from that link,
     // which also signs the person in. Already signed in as that address → straight to it.
     const signedInAsThem = session?.email.toLowerCase() === sent.email.toLowerCase();
-    const emailedLink = `/verify?token=syn-magic-${encodeURIComponent(sent.email)}&next=${encodeURIComponent("/pass")}`;
+    // Mock build only: no email is sent, so a button stands in for the link.
+    const emailedLink = import.meta.env.DEV ? emailedLinkFor(sent.email, "/pass") : null;
     return (
       <PageShell bleed>
         <PageHeader label={`Registered · ${dateLine} · ${event.city}`} title="You're in.">
@@ -357,7 +358,7 @@ export default function Register({ step }: { step: Step }) {
                 <Link to="/pass" className={primaryButton}>
                   Open my pass
                 </Link>
-              ) : import.meta.env.DEV ? (
+              ) : emailedLink ? (
                 <Link to={emailedLink} className={primaryButton}>
                   Open the emailed link
                 </Link>
@@ -375,7 +376,7 @@ export default function Register({ step }: { step: Step }) {
                 >
                   send the link again
                 </Link>
-                .{import.meta.env.DEV ? " (Mock build: no email is sent; the button above stands in for the link.)" : ""}
+                .{emailedLink ? " (Mock build: no email is sent; the button above stands in for the link.)" : ""}
               </p>
             ) : null}
           </section>

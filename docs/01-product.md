@@ -93,10 +93,19 @@ Screens for each surface are specified in [06-screens.md](06-screens.md).
 | --- | --- | --- |
 | Admin | Operator | Everything, including venues, access rules, staff, settings, tier overrides |
 | Organiser | Operator | Events, attendees, credentials, reports. No venue layout, staff, or organisation settings |
-| Security Staff | Staff | Operate the Gate Scanner at assigned checkpoints during assigned shifts |
+| Supervisor | Operator | Run the live event: Command Center, alerts, gate health, access log, room recounts, attendee lookup, and clearing or revoking a pass under review. Cannot edit events, venues, access rules, staff, or settings, and cannot export reports |
+| Desk clerk | Staff | Work the registration desk for the events they are assigned to: find an attendee, bind or replace a wristband, mark a band lost, resend a pass. Sees nothing else in the console |
+| Security Staff | Staff | Operate the Gate Scanner at assigned checkpoints during assigned shifts. No console access |
 | Speaker | Staff | No console. Holds a credential with zone permissions granted per event |
 | Crew | Staff | No console. Holds a credential with zone permissions granted per event |
 | Attendee | Public | Own registration, own pass, own agenda, own data |
+
+**Each role sees only its own screens (D-23).** The Admin Command builds its navigation, landing
+page, and actions from the signed-in role: an Admin lands on the Command Center with everything
+available, a Supervisor on the Command Center with the live screens only, a Desk clerk on the desk
+screen and nothing else. Security Staff cannot open the console at all; they use the Gate Scanner.
+Hiding a screen is a convenience, not the control: the server checks the role on every request
+([03 §3](03-security-privacy.md)).
 
 Speakers and crew are staff, not attendee tiers (D-02). They are added by an operator, not through
 public registration, and their room access is granted explicitly rather than inherited from a tier.

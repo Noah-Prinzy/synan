@@ -229,6 +229,7 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<RunningApp
   });
   x.use(`${API_BASE_PATH}/scans`, express.json({ limit: "2mb" }));
   x.use(`${API_BASE_PATH}/carriers/import`, express.json({ limit: "1mb" })); // up to 10,000 identifiers
+  x.use(`${API_BASE_PATH}/venues/:id/layout`, express.json({ limit: "1mb" })); // a whole layout: up to 500 zones, 2,000 rooms
   x.use(express.json({ limit: "64kb" }));
 
   authRoutes(x, ctx);

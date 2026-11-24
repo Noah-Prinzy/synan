@@ -2,9 +2,10 @@ import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { pageTitle } from "@synan/ui/brand";
 import { buttonClass } from "@synan/ui/components";
-import { groupAgenda, getSpaceLeft, type AgendaGroupItem, type AgendaSession } from "../data/agenda";
+import { loadAgenda, getSpaceLeft, type AgendaGroupItem, type AgendaSession } from "../data/agenda";
 import { dayKey, formatLongDay, formatTime } from "../data/format";
-import { clock, useResource } from "../data/mock";
+import { now } from "../data/live";
+import { useResource } from "../data/resource";
 import { PageHeader, PageShell, RuledRow } from "../components/page";
 import { ErrorState, OfflineState, SkeletonCells, StateBlock } from "../components/states";
 
@@ -20,7 +21,7 @@ export default function Agenda() {
     document.title = pageTitle("Agenda");
   }, []);
 
-  const agenda = useResource("agenda", () => groupAgenda());
+  const agenda = useResource("agenda", loadAgenda);
 
   return (
     <PageShell bleed>
@@ -56,7 +57,7 @@ export default function Agenda() {
 function AgendaGroup({ group, index }: { group: AgendaGroupItem; index: number }) {
   const isNow = group.group === "NOW";
   const earlier = group.group === "EARLIER";
-  const today = group.sessions[0] ? dayKey(new Date(clock.now()).toISOString(), group.sessions[0].timezone) : "";
+  const today = group.sessions[0] ? dayKey(new Date(now()).toISOString(), group.sessions[0].timezone) : "";
   let lastDay = "";
   return (
     <div className="enter" style={{ ["--i" as string]: index }}>

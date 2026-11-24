@@ -18,13 +18,13 @@ import { ContractError } from "@synan/contracts/errors";
 import { endpoints, type BatchItemRejection, type Registration } from "@synan/contracts/rest";
 import type { AppContext } from "../app.js";
 import { API_BRAND } from "../brand.js";
-import { carrierDto } from "../domain/credential-service.js";
+import { carrierDto, hint } from "../domain/credential-service.js";
 import type { AuthContext } from "../domain/principal.js";
-import { mayRunDesk } from "../domain/scope.js";
+import { mayRunDesk, mayWorkDeskFor } from "../domain/scope.js";
 import { nfcIdentifier } from "../domain/scan-service.js";
 import { mount } from "../http/route.js";
 import { randomToken, sha256b64url } from "../lib/crypto.js";
-import type { AttendeeRow, EventRow, RegistrationRow } from "../repo/types.js";
+import type { AttendeeRow, CarrierRow, CredentialRow, EventRow, RegistrationRow } from "../repo/types.js";
 import { canSeeEvent } from "./events.js";
 
 type Json = Record<string, unknown>;
@@ -111,11 +111,36 @@ export function registrationRoutes(x: Express, app: AppContext) {
   });
 
   /* ---- operators: an event's registrations ---- */
-  mount(x, app, endpoints.eventRegistrations, async ({ params, query }) => {
+  mount(x, app, endpoints.eventRegistrations, async ({ params, query, ctx }) => {
     const e = await app.repos.events.byId(params.id);
-    if (!e) throw new ContractError("NOT_FOUND");
-    const regs = (await app.repos.registrations.forEvent(e.id))
+    // Desk clerks see only the events at their desk; another event answers like a missing one (D-23).
+    if (!e || !(await mayWorkDeskFor(app, ctx!, e))) throw new ContractError("NOT_FOUND");
+    const clerk = ctx!.role === "desk_clerk";
+    const all = await app.repos.registrations.forEvent(e.id);
+    // Each registration's current credential (newest not replaced) and its live wristband.
+    const creds = await app.repos.credentials.forRegistrations(all.map((r) => r.id));
+    const credOf = new Map<string, CredentialRow>();
+    for (const c of creds) {
+      if (c.state === "replaced" || !c.registration_id) continue;
+      const cur = credOf.get(c.registration_id);
+      if (!cur || c.issued_at > cur.issued_at) credOf.set(c.registration_id, c);
+    }
+    const bandOf = new Map<string, CarrierRow>();
+    for (const c of await app.repos.carriers.forCredentials([...credOf.values()].map((x) => x.id))) {
+      if (c.kind === "nfc" && c.credential_id && (c.state === "assigned" || c.state === "bound" || c.state === "active")) bandOf.set(c.credential_id, c);
+    }
+    let matching: Set<string> | null = null;
+    if (query.q) {
+      // Operators search identity: a bounded decrypt-and-filter over this event's attendees (SQL backend).
+      const found = await app.repos.attendees.search(query.q, { attendeeIds: [...new Set(all.map((r) => r.attendee_id))], limit: 5000 });
+      matching = new Set(found.map((a) => a.id));
+    }
+    const regs = all
       .filter((r) => !query.tier || r.tier === query.tier)
+      .filter((r) => !query.state || r.state === query.state)
+      .filter((r) => !query.credential || credOf.get(r.id)?.state === query.credential)
+      .filter((r) => query.unbound === undefined || (query.unbound ? !bandOf.has(credOf.get(r.id)?.id ?? "") : bandOf.has(credOf.get(r.id)?.id ?? "")))
+      .filter((r) => !matching || matching.has(r.attendee_id))
       .sort((a, b) => a.id.localeCompare(b.id))
       .filter((r) => !query.cursor || r.id > query.cursor);
     const page = regs.slice(0, query.limit);
@@ -123,9 +148,17 @@ export function registrationRoutes(x: Express, app: AppContext) {
     return {
       items: page.map((r) => {
         const a = people.get(r.attendee_id);
-        return { ...registrationDto(r), attendee: { id: r.attendee_id, full_name: a?.full_name ?? null, email: a?.email ?? null } };
+        const cred = credOf.get(r.id) ?? null;
+        const band = cred ? bandOf.get(cred.id) : undefined;
+        return {
+          ...registrationDto(r), attendee: { id: r.attendee_id, full_name: a?.full_name ?? null, email: a?.email ?? null },
+          credential_id: cred?.id ?? null, credential_state: cred?.state ?? null, band_hint: band ? hint(band) : null,
+          // A desk clerk sees identity, tier and states only: no check-in time (D-23).
+          ...(clerk ? {} : { checked_in_at: r.checked_in_at?.toISOString() ?? null }),
+        };
       }),
       next_cursor: regs.length > query.limit ? page.at(-1)!.id : null,
+      total: all.length,
     };
   });
 
@@ -148,12 +181,14 @@ export function registrationRoutes(x: Express, app: AppContext) {
     const e = await app.repos.events.byId(body.event_id);
     if (!e) throw new ContractError("NOT_FOUND");
     if (e.state === "closed" || e.state === "archived") throw new ContractError("CONFLICT", "The event is closed.");
+    if (!e.ends_at) throw new ContractError("CONFLICT", "Set the event's dates before inviting anyone.");
+    const endsAt = e.ends_at.getTime();
     const t = app.clock.now();
-    let expires = Math.min(t + INVITE_TTL_MS, e.ends_at.getTime());
+    let expires = Math.min(t + INVITE_TTL_MS, endsAt);
     if (body.expires_at) {
       expires = Date.parse(body.expires_at);
       if (expires <= t) throw invalid("body.expires_at", "must be in the future");
-      if (expires > e.ends_at.getTime()) throw invalid("body.expires_at", "must not be after the event ends");
+      if (expires > endsAt) throw invalid("body.expires_at", "must not be after the event ends");
     }
     if (expires <= t) throw new ContractError("CONFLICT", "The event has ended.");
     const items = [];
@@ -219,7 +254,7 @@ export function registrationRoutes(x: Express, app: AppContext) {
   /* ---- Public tier at a kiosk ---- */
   mount(x, app, endpoints.kioskRegister, async ({ body, ctx }) => {
     const e = await app.repos.events.byId(body.event_id);
-    if (!e || !open(e)) throw new ContractError("NOT_FOUND");
+    if (!e || !open(e) || !e.venue_id) throw new ContractError("NOT_FOUND");
     // Staff run a kiosk only at a perimeter desk of this venue, inside their shift (server time).
     if (!(await mayRunDesk(app, ctx!, e.venue_id))) {
       throw new ContractError("CHECKPOINT_NOT_ASSIGNED", "A kiosk runs only at a perimeter desk you are staffing now.");

@@ -5,8 +5,9 @@
  * - Venue consistency is checked here with the same rules the database enforces (a room's and a
  *   checkpoint's zone belong to the same venue; warn ≤ block thresholds; unique hardware id), so
  *   both repositories answer 4xx rather than one of them failing with a constraint error.
- * - Layout edits apply immediately. "Drafts until Publish layout" (06 D3) is client state: the
- *   server has no layout-draft model (proposed doc change). Edits invalidate cached projections.
+ * - "Drafts until Publish layout" (06 D3): the draft is client state; PUT /venues/:id/layout publishes
+ *   the whole layout in one step against `layout_version` (409 when stale). Single zone and room edits
+ *   still apply immediately and raise the version too. Edits invalidate cached projections.
  * - Every mutation is audited. Non-operators see only checkpoints they are assigned to.
  */
 import { randomUUID } from "node:crypto";
@@ -19,7 +20,19 @@ import type { CheckpointRow, RoomRow, ScanRow, VenueRow, ZoneRow } from "../repo
 
 type Json = Record<string, unknown>;
 
-export const venueDto = (v: VenueRow) => ({ id: v.id, org_id: v.org_id, name: v.name, address: v.address, timezone: v.timezone, city: v.city });
+export const venueDto = (v: VenueRow) => ({
+  id: v.id, org_id: v.org_id, name: v.name, address: v.address, timezone: v.timezone, city: v.city,
+  floors: v.floors ?? [], capacity_default: v.capacity_default ?? null, layout_version: v.layout_version ?? 0,
+  layout_published_at: v.layout_published_at?.toISOString() ?? null,
+});
+/** Zones in display order: by the venue's floor order (unknown floors last), then their position, then name. */
+export function orderZones<Z extends ZoneRow>(floors: readonly string[], zones: Z[]): Z[] {
+  const rank = (f: string | null) => {
+    const i = f === null ? -1 : floors.indexOf(f);
+    return i === -1 ? floors.length : i;
+  };
+  return [...zones].sort((a, b) => rank(a.floor) - rank(b.floor) || (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+}
 /** The venue grid's extent: the smallest box holding every grid shape; null when there is none. */
 export function gridOf(shapes: readonly unknown[]): { w: number; h: number } | null {
   let w = -1;
@@ -83,7 +96,42 @@ export function layoutRoutes(x: Express, app: AppContext) {
     void venueId;
   };
 
+  /** GET /venues/:id's shape: the venue, its layout in display order, gates, the derived grid and its events. */
+  const venueDetail = async (v: VenueRow) => {
+    const [zones, rooms, cps, events] = await Promise.all([
+      app.repos.venues.zonesOfVenue(v.id), app.repos.venues.roomsOfVenue(v.id), app.repos.venues.checkpointsOfVenue(v.id),
+      app.repos.events.listAdmin({ venueId: v.id, limit: 1000 }),
+    ]);
+    return {
+      ...venueDto(v),
+      zones: orderZones(v.floors ?? [], zones).map(zoneDto),
+      rooms: [...rooms].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)).map(roomDto),
+      checkpoints: [...cps].sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id)).map(checkpointDto),
+      grid: gridOf([...zones, ...rooms].map((r) => r.geometry_jsonb)),
+      events: events.map((e) => ({ id: e.id, title: e.title, state: e.state })),
+    };
+  };
+  /** Floor labels, unique case-insensitively. */
+  const uniqueFloors = (floors: string[], path: string) => {
+    const seen = new Set<string>();
+    floors.forEach((f, i) => {
+      const k = f.toLowerCase();
+      if (seen.has(k)) throw invalid(`${path}.${i}`, "Each floor needs its own name.");
+      seen.add(k);
+    });
+  };
+
   /* ---- organisation (first-run) ---- */
+  mount(x, app, endpoints.currentOrganization, async () => {
+    const [org] = await app.repos.venues.organizations();
+    const venues = await app.repos.venues.listVenues({ limit: 10_000 });
+    return {
+      organization: org ? { id: org.id, name: org.name, timezone: org.timezone, support_email: org.support_email } : null,
+      has_published_venue: venues.some((v) => v.layout_published_at != null),
+      venues: venues.length,
+    };
+  });
+
   mount(x, app, endpoints.createOrganization, async ({ body, ctx }) => {
     if ((await app.repos.venues.organizations()).length > 0) {
       throw new ContractError("CONFLICT", "The organisation is already set up (single organisation in v1, O-01).");
@@ -95,19 +143,45 @@ export function layoutRoutes(x: Express, app: AppContext) {
   });
 
   /* ---- venues ---- */
+  /** Ordered by name (then id); the cursor is an offset. Counts per venue for D2. */
   mount(x, app, endpoints.listVenues, async ({ query }) => {
-    const rows = await app.repos.venues.listVenues({ after: query.cursor, limit: query.limit + 1 });
-    const page = rows.slice(0, query.limit);
-    return { items: page.map(venueDto), next_cursor: rows.length > query.limit ? page.at(-1)!.id : null };
+    const offset = query.cursor ? Number(query.cursor) : 0;
+    if (!Number.isInteger(offset) || offset < 0) throw invalid("query.cursor", "invalid cursor");
+    const needle = query.q?.trim().toLowerCase();
+    const all = (await app.repos.venues.listVenues({ limit: 10_000 }))
+      .filter((v) => !needle || v.name.toLowerCase().includes(needle) || (v.city ?? "").toLowerCase().includes(needle))
+      .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    const page = all.slice(offset, offset + query.limit);
+    const events = await app.repos.events.listAdmin({ limit: 100_000 });
+    const items = [];
+    for (const v of page) {
+      const [zones, rooms, cps] = await Promise.all([
+        app.repos.venues.zonesOfVenue(v.id), app.repos.venues.roomsOfVenue(v.id), app.repos.venues.checkpointsOfVenue(v.id),
+      ]);
+      const held = events.filter((e) => e.venue_id === v.id);
+      items.push({
+        ...venueDto(v),
+        counts: {
+          zones: zones.length, rooms: rooms.length, checkpoints: cps.length, capacity: rooms.reduce((s, r) => s + r.capacity, 0),
+          events: held.length, active_events: held.filter((e) => e.state === "published" || e.state === "live").length,
+        },
+      });
+    }
+    return { items, next_cursor: all.length > offset + query.limit ? String(offset + query.limit) : null };
   });
 
   mount(x, app, endpoints.createVenue, async ({ body, ctx }) => {
     const [org] = await app.repos.venues.organizations();
     if (!org) throw new ContractError("CONFLICT", "Create the organisation first (first-run setup).");
-    const row: VenueRow = { id: randomUUID(), org_id: org.id, name: body.name, address: body.address, timezone: body.timezone, city: body.city ?? null };
+    const floors = body.floors ?? [];
+    uniqueFloors(floors, "body.floors");
+    const row: VenueRow = {
+      id: randomUUID(), org_id: org.id, name: body.name, address: body.address, timezone: body.timezone, city: body.city ?? null,
+      floors, capacity_default: body.capacity_default ?? null, layout_version: 0, layout_published_at: null,
+    };
     await app.repos.fixtures.venue(row);
-    await audit(ctx!.sub, "venue.create", `venue:${row.id}`, { name: row.name });
-    return venueDto(row);
+    await audit(ctx!.sub, "venue.create", `venue:${row.id}`, { name: row.name, floors: floors.length });
+    return venueDto((await app.repos.venues.venue(row.id))!);
   });
 
   mount(x, app, endpoints.updateVenue, async ({ params, body, ctx }) => {
@@ -117,12 +191,59 @@ export function layoutRoutes(x: Express, app: AppContext) {
     return venueDto(updated);
   });
 
-  mount(x, app, endpoints.getVenue, async ({ params }) => {
+  mount(x, app, endpoints.getVenue, async ({ params }) => venueDetail(await venueOr404(params.id)));
+
+  /* ---- whole-layout publish (06 D3) ---- */
+  mount(x, app, endpoints.publishLayout, async ({ params, body, ctx }) => {
     const v = await venueOr404(params.id);
-    const [zones, rooms, cps] = await Promise.all([
-      app.repos.venues.zonesOfVenue(v.id), app.repos.venues.roomsOfVenue(v.id), app.repos.venues.checkpointsOfVenue(v.id),
-    ]);
-    return { ...venueDto(v), zones: zones.map(zoneDto), rooms: rooms.map(roomDto), checkpoints: cps.map(checkpointDto), grid: gridOf([...zones, ...rooms].map((r) => r.geometry_jsonb)) };
+    // Rooms and capacities feed live decisions: with doors open here, a fresh second factor is required
+    // (as for republishing access rules mid-event).
+    const live = (await app.repos.events.listAll({ state: "live", limit: 1000 })).filter((e) => e.venue_id === v.id);
+    if (live.length && !app.auth.isMfaFresh(ctx!)) throw new ContractError("MFA_REQUIRED");
+    uniqueFloors(body.floors, "body.floors");
+    const issues: { path: string; message: string }[] = [];
+    const floorSet = new Set(body.floors);
+    const zoneIds = new Set<string>();
+    body.zones.forEach((z, i) => {
+      if (zoneIds.has(z.id)) issues.push({ path: `body.zones.${i}.id`, message: "This zone is listed twice." });
+      zoneIds.add(z.id);
+      if (z.floor !== null && !floorSet.has(z.floor)) issues.push({ path: `body.zones.${i}.floor`, message: `${z.name} is on a floor that is not in the layout.` });
+    });
+    const roomIds = new Set<string>();
+    body.rooms.forEach((r, i) => {
+      if (roomIds.has(r.id) || zoneIds.has(r.id)) issues.push({ path: `body.rooms.${i}.id`, message: "This room is listed twice." });
+      roomIds.add(r.id);
+      if (!zoneIds.has(r.zone_id)) issues.push({ path: `body.rooms.${i}.zone_id`, message: `${r.name} is not inside a zone.` });
+      if (r.block_at_pct < r.warn_at_pct) issues.push({ path: `body.rooms.${i}.block_at_pct`, message: `${r.name}: the stop threshold must be at or above the warning.` });
+    });
+    if (issues.length) throw new ContractError("VALIDATION_FAILED", issues[0]!.message, issues);
+    const result = await app.repos.venues.publishLayout({
+      venueId: v.id, expectedVersion: body.expected_version, floors: body.floors, now: new Date(app.clock.now()),
+      zones: body.zones.map((z) => ({ id: z.id, name: z.name, floor: z.floor, geometry: z.geometry })),
+      rooms: body.rooms.map((r) => ({
+        id: r.id, zone_id: r.zone_id, name: r.name, capacity: r.capacity, warn_at_pct: r.warn_at_pct, block_at_pct: r.block_at_pct,
+        capacity_policy: r.capacity_policy, continuous: r.continuous, geometry: r.geometry,
+      })),
+    });
+    if (result.status === "version_conflict") {
+      throw new ContractError("CONFLICT", `The layout was published by someone else (now version ${result.layout_version}). Reload and review the change.`, [
+        { path: "body.expected_version", message: `The current layout version is ${result.layout_version}.` },
+      ]);
+    }
+    if (result.status === "foreign_id") throw invalid("body", "A zone or room id belongs to another venue.");
+    if (result.status === "blocked") {
+      const [zones, rooms] = await Promise.all([app.repos.venues.zonesOfVenue(v.id), app.repos.venues.roomsOfVenue(v.id)]);
+      const nameOf = (b: { kind: string; id: string }) =>
+        (b.kind === "zone" ? zones.find((z) => z.id === b.id)?.name : rooms.find((r) => r.id === b.id)?.name) ?? b.kind;
+      const why = { in_use: "is used by an event or has recorded history, so it cannot be removed", has_checkpoints: "still has gates or doors; move or remove them first", doors_in_other_zone: "has doors in its current zone, so it cannot move to another zone" };
+      throw new ContractError("CONFLICT", "Part of the layout cannot be changed.", result.blocking.map((b) => ({ path: `${b.kind}:${b.id}`, message: `${nameOf(b)} ${why[b.reason]}.` })));
+    }
+    await audit(ctx!.sub, "venue.layout_publish", `venue:${v.id}`, {
+      version: result.layout_version, live: live.length > 0, floors: body.floors.length,
+      zones_added: result.zones_added, zones_removed: result.zones_removed, rooms_added: result.rooms_added, rooms_removed: result.rooms_removed,
+    });
+    app.scans.forgetProjections(); // capacities, thresholds and rooms feed live decisions
+    return venueDetail((await app.repos.venues.venue(v.id))!);
   });
 
   /* ---- zones ---- */
@@ -133,7 +254,7 @@ export function layoutRoutes(x: Express, app: AppContext) {
 
   mount(x, app, endpoints.createZone, async ({ params, body, ctx }) => {
     await venueOr404(params.id);
-    const row: ZoneRow = { id: randomUUID(), venue_id: params.id, name: body.name, floor: body.floor, geometry_jsonb: (body.geometry ?? null) as Json | null };
+    const row: ZoneRow = { id: randomUUID(), venue_id: params.id, name: body.name, floor: body.floor, geometry_jsonb: body.geometry ?? null };
     await app.repos.fixtures.zone(row);
     await audit(ctx!.sub, "zone.create", `zone:${row.id}`, { venue_id: params.id });
     return zoneDto(row);
@@ -142,7 +263,7 @@ export function layoutRoutes(x: Express, app: AppContext) {
   mount(x, app, endpoints.updateZone, async ({ params, body, ctx }) => {
     if (!(await app.repos.venues.zone(params.id))) throw new ContractError("NOT_FOUND");
     const { geometry, ...rest } = body;
-    const updated = await app.repos.venues.updateZone(params.id, { ...rest, ...(geometry !== undefined ? { geometry_jsonb: geometry as Json | null } : {}) });
+    const updated = await app.repos.venues.updateZone(params.id, { ...rest, ...(geometry !== undefined ? { geometry_jsonb: geometry } : {}) });
     await audit(ctx!.sub, "zone.update", `zone:${params.id}`, { fields: Object.keys(body) });
     app.scans.forgetProjections();
     return zoneDto(updated);
@@ -156,7 +277,7 @@ export function layoutRoutes(x: Express, app: AppContext) {
     const row: RoomRow = {
       id: randomUUID(), venue_id: body.venue_id, zone_id: body.zone_id, name: body.name, capacity: body.capacity,
       warn_at_pct: body.warn_at_pct, block_at_pct: body.block_at_pct, continuous_bool: body.continuous,
-      capacity_policy: body.capacity_policy, geometry_jsonb: (body.geometry ?? null) as Json | null,
+      capacity_policy: body.capacity_policy, geometry_jsonb: body.geometry ?? null,
     };
     await app.repos.fixtures.room(row);
     await audit(ctx!.sub, "room.create", `room:${row.id}`, { venue_id: row.venue_id, capacity: row.capacity });
@@ -173,7 +294,7 @@ export function layoutRoutes(x: Express, app: AppContext) {
     const updated = await app.repos.venues.updateRoom(params.id, {
       ...rest,
       ...(continuous !== undefined ? { continuous_bool: continuous } : {}),
-      ...(geometry !== undefined ? { geometry_jsonb: geometry as Json | null } : {}),
+      ...(geometry !== undefined ? { geometry_jsonb: geometry } : {}),
     });
     await audit(ctx!.sub, "room.update", `room:${params.id}`, { fields: Object.keys(body), capacity: updated.capacity });
     app.scans.forgetProjections(); // capacity and thresholds feed live decisions
@@ -225,7 +346,7 @@ export function layoutRoutes(x: Express, app: AppContext) {
     if (query.event_id) {
       const e = await app.repos.events.byId(query.event_id);
       if (!e) throw new ContractError("NOT_FOUND");
-      venueIds = [e.venue_id];
+      venueIds = e.venue_id ? [e.venue_id] : [];
     } else if (query.venue_id) venueIds = [query.venue_id];
     else venueIds = (await app.repos.venues.listVenues({ limit: 10_000 })).map((v) => v.id);
     let rows = (await Promise.all(venueIds.map((v) => app.repos.venues.checkpointsOfVenue(v)))).flat();

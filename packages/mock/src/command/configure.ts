@@ -233,6 +233,57 @@ export interface CredentialOverview {
   recent: { at: string; band_hint: string; attendee: string; action: "bound" | "replaced" | "revoked" }[];
 }
 
+/**
+ * One attendee as the registration desk sees them (D8): the table row plus what the desk acts
+ * on. NOT IN CONTRACTS as one shape (Registration + Credential + Carrier, joined).
+ */
+export interface DeskAttendee extends AttendeeListRow {
+  /** The current credential, or null when none is issued yet. */
+  credential_id: string | null;
+  /** The bound band, or null. */
+  carrier_id: string | null;
+  /** When the pass email last went out, and to which address (masked). */
+  pass_sent_at: string | null;
+  /** The last time a band was bound, rebound or replaced at a desk. */
+  band_changed_at: string | null;
+}
+
+/** POST /carriers/bind — a stock band onto a registration (contracts `BindRequest`). */
+export interface BindBandBody {
+  registration_id: string;
+  /** The band's UID, hex, 8–32 characters. */
+  identifier: string;
+}
+
+/**
+ * POST /carriers/:id/rebind (contracts `RebindRequest`). `lost`: the old band is marked lost, the
+ * credential is replaced by a new one (old emailed and portal codes stop working) and the new
+ * band is bound to it. `damaged`: the old band is retired and the credential is kept.
+ */
+export interface ReplaceBandBody {
+  registration_id: string;
+  identifier: string;
+  reason: string;
+  disposition: "lost" | "damaged";
+}
+
+/** POST /credentials/:id/clear-review, or revoke (contracts `ClearReviewRequest`). */
+export interface ReviewBody {
+  outcome: "clear" | "revoke";
+  note: string;
+}
+
+/** What the desk shows at a glance: the bands it can hand out, and its own work today. */
+export interface DeskStock {
+  /** Bands in stock, unassigned (shared across the organisation's events). */
+  stock: number;
+  /** Bands bound to this event's registrations. */
+  bound: number;
+  lost: number;
+  /** Desk actions since the page opened (mock) / since the shift began (API). */
+  today: { bound: number; replaced: number; resent: number };
+}
+
 export interface StaffRow {
   id: string;
   name: string;
@@ -289,6 +340,17 @@ export interface ConfigureApi {
 
   attendees(eventId: string, query?: AttendeeQuery): Promise<{ items: AttendeeListRow[]; total: number }>;
   credentialOverview(eventId: string): Promise<CredentialOverview>;
+
+  /* the registration desk (D8) and pass review (D-06) */
+  /** One attendee with what the desk acts on. */
+  deskAttendee(eventId: string, registrationId: string): Promise<DeskAttendee>;
+  bindBand(eventId: string, body: BindBandBody): Promise<DeskAttendee>;
+  replaceBand(eventId: string, body: ReplaceBandBody): Promise<DeskAttendee>;
+  /** Rate-limited: once a minute per attendee (RATE_LIMITED). */
+  resendPass(eventId: string, registrationId: string): Promise<DeskAttendee>;
+  /** Clear a pass under review back to active, or revoke it. Only for `suspended_review`. */
+  reviewCredential(eventId: string, registrationId: string, body: ReviewBody): Promise<DeskAttendee>;
+  deskStock(eventId: string): Promise<DeskStock>;
 
   staff(): Promise<StaffRow[]>;
   checkpoints(eventId: string): Promise<Checkpoint[]>;
@@ -896,6 +958,117 @@ export function createConfigureMock(options: ConfigureOptions): ConfigureApi {
     return rows;
   };
 
+  /* the registration desk: band, credential and pass state per registration, in memory */
+  interface DeskExtra {
+    identifier: string | null;
+    credential_id: string | null;
+    carrier_id: string | null;
+    pass_sent_at: string | null;
+    band_changed_at: string | null;
+    last_resend: number | null;
+  }
+  const deskExtras = new Map<string, DeskExtra>();
+  /** Band UID → registration it is bound to (organisation-wide: a band is bound once). */
+  const usedBands = new Map<string, string>();
+  const lostBands = new Set<string>();
+  const lostByEvent = new Map<string, number>();
+  const deskToday = new Map<string, { bound: number; replaced: number; resent: number }>();
+  const deskLog = new Map<string, CredentialOverview["recent"]>();
+  const stockBase = new Map<string, { stock: number; bound: number; lost: number }>();
+
+  const deskRow = (eventId: string, registrationId: string): { row: AttendeeListRow; record: EventRecord } => {
+    const record = need(eventId);
+    const row = attendeesFor(record).find((r) => r.registration_id === registrationId);
+    if (!row) throw new MockApiError("NOT_FOUND");
+    return { row, record };
+  };
+
+  const deskExtra = (row: AttendeeListRow): DeskExtra => {
+    let extra = deskExtras.get(row.registration_id);
+    if (!extra) {
+      const seed = hashString(row.registration_id);
+      extra = {
+        identifier: null,
+        credential_id: row.credential_state ? idFor(`credential:${row.registration_id}`) : null,
+        carrier_id: row.band_hint ? idFor(`carrier:${row.registration_id}`) : null,
+        // Most passes went out when the registration was confirmed, days before the event.
+        pass_sent_at:
+          row.state === "confirmed" && row.email ? new Date(clock.now() - (2 + (seed % 9)) * 86_400_000 - (seed % 600) * 60_000).toISOString() : null,
+        band_changed_at: null,
+        last_resend: null,
+      };
+      deskExtras.set(row.registration_id, extra);
+    }
+    return extra;
+  };
+
+  const deskView = (row: AttendeeListRow): DeskAttendee => {
+    const extra = deskExtra(row);
+    return {
+      ...clone(row),
+      credential_id: extra.credential_id,
+      carrier_id: extra.carrier_id,
+      pass_sent_at: extra.pass_sent_at,
+      band_changed_at: extra.band_changed_at,
+    };
+  };
+
+  /** The server's own validation of a band UID (contracts: hex, 8–32 characters). */
+  const checkIdentifier = (raw: string): string => {
+    const identifier = raw.replace(/[\s:-]/g, "").toUpperCase();
+    if (!identifier) throw new MockApiError("VALIDATION_FAILED", { identifier: "Scan the band, or type the number printed on it." });
+    if (!/^[0-9A-F]+$/.test(identifier)) {
+      throw new MockApiError("VALIDATION_FAILED", { identifier: "A band number has only the digits 0–9 and the letters A–F." });
+    }
+    if (identifier.length < 8 || identifier.length > 32) {
+      throw new MockApiError("VALIDATION_FAILED", {
+        identifier: `A band number is 8 to 32 characters long; this one has ${identifier.length}. Scan it again.`,
+      });
+    }
+    // Demo: bands starting FF were never imported, so they are not in stock.
+    if (identifier.startsWith("FF")) {
+      throw new MockApiError("CONFLICT", { identifier: "This band is not in stock: it was never imported. Use a band from this event's box." });
+    }
+    if (lostBands.has(identifier)) {
+      throw new MockApiError("CONFLICT", { identifier: "This band was reported lost, so it cannot be used again. Take a fresh band from the box." });
+    }
+    return identifier;
+  };
+
+  const useBand = (identifier: string, row: AttendeeListRow) => {
+    const owner = usedBands.get(identifier);
+    if (owner && owner !== row.registration_id) {
+      throw new MockApiError("CONFLICT", { identifier: "This band is already bound to another attendee. Take a fresh band from the box." });
+    }
+    usedBands.set(identifier, row.registration_id);
+  };
+
+  /** What the desk may not do for this registration, in the words the clerk will read. */
+  const deskRefuse = (row: AttendeeListRow) => {
+    if (row.state === "cancelled") throw new MockApiError("VALIDATION_FAILED", { identifier: "This registration is cancelled, so no band can be bound to it." });
+    if (row.state === "pending_approval") {
+      throw new MockApiError("VALIDATION_FAILED", { identifier: "This registration is awaiting approval. A band can be bound once it is approved." });
+    }
+    if (row.credential_state === "revoked") throw new MockApiError("VALIDATION_FAILED", { identifier: "This pass is revoked, so no band can be bound to it." });
+    if (row.credential_state === "suspended_review") {
+      throw new MockApiError("VALIDATION_FAILED", { identifier: "This pass is under review. A supervisor must clear it before a band is bound." });
+    }
+  };
+
+  const maskBand = (identifier: string) => `${identifier.slice(0, 6)}…${identifier.slice(-2)}`;
+
+  const deskCount = (eventId: string, what: "bound" | "replaced" | "resent") => {
+    const today = deskToday.get(eventId) ?? { bound: 0, replaced: 0, resent: 0 };
+    today[what] += 1;
+    deskToday.set(eventId, today);
+  };
+
+  const deskNote = (eventId: string, row: AttendeeListRow, action: "bound" | "replaced") => {
+    const log = deskLog.get(eventId) ?? [];
+    log.unshift({ at: now(), band_hint: row.band_hint ?? "", attendee: row.full_name ?? "Public visitor", action });
+    deskLog.set(eventId, log.slice(0, 8));
+  };
+
   const assignmentRow = (assignment: StaffAssignment): AssignmentRow => {
     const person = staffList.find((s) => s.id === assignment.user_id);
     let label = "Unknown gate";
@@ -1300,7 +1473,7 @@ export function createConfigureMock(options: ConfigureOptions): ConfigureApi {
         revoked: n((r) => r.credential_state === "revoked"),
         replaced: n((r) => r.credential_state === "replaced"),
       };
-      const recent = rows
+      const seeded = rows
         .filter((r) => r.band_hint && r.last_scan_at)
         .slice(0, 8)
         .map((r, i) => ({
@@ -1309,6 +1482,8 @@ export function createConfigureMock(options: ConfigureOptions): ConfigureApi {
           attendee: r.full_name ?? "Public visitor",
           action: (i === 3 ? "replaced" : "bound") as "bound" | "replaced",
         }));
+      // What the desk did on this page comes first.
+      const recent = [...(deskLog.get(eventId) ?? []), ...seeded].slice(0, 8);
       return {
         by_state: {
           stock: Math.max(0, 1500 - bound),
@@ -1321,6 +1496,123 @@ export function createConfigureMock(options: ConfigureOptions): ConfigureApi {
         by_chip_profile: { ntag_uid: Math.round(bound * 0.82), ntag424_dna: Math.round(bound * 0.18) },
         credentials,
         recent,
+      };
+    },
+
+    async deskAttendee(eventId, registrationId) {
+      await wait(Math.min(latency, 200));
+      const { row } = deskRow(eventId, registrationId);
+      return deskView(row);
+    },
+
+    async bindBand(eventId, body) {
+      await wait(Math.min(latency * 2, 700));
+      const { row, record } = deskRow(eventId, body.registration_id);
+      const identifier = checkIdentifier(body.identifier);
+      deskRefuse(row);
+      if (row.band_hint) {
+        throw new MockApiError("CONFLICT", { identifier: "This attendee already has a band. Use Rebind or Lost band instead." });
+      }
+      useBand(identifier, row);
+      const extra = deskExtra(row);
+      row.band_hint = maskBand(identifier);
+      extra.identifier = identifier;
+      extra.carrier_id = idFor(`carrier:${identifier}`);
+      extra.band_changed_at = now();
+      if (row.credential_state === null) row.credential_state = "issued";
+      extra.credential_id ??= idFor(`credential:${row.registration_id}`);
+      deskCount(record.id, "bound");
+      deskNote(record.id, row, "bound");
+      return deskView(row);
+    },
+
+    async replaceBand(eventId, body) {
+      await wait(Math.min(latency * 2, 700));
+      const { row, record } = deskRow(eventId, body.registration_id);
+      const identifier = checkIdentifier(body.identifier);
+      if (body.reason.trim().length < 3) {
+        throw new MockApiError("VALIDATION_FAILED", { reason: "Say in a few words what happened to the old band." });
+      }
+      deskRefuse(row);
+      if (!row.band_hint) {
+        throw new MockApiError("CONFLICT", { identifier: "This attendee has no band yet. Use Bind band instead." });
+      }
+      const extra = deskExtra(row);
+      if (extra.identifier === identifier) {
+        throw new MockApiError("VALIDATION_FAILED", { identifier: "That is the band they have now. Scan the new band from the box." });
+      }
+      useBand(identifier, row);
+      if (extra.identifier) {
+        usedBands.delete(extra.identifier);
+        if (body.disposition === "lost") lostBands.add(extra.identifier);
+      }
+      if (body.disposition === "lost") {
+        // 01 §5.3: old band lost, credential revoked and replaced, new band bound to the new one.
+        lostByEvent.set(record.id, (lostByEvent.get(record.id) ?? 0) + 1);
+        extra.credential_id = idFor(`credential:${row.registration_id}:${clock.now()}`);
+        row.credential_state = row.checked_in ? "active" : "issued";
+        // The old emailed pass stops working with the old credential: the new one goes out.
+        extra.pass_sent_at = now();
+      }
+      row.band_hint = maskBand(identifier);
+      extra.identifier = identifier;
+      extra.carrier_id = idFor(`carrier:${identifier}`);
+      extra.band_changed_at = now();
+      deskCount(record.id, "replaced");
+      deskNote(record.id, row, "replaced");
+      return deskView(row);
+    },
+
+    async resendPass(eventId, registrationId) {
+      await wait(Math.min(latency * 2, 600));
+      const { row, record } = deskRow(eventId, registrationId);
+      if (!row.email) {
+        throw new MockApiError("VALIDATION_FAILED", { pass: "This visitor registered without an email address, so there is nowhere to send the pass. Bind a band instead." });
+      }
+      if (row.state !== "confirmed") {
+        throw new MockApiError("VALIDATION_FAILED", { pass: row.state === "cancelled" ? "This registration is cancelled, so it has no pass." : "This registration is awaiting approval. The pass is sent when it is approved." });
+      }
+      if (row.credential_state === "revoked") {
+        throw new MockApiError("VALIDATION_FAILED", { pass: "This pass is revoked, so it cannot be sent again." });
+      }
+      const extra = deskExtra(row);
+      if (extra.last_resend !== null && clock.now() - extra.last_resend < 60_000) throw new MockApiError("RATE_LIMITED");
+      extra.last_resend = clock.now();
+      extra.pass_sent_at = now();
+      deskCount(record.id, "resent");
+      return deskView(row);
+    },
+
+    async reviewCredential(eventId, registrationId, body) {
+      await wait(Math.min(latency * 2, 600));
+      const { row } = deskRow(eventId, registrationId);
+      if (row.credential_state !== "suspended_review") {
+        throw new MockApiError("CONFLICT", { review: "This pass is no longer under review. Someone may have decided already." });
+      }
+      if (body.note.trim().length < 3) {
+        throw new MockApiError("VALIDATION_FAILED", { note: "Write a short note on why: it goes in the audit log." });
+      }
+      row.credential_state = body.outcome === "clear" ? (row.checked_in ? "active" : "issued") : "revoked";
+      return deskView(row);
+    },
+
+    async deskStock(eventId) {
+      await wait(Math.min(latency, 200));
+      const record = need(eventId);
+      let base = stockBase.get(eventId);
+      if (!base) {
+        const rows = attendeesFor(record);
+        const scale = rows.length > 0 ? countsFor(eventId).registered / rows.length : 0;
+        const bound = Math.round(rows.filter((r) => r.band_hint !== null && r.credential_state !== "revoked").length * scale);
+        base = { stock: Math.max(0, 1500 - bound), bound, lost: Math.round(rows.filter((r) => r.credential_state === "replaced").length * scale) };
+        stockBase.set(eventId, base);
+      }
+      const today = deskToday.get(eventId) ?? { bound: 0, replaced: 0, resent: 0 };
+      return {
+        stock: Math.max(0, base.stock - today.bound - today.replaced),
+        bound: base.bound + today.bound,
+        lost: base.lost + (lostByEvent.get(eventId) ?? 0),
+        today: { ...today },
       };
     },
 

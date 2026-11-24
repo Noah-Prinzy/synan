@@ -2,13 +2,18 @@
 import { z } from "zod";
 import { Email, Id, IsoDateTime, Ok, pageOf, PageQuery } from "../common.js";
 import { AttendeeTier, EventState, ReportCadence, ReportKind, ReportScheduleState, ReportState, Role, Severity } from "../enums/index.js";
-import { ADMIN_ONLY, endpoint, IdParam, OPERATORS, PUBLIC, SCANNERS } from "./endpoint.js";
+import { ADMIN_ONLY, endpoint, IdParam, OPERATORS, PUBLIC, SCANNERS, SUPERVISE } from "./endpoint.js";
+
+/** PATCH /staff/:id (admin, MFA, audited): a user's role. Takes effect when their access token next refreshes. */
+export const ChangeStaffRole = z.object({ role: Role, reason: z.string().trim().min(3).max(500) });
 
 export const StaffMember = z.object({
   id: Id,
   email: Email,
   role: Role,
   mfa_enrolled: z.boolean(),
+  /** Additive: the name given at invitation (users.display_name); null when none was given. */
+  display_name: z.string().nullable().optional(),
 });
 export const StaffAssignment = z.object({
   id: Id,
@@ -20,6 +25,10 @@ export const StaffAssignment = z.object({
   event_id: Id.nullable().optional(),
   /** Set by the explicit end-of-shift handover (01 §3). */
   handed_over_at: IsoDateTime.nullable().optional(),
+  /** Additive (operator lists): the gate's label. */
+  checkpoint_label: z.string().optional(),
+  /** Additive (operator lists): the staff member's display name, else their email. */
+  staff_name: z.string().optional(),
 });
 export type StaffAssignment = z.infer<typeof StaffAssignment>;
 export const CreateStaffAssignment = z.object({
@@ -179,21 +188,32 @@ export const OperatorProfile = z.object({
   /** True while an MFA step-up is fresh (privileged actions allowed). */
   mfa_fresh: z.boolean(),
   current_shift: StaffAssignment.extend({ checkpoint_label: z.string() }).nullable(),
+  /**
+   * Additive (D-23): the endpoint names (keys of the contract registry) this role may call, derived
+   * from the registry itself, so a console builds its screens without a copy of the matrix. A desk
+   * clerk is further limited by the handler to the events of their current assignments.
+   */
+  capabilities: z.array(z.string()).optional(),
+  /** Additive (D-23): for a desk clerk, the events their current assignments cover. */
+  desk_event_ids: z.array(Id).optional(),
 });
 export type OperatorProfile = z.infer<typeof OperatorProfile>;
 
 export const staffEndpoints = {
-  myOperator: endpoint({ method: "GET", path: "/me/operator", access: ["admin", "organiser", "security_staff", "speaker", "crew"], response: OperatorProfile }),
+  myOperator: endpoint({ method: "GET", path: "/me/operator", access: ["admin", "organiser", "security_staff", "speaker", "crew", "supervisor", "desk_clerk"], response: OperatorProfile }),
   listStaff: endpoint({ method: "GET", path: "/staff", access: ADMIN_ONLY, query: PageQuery, response: pageOf(StaffMember) }),
-  listAssignments: endpoint({ method: "GET", path: "/staff-assignments", access: OPERATORS, query: PageQuery.extend({ checkpoint_id: Id.optional(), user_id: Id.optional() }), response: pageOf(StaffAssignment) }),
+  /** `event_id` (additive): the shifts tied to that event (06 D6.6). */
+  listAssignments: endpoint({ method: "GET", path: "/staff-assignments", access: OPERATORS, query: PageQuery.extend({ checkpoint_id: Id.optional(), user_id: Id.optional(), event_id: Id.optional() }), response: pageOf(StaffAssignment) }),
   createAssignment: endpoint({ method: "POST", path: "/staff-assignments", access: ADMIN_ONLY, audited: true, body: CreateStaffAssignment, response: StaffAssignment, status: 201 }),
   /* ---- additions (not in 02 §5; proposed) ---- */
   inviteStaff: endpoint({ method: "POST", path: "/staff", access: ADMIN_ONLY, audited: true, body: InviteStaff, response: StaffMember, status: 201 }),
+  /** D-23: change a user's role (never one's own). */
+  changeStaffRole: endpoint({ method: "PATCH", path: "/staff/:id", access: ADMIN_ONLY, mfa: true, audited: true, params: IdParam, body: ChangeStaffRole, response: StaffMember }),
   activateStaff: endpoint({ method: "POST", path: "/auth/activate", access: PUBLIC, rateLimit: "auth", body: ActivateStaff, response: Ok }),
   handover: endpoint({ method: "POST", path: "/staff-assignments/:id/handover", access: ["admin", "organiser", "security_staff"], audited: true, params: IdParam, response: HandoverSummary }),
   gateHeartbeat: endpoint({ method: "POST", path: "/gates/heartbeat", access: SCANNERS, rateLimit: "scan", body: GateHeartbeat, response: z.object({ server_time: IsoDateTime }) }),
-  mfaEnrol: endpoint({ method: "POST", path: "/auth/mfa/enrol", access: ["admin", "organiser", "security_staff", "speaker", "crew"], rateLimit: "auth", response: MfaEnrolment, status: 201 }),
-  mfaEnrolConfirm: endpoint({ method: "POST", path: "/auth/mfa/enrol/confirm", access: ["admin", "organiser", "security_staff", "speaker", "crew"], rateLimit: "auth", audited: true, body: MfaEnrolConfirm, response: Ok }),
+  mfaEnrol: endpoint({ method: "POST", path: "/auth/mfa/enrol", access: ["admin", "organiser", "security_staff", "speaker", "crew", "supervisor", "desk_clerk"], rateLimit: "auth", response: MfaEnrolment, status: 201 }),
+  mfaEnrolConfirm: endpoint({ method: "POST", path: "/auth/mfa/enrol/confirm", access: ["admin", "organiser", "security_staff", "speaker", "crew", "supervisor", "desk_clerk"], rateLimit: "auth", audited: true, body: MfaEnrolConfirm, response: Ok }),
 } as const;
 
 export const reportEndpoints = {
@@ -202,7 +222,7 @@ export const reportEndpoints = {
   reportData: endpoint({ method: "GET", path: "/reports/:eventId/:kind", access: OPERATORS, params: z.object({ eventId: Id, kind: ReportKind }), query: PageQuery.extend({ section: z.string().max(32).optional() }), response: ReportData }),
   /** `:id` is the event id (02 §5 says `:id`; an export creates an event_reports row). */
   exportReport: endpoint({ method: "POST", path: "/reports/:id/export", access: OPERATORS, mfa: true, audited: true, params: IdParam, body: ExportRequest.extend({ kind: ReportKind.optional() }), response: EventReportRow, status: 202 }),
-  dashboard: endpoint({ method: "GET", path: "/dashboard", access: OPERATORS, response: Dashboard }),
+  dashboard: endpoint({ method: "GET", path: "/dashboard", access: SUPERVISE, response: Dashboard }),
   /* ---- scheduled reports (01 §10; additions) ---- */
   listReportSchedules: endpoint({ method: "GET", path: "/events/:id/report-schedules", access: OPERATORS, params: IdParam, response: z.object({ items: z.array(ReportSchedule) }) }),
   /** Sending data out by email: MFA and audited, like an export. */

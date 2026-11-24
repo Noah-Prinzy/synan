@@ -1,10 +1,9 @@
 import { pageTitle } from "@synan/ui/brand";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { hint } from "@synan/mock";
 import { useSession } from "../data/auth";
-import { bindBand, devCodeHint, type BindResult } from "../data/pair";
-import { portal, usePortalVersion } from "../data/mock";
+import { bindBand, bindTappedBand, boundBand, devCodeHint, type BindResult } from "../data/pair";
+import { useDataVersion } from "../data/live";
 import { PageHeader, PageShell, Panel } from "../components/page";
 import { buttonClass, RewardMoment } from "@synan/ui/components";
 import { fieldClass } from "../components/form-styles";
@@ -28,8 +27,8 @@ export default function PassPair() {
   }, []);
 
   useSession();
-  usePortalVersion();
-  const boundUid = portal.bandUid();
+  useDataVersion();
+  const bound = boundBand();
   const [activeTab, setActiveTab] = useState<"tap" | "code">(nfcSupported ? "tap" : "code");
   const [code, setCode] = useState("");
   const [state, setState] = useState<"idle" | "loading" | "listening" | "success" | "error" | "denied">("idle");
@@ -51,7 +50,7 @@ export default function PassPair() {
     }
     setState("loading");
     await new Promise((resolve) => setTimeout(resolve, 400));
-    finish(bindBand(code));
+    finish(await bindBand(code));
   }
 
   async function startTap() {
@@ -62,12 +61,7 @@ export default function PassPair() {
       await reader.scan();
       reader.addEventListener("reading", ({ serialNumber }) => {
         const uid = serialNumber.replace(/:/g, "").toUpperCase();
-        const outcome = portal.bind({ via: "nfc", uid });
-        finish(
-          outcome.ok
-            ? { ok: true, band: { uid: outcome.uid } }
-            : { ok: false, reason: outcome.code === "CONFLICT" ? "already_bound" : "unknown_band" },
-        );
+        void Promise.resolve(bindTappedBand(uid)).then(finish);
       });
     } catch (error) {
       // NotAllowedError: the person (or Chrome's settings) refused NFC permission.
@@ -117,13 +111,13 @@ export default function PassPair() {
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_24rem]">
       <div className="enter px-4 py-10 sm:px-6 md:px-10 lg:py-12">
       <div className="max-w-md">
-        {!boundUid ? <h2 className="font-display text-28 leading-tight">{activeTab === "tap" ? "Tap your band" : "Enter the desk code"}</h2> : null}
+        {!bound ? <h2 className="font-display text-28 leading-tight">{activeTab === "tap" ? "Tap your band" : "Enter the desk code"}</h2> : null}
 
-        {boundUid ? (
+        {bound ? (
           <Panel className="mt-6">
             <p className="text-13 font-medium text-muted-foreground">Already bound</p>
             <p className="mt-2 text-15 text-muted-foreground">
-              Band {hint(boundUid)} is bound to your pass. If it is lost, report it in Account first.
+              Band {bound.hint} is bound to your pass. If it is lost, report it in Account first.
             </p>
             <Link to="/pass" className={buttonClass("secondary", "sm", "mt-4")}>
               Back to my pass
@@ -194,7 +188,7 @@ export default function PassPair() {
                     ? "Enter the 6-character code the desk gave you."
                     : "This device can't read wristbands, so use the 6-character code the desk gives you with your band."}
                 </p>
-                {import.meta.env.DEV ? (
+                {import.meta.env.DEV && devCodeHint ? (
                   <p className="mt-1 text-13 text-muted-foreground">
                     Mock build: try <span className="font-mono">{devCodeHint}</span>
                   </p>
@@ -241,6 +235,8 @@ export default function PassPair() {
                             Get help
                           </Link>
                         </p>
+                      ) : result.reason === "failed" ? (
+                        <p className="text-15 text-destructive">{result.message}</p>
                       ) : (
                         <p className="text-15 text-destructive">Unknown band. Check the code and try again.</p>
                       )}

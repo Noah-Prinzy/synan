@@ -12,7 +12,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { SCAN_RESULT_COPY } from "@synan/contracts/copy";
 import { QR_PREFIX_EMAIL, QR_PREFIX_PORTAL } from "@synan/contracts/qr";
 import { useWakeLock } from "@synan/ui/mobile";
-import { gateById, type Gate } from "../data/mock";
+import { gateById, type Gate } from "../data/world";
 import { decide, normaliseUid, useScanner, type Presented, type Scan as ScanRecord } from "../data/store";
 import { announce } from "../data/feedback";
 import { useCamera } from "../hooks/use-camera";
@@ -86,14 +86,19 @@ export default function Scan() {
 
   const handle = useCallback(
     (presented: Presented) => {
-      const scan = decide(presented, gate);
-      if (!SCAN_RESULT_COPY[scan.result].shownAtGate) {
-        // Duplicate read: the standing verdict stays; say once, quietly, that it was seen.
-        setRepeat(SCAN_RESULT_COPY[scan.result].instruction);
-        if (vibrate) navigator.vibrate?.(10);
-        return;
-      }
-      push(scan);
+      const show = (scan: ScanRecord) => {
+        if (!SCAN_RESULT_COPY[scan.result].shownAtGate) {
+          // Duplicate read: the standing verdict stays; say once, quietly, that it was seen.
+          setRepeat(SCAN_RESULT_COPY[scan.result].instruction);
+          if (vibrate) navigator.vibrate?.(10);
+          return;
+        }
+        push(scan);
+      };
+      // Mock: instant. API mode: the server's verdict, or the local one when the link is down.
+      const out = decide(presented, gate);
+      if (out instanceof Promise) void out.then(show, (e: unknown) => console.error("[scanner] scan not recorded", e));
+      else show(out);
     },
     [gate, push, vibrate],
   );

@@ -10,6 +10,7 @@ import { LivePill, formatClock, formatNumber, formatUtcOffset, type LiveState } 
 import { TopBar, TopBarCell } from "@synan/ui/shell";
 import type { DashboardData } from "@synan/mock";
 import { api } from "../live/backend";
+import { useSession } from "../access/session";
 import { useCommand, useTimeZone } from "../live/context";
 import { useNow } from "../live/hooks";
 import { useSliceValue } from "../live/slice";
@@ -17,11 +18,14 @@ import type { CommandEvent } from "../live/transport";
 import { Menu, MenuItem, MenuNote } from "./menu";
 
 export function AdminTopBar({ menu }: { menu?: ReactNode }) {
+  const { can, landing, landingLabel } = useSession();
+  // A role that does not watch the floor has no live pill or venue clock to read.
+  const watches = can("live.view");
   return (
     <TopBar>
       {menu}
       <TopBarCell className="px-3 sm:px-4 sm:pr-5">
-        <Link to="/" aria-label={`${surfaceName("admin")}, Command Center`} className="flex items-baseline gap-2.5">
+        <Link to={landing} aria-label={`${surfaceName("admin")}, ${landingLabel.replace(/^the /, "")}`} className="flex items-baseline gap-2.5">
           <Wordmark small className="text-17" />
           <span className="hidden text-12 text-muted-foreground md:inline">Command</span>
         </Link>
@@ -30,12 +34,16 @@ export function AdminTopBar({ menu }: { menu?: ReactNode }) {
       <TopBarCell grow className="hidden border-r-0 sm:flex">
         <span />
       </TopBarCell>
-      <TopBarCell className="px-2.5 sm:border-l sm:border-border sm:px-4">
-        <LiveIndicator />
-      </TopBarCell>
-      <TopBarCell className="hidden sm:flex">
-        <VenueClock />
-      </TopBarCell>
+      {watches ? (
+        <>
+          <TopBarCell className="px-2.5 sm:border-l sm:border-border sm:px-4">
+            <LiveIndicator />
+          </TopBarCell>
+          <TopBarCell className="hidden sm:flex">
+            <VenueClock />
+          </TopBarCell>
+        </>
+      ) : null}
       <OperatorMenu />
     </TopBar>
   );
@@ -53,12 +61,14 @@ const stateView: Record<CommandEvent["state"], { text: string; tone: string }> =
 
 function EventSelector() {
   const { events, event, selectEvent } = useCommand();
+  const { can } = useSession();
   const [org, setOrg] = useState<DashboardData | null>(null);
   return (
     <div className="flex min-w-0 flex-1 items-stretch border-r border-border sm:flex-none">
       <Menu
         onOpen={() => {
-          api.dashboard().then(setOrg, () => setOrg(null));
+          // The organisation's live totals are for roles that watch the floor.
+          if (can("live.view")) api.dashboard().then(setOrg, () => setOrg(null));
         }}
         buttonLabel={event ? `Event: ${event.title}. Change event` : "Choose an event"}
         buttonClassName="flex h-full w-full min-w-0 items-center gap-3 px-3 text-left sm:px-4 transition-colors duration-120 ease-standard hover:bg-card/60 motion-reduce:transition-none"
@@ -91,8 +101,10 @@ function EventSelector() {
                   <span className="font-mono text-foreground tabular-nums">{formatNumber(org.on_site)}</span> on site ·{" "}
                   <span className="font-mono text-foreground tabular-nums">{org.open_alerts}</span> open alerts
                 </>
-              ) : (
+              ) : can("live.view") ? (
                 "Events"
+              ) : (
+                "Your events"
               )}
             </MenuNote>
             {(events ?? []).map((item) => (
@@ -181,16 +193,8 @@ function ShiftLabel() {
 
 /* ------------------------------------------------------------ operator menu */
 
-const roleLabel: Record<string, string> = {
-  admin: "Admin",
-  organiser: "Organiser",
-  security_staff: "Security staff",
-  speaker: "Speaker",
-  crew: "Crew",
-};
-
 function OperatorMenu() {
-  const { operator } = useCommand();
+  const { user: operator, roleLabel, can, signOut } = useSession();
   const navigate = useNavigate();
   const zone = useTimeZone();
   const initials = operator?.name
@@ -203,13 +207,14 @@ function OperatorMenu() {
     <div className="flex items-stretch">
       <Menu
         align="end"
-        buttonLabel={operator ? `${operator.name}, ${roleLabel[operator.role]}. Account menu` : "Account menu"}
+        buttonLabel={operator ? `${operator.name}, ${roleLabel}. Account menu` : "Account menu"}
         buttonClassName="flex h-full items-center gap-3 px-3 sm:px-4 transition-colors duration-120 ease-standard hover:bg-card/60 motion-reduce:transition-none"
         button={
           <>
-            <span className="hidden">
-              <span className="block text-13">{operator?.name ?? "—"}</span>
-              <span className="block text-11 text-muted-foreground">{operator ? roleLabel[operator.role] : ""}</span>
+            {/* At 1440 and up there is room to say who is signed in without opening the menu. */}
+            <span className="hidden text-right 2xl:block">
+              <span className="block text-12 leading-tight">{operator?.name ?? "—"}</span>
+              <span className="block text-11 leading-tight text-muted-foreground">{roleLabel}</span>
             </span>
             <span aria-hidden="true" className="grid size-7 place-items-center border border-border font-mono text-11">
               {initials ?? "··"}
@@ -222,25 +227,30 @@ function OperatorMenu() {
             {operator ? (
               <MenuNote>
                 <span className="block text-13 text-foreground">{operator.name}</span>
-                {roleLabel[operator.role]} · {operator.shift.label}{" "}
-                <span className="font-mono tabular-nums">
-                  {formatClock(operator.shift.starts_at, zone, { seconds: false })}–
-                  {formatClock(operator.shift.ends_at, zone, { seconds: false })}
+                <span className="block truncate">{operator.email}</span>
+                <span className="mt-1.5 block">
+                  <span className="text-foreground">{roleLabel}</span> · {operator.shift.label}{" "}
+                  <span className="font-mono tabular-nums">
+                    {formatClock(operator.shift.starts_at, zone, { seconds: false })}–
+                    {formatClock(operator.shift.ends_at, zone, { seconds: false })}
+                  </span>
                 </span>
               </MenuNote>
+            ) : null}
+            {can("settings.manage") ? (
+              <MenuItem
+                onSelect={() => {
+                  close();
+                  navigate("/settings");
+                }}
+              >
+                Settings
+              </MenuItem>
             ) : null}
             <MenuItem
               onSelect={() => {
                 close();
-                navigate("/settings");
-              }}
-            >
-              Settings
-            </MenuItem>
-            <MenuItem
-              onSelect={() => {
-                close();
-                navigate("/sign-in");
+                void signOut();
               }}
             >
               Sign out

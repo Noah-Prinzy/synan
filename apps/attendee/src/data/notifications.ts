@@ -1,17 +1,23 @@
-/** A7: GET /me/notifications, served by @synan/mock. */
-import type { Notification } from "@synan/mock";
-import { portal } from "./mock";
+/** A7: GET /me/notifications and POST /me/notifications/read. */
+import type { Notification } from "@synan/contracts/rest";
+import { backend } from "./backend";
 
 export type { Notification };
 
-export function getNotifications(): Notification[] {
-  return portal.notifications();
+/** For the screen's loading state. */
+export function loadNotifications(): Notification[] | Promise<Notification[]> {
+  return backend.loadNotifications();
 }
 
-export function markAllRead(): void {
-  portal.markAllRead();
+/** The list as it is now (after a load), so "Mark all read" updates in place. */
+export function getNotifications(): Notification[] {
+  return backend.notifications();
+}
+
+export function markAllRead(): void | Promise<void> {
+  return backend.markAllRead();
 }
 
 export function hasUnread(): boolean {
-  return portal.notifications().some((item) => !item.read);
+  return backend.notifications().some((item) => !item.read);
 }

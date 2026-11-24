@@ -1,9 +1,8 @@
 /**
  * A6 view model: the attendee's sessions (GET /me/sessions) grouped Now · Next · Later
- * · Earlier against the mock clock, with each room's live count (public telemetry).
+ * · Earlier against the source's clock, with each room's live count (public telemetry).
  */
-import { dayKey } from "./format";
-import { clock, portal } from "./mock";
+import { backend } from "./backend";
 
 export interface AgendaSession {
   id: string;
@@ -27,32 +26,19 @@ export interface AgendaGroupItem {
   sessions: AgendaSession[];
 }
 
-function mySessions(): AgendaSession[] {
-  const event = portal.passEvent();
-  const rooms = new Map(event.detail.rooms.map((room) => [room.room_id, room]));
-  const live = new Map(portal.occupancy(event.detail.id).map((room) => [room.room_id, room]));
-  return portal.sessions().map((session) => ({
-    id: session.id,
-    eventSlug: event.detail.slug,
-    eventTitle: event.detail.title,
-    timezone: event.detail.timezone,
-    room: rooms.get(session.room_id)?.name ?? "",
-    title: session.title,
-    startsAt: session.starts_at,
-    endsAt: session.ends_at,
-    day: dayKey(session.starts_at, event.detail.timezone),
-    capacity: rooms.get(session.room_id)?.capacity ?? 0,
-    admitted: live.get(session.room_id)?.occupancy ?? null,
-  }));
+/** GET /me/sessions, grouped against the source's clock. */
+export function loadAgenda(): AgendaGroupItem[] | Promise<AgendaGroupItem[]> {
+  const sessions = backend.mySessions();
+  return Array.isArray(sessions) ? groupAgenda(sessions) : sessions.then((items) => groupAgenda(items));
 }
 
 /**
  * Now: running at `now`. Next: the earliest one not yet started. Later: the rest still
  * ahead. Earlier: sessions that have ended, most recent first (owner decision).
  */
-export function groupAgenda(now: number = clock.now()): AgendaGroupItem[] {
+export function groupAgenda(sessions: AgendaSession[], now: number = backend.now()): AgendaGroupItem[] {
   const groups: Record<AgendaGroup, AgendaSession[]> = { NOW: [], NEXT: [], LATER: [], EARLIER: [] };
-  for (const session of mySessions()) {
+  for (const session of sessions) {
     const start = Date.parse(session.startsAt);
     const end = Date.parse(session.endsAt);
     if (end <= now) groups.EARLIER.unshift(session);

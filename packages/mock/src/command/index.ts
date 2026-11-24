@@ -11,6 +11,8 @@ export {
   type CommandMockOptions,
   type LiveSummary,
   type OperatorContext,
+  type SessionRole,
+  SESSION_ROLES,
   type SummarySeries,
 } from "./server";
 export {
@@ -34,7 +36,12 @@ export {
   type AssignmentRow,
   type AttendeeListRow,
   type AttendeeQuery,
+  type BindBandBody,
   type ConfigureApi,
+  type DeskAttendee,
+  type DeskStock,
+  type ReplaceBandBody,
+  type ReviewBody,
   type CreateAssignmentBody,
   type CreateVenueBody,
   type CredentialOverview,
@@ -53,3 +60,16 @@ export {
   type VenueRow,
   type WizardStep,
 } from "./configure";
+export {
+  OpsLog,
+  scanCursor,
+  type AlertContext,
+  type AlertCredential,
+  type GateActivity,
+  type GateDetail,
+  type LinkChange,
+  type OpsScan,
+  type ScanLogQuery,
+  type ScanPage,
+  type TestRead,
+} from "./ops";

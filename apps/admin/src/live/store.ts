@@ -56,6 +56,9 @@ export type FeedItem =
   | { kind: "gate"; id: string; at: number; checkpointId: string; link: GateHealth["link_state"]; queue: number }
   | { kind: "recount"; id: string; at: number; roomId: string; previous: number; next: number };
 
+/** One scan as the scans stream delivers it (tier, carrier, corrected time). */
+export type LiveScan = Extract<ChannelMessage<"/stream/scans">, { type: "scan.result" }>["data"];
+
 export type LoadState =
   | { status: "idle" }
   | { status: "loading" }
@@ -114,6 +117,7 @@ export class CommandStore {
   private announceTimer: number | null = null;
   private feedSeq = 0;
   private flashSeq = 0;
+  private scanListeners = new Set<(scan: LiveScan) => void>();
 
   constructor(
     private readonly api: CommandApi,
@@ -212,6 +216,39 @@ export class CommandStore {
     }
   }
 
+  /**
+   * Resolve with a note (D10): optimistic, like `ack`. Resolution is what takes an alert off the
+   * open list, so a failure puts it back and rethrows for the form to say so.
+   */
+  async resolve(alertId: string, note: string): Promise<BreachAlert> {
+    const before = this.alerts.get();
+    const now = new Date(this.now()).toISOString();
+    this.alerts.set(
+      before.map((a) =>
+        a.id === alertId && a.state !== "resolved"
+          ? { ...a, state: "resolved", resolution_note: note.trim(), acked_at: a.acked_at ?? now }
+          : a,
+      ),
+    );
+    try {
+      const resolved = await this.api.resolveAlert(alertId, { note: note.trim() });
+      this.replaceAlert(resolved);
+      return resolved;
+    } catch (error) {
+      this.alerts.set(before);
+      throw error;
+    }
+  }
+
+  /**
+   * Every scan as it arrives (the access log's live head). Called at scan rate: a listener
+   * buffers and renders at its own pace. Nothing arrives while the link is down.
+   */
+  subscribeScans(listener: (scan: LiveScan) => void): () => void {
+    this.scanListeners.add(listener);
+    return () => this.scanListeners.delete(listener);
+  }
+
   /** Set a room's count to a headcount (D-10). Audited server-side. */
   async recount(roomId: string, count: number, note?: string): Promise<{ previous: number; next: number }> {
     const event = this.event;
@@ -293,6 +330,7 @@ export class CommandStore {
     recent.unshift({ at, result: scan.result });
     if (recent.length > 5) recent.length = 5;
     this.recentScans.set(scan.checkpoint_id, recent);
+    for (const listener of this.scanListeners) listener(scan);
     this.pushFeed({
       kind: "scan",
       id: scan.scan_id,

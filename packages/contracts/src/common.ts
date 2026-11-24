@@ -13,8 +13,18 @@ export type Id = z.infer<typeof Id>;
 export const IsoDateTime = z.iso.datetime({ offset: true });
 export type IsoDateTime = z.infer<typeof IsoDateTime>;
 
-/** IANA timezone name, e.g. `Europe/London`. */
-export const IanaTimezone = z.string().min(1).max(64);
+/** True when the runtime knows the zone (every IANA name, and `UTC`). */
+function isTimeZone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-GB", { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** IANA timezone name, e.g. `Europe/London`; one the runtime does not know is refused. */
+export const IanaTimezone = z.string().min(1).max(64).refine(isTimeZone, "not a known IANA time zone");
 
 /** URL-safe event slug. */
 export const Slug = z

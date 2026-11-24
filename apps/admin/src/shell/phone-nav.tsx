@@ -7,9 +7,10 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { Menu as MenuIcon, X } from "lucide-react";
 import { cn } from "@synan/ui/components";
-import { NAV_GROUPS } from "../routes";
+import type { NavSection } from "../routes";
 
-export function PhoneNav() {
+/** `groups` is the signed-in role's navigation (`navFor`), the same the rail shows. */
+export function PhoneNav({ groups }: { groups: NavSection[] }) {
   const [open, setOpen] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const location = useLocation();
@@ -61,7 +62,7 @@ export function PhoneNav() {
           </button>
         </div>
         <nav aria-label="Admin" className="overflow-y-auto py-2">
-          {NAV_GROUPS.map((group, index) => (
+          {groups.map((group, index) => (
             <div key={group.label} className={cn(index > 0 && "mt-2 border-t border-border pt-2")}>
               <p className="px-4 pt-1 pb-1 text-11 text-muted-foreground">{group.label}</p>
               <ul>

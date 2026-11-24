@@ -16,13 +16,16 @@ export const checkpointDirection = pgEnum("checkpoint_direction", ["in", "out", 
 /** scans.direction: what a single scan was recorded as. Needed for `both` checkpoints. */
 export const scanDirection = pgEnum("scan_direction", ["in", "out"]);
 
+/** events.wizard_step: the five steps of the event wizard (06 D5); matches contracts WizardStep. */
+export const wizardStep = pgEnum("wizard_step", ["basics", "venue", "access", "pass", "review"]);
+
 /** rooms.capacity_policy: behaviour at block_at_pct (01 §7, "admit with alert"). */
 export const capacityPolicy = pgEnum("capacity_policy", ["block", "admit_with_alert"]);
 
 /* ---------------------------------------------------------------------- people */
 
-/** users.role (01 §3). */
-export const userRole = pgEnum("user_role", ["admin", "organiser", "security_staff", "speaker", "crew"]);
+/** users.role (01 §3); supervisor and desk_clerk added by D-23 (migration 0026). */
+export const userRole = pgEnum("user_role", ["admin", "organiser", "security_staff", "speaker", "crew", "supervisor", "desk_clerk"]);
 
 /** registrations.tier (D-02, 01 §4). */
 export const attendeeTier = pgEnum("attendee_tier", ["VIP", "ORDINARY", "PRIVATE_INVITE", "PUBLIC"]);

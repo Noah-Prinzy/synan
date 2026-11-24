@@ -6,7 +6,8 @@ import { PageShell } from "../components/page";
 import { ErrorState, OfflineState, StateBlock } from "../components/states";
 import { getEventDetail, type EventDetail as EventRecord } from "../data/events";
 import { dayKey, formatLongDay, formatTime, zoneLabel } from "../data/format";
-import { portal, useResource } from "../data/mock";
+import { dataVersion } from "../data/live";
+import { useResource } from "../data/resource";
 import { useSession } from "../data/auth";
 import { MorphSkeleton } from "@synan/ui/components";
 
@@ -199,7 +200,7 @@ function DetailSkeleton() {
 export default function EventDetail() {
   const { slug } = useParams<{ slug?: string }>();
   const session = useSession();
-  const resource = useResource(`event:${slug}:${portal.version()}`, () => getEventDetail(slug) ?? null);
+  const resource = useResource(`event:${slug}:${dataVersion()}`, () => getEventDetail(slug));
   const ready = resource.status === "ready" && resource.data !== null;
   const active = useActiveSection(ready);
   useHashLanding(ready);

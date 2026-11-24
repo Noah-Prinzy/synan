@@ -2,8 +2,12 @@
  * The selected event is the global context of every admin screen (docs/06 §2.2).
  * One store, opened for that event; the chrome (live pill, alert strip, status bar)
  * and D1 read from it.
+ *
+ * The events offered are the ones the signed-in user may work (a desk clerk sees only the
+ * events they are assigned to), and the live store opens only for a role that watches.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useSession } from "../access/session";
 import { api, connect } from "./backend";
 import { CommandStore } from "./store";
 import type { CommandEvent, OperatorContext } from "./transport";
@@ -30,6 +34,7 @@ function writeStoredEvent(id: string): void {
 
 interface CommandContextValue {
   store: CommandStore;
+  /** The events this user may work (all of them for an operator). */
   events: CommandEvent[] | null;
   event: CommandEvent | null;
   selectEvent: (id: string) => void;
@@ -41,18 +46,22 @@ interface CommandContextValue {
 const CommandContext = createContext<CommandContextValue | null>(null);
 
 export function CommandProvider({ children }: { children: ReactNode }) {
-  const [events, setEvents] = useState<CommandEvent[] | null>(null);
-  const [operator, setOperator] = useState<OperatorContext | null>(null);
+  const session = useSession();
+  const [all, setAll] = useState<CommandEvent[] | null>(null);
   const [selected, setSelected] = useState<string | null>(readStoredEvent);
+  const operator = session.user;
+  const scope = session.eventScope;
+  const watches = session.can("live.view");
 
   useEffect(() => {
     let cancelled = false;
-    api.events().then((list) => !cancelled && setEvents(list));
-    api.operator().then((op) => !cancelled && setOperator(op));
+    api.events().then((list) => !cancelled && setAll(list));
     return () => {
       cancelled = true;
     };
   }, []);
+
+  const events = useMemo(() => (all && scope ? all.filter((e) => scope.has(e.id)) : all), [all, scope]);
 
   const event = useMemo(() => {
     if (!events) return null;
@@ -65,12 +74,16 @@ export function CommandProvider({ children }: { children: ReactNode }) {
   }, [events, selected]);
 
   useEffect(() => {
-    if (event) void store.open(event);
-  }, [event]);
+    if (event && watches) void store.open(event);
+    else {
+      store.close();
+      store.load.set({ status: "idle" });
+    }
+  }, [event, watches]);
 
   const refreshEvents = useCallback(async () => {
     const list = await api.events();
-    setEvents(list);
+    setAll(list);
   }, []);
 
   const selectEvent = useCallback((id: string) => {

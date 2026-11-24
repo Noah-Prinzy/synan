@@ -33,6 +33,7 @@ export * from "./registration";
 export * from "./webhooks";
 export * from "./jobs";
 export * from "./operations";
+export * from "./layout";
 export * from "./short-codes";
 export * from "./summary";
 export * from "./delivery";

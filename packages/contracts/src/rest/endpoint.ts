@@ -77,6 +77,10 @@ export type ResponseOf<E extends EndpointDef> = z.infer<E["response"]>;
 export const OPERATORS = ["admin", "organiser"] as const satisfies readonly Access[];
 export const ADMIN_ONLY = ["admin"] as const satisfies readonly Access[];
 export const SCANNERS = ["security_staff"] as const satisfies readonly Access[];
+/** Operators and supervisors: the live screens and reads (D-23). */
+export const SUPERVISE = ["admin", "organiser", "supervisor"] as const satisfies readonly Access[];
+/** Operators and desk clerks: the registration desk (D-23); clerks are scoped to their assigned events by the handler. */
+export const DESK = ["admin", "organiser", "desk_clerk"] as const satisfies readonly Access[];
 export const ATTENDEE = ["attendee"] as const satisfies readonly Access[];
 export const PUBLIC = ["public"] as const satisfies readonly Access[];
 

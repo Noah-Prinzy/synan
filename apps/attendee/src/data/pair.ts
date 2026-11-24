@@ -1,16 +1,21 @@
-/** A5: POST /me/credential/bind, served by @synan/mock. */
-import { DEMO_DESK_CODES } from "@synan/mock";
-import { portal } from "./mock";
+/** A5: POST /me/credential/bind (desk code, or a band read with Web NFC). */
+import { backend, type BindResult } from "./backend";
 
-export type BindResult =
-  | { ok: true; band: { uid: string } }
-  | { ok: false; reason: "already_bound" | "unknown_band" };
+export type { BindResult };
 
-/** Shown in the mock build only, so the flow can be exercised. */
-export const devCodeHint = DEMO_DESK_CODES.free;
+/** Shown in the mock build only, so the flow can be exercised. Null against the real API. */
+export const devCodeHint: string | null = backend.devCodeHint;
 
-export function bindBand(code: string): BindResult {
-  const outcome = portal.bind({ via: "desk_code", code: code.trim().toUpperCase() });
-  if (outcome.ok) return { ok: true, band: { uid: outcome.uid } };
-  return { ok: false, reason: outcome.code === "CONFLICT" ? "already_bound" : "unknown_band" };
+export function bindBand(code: string): BindResult | Promise<BindResult> {
+  return backend.bindBand({ via: "desk_code", code: code.trim().toUpperCase() });
+}
+
+/** A band read by Web NFC: its serial number as hex, colons removed. */
+export function bindTappedBand(uid: string): BindResult | Promise<BindResult> {
+  return backend.bindBand({ via: "nfc", uid });
+}
+
+/** The band bound to the pass now, or null. */
+export function boundBand(): { uid: string; hint: string } | null {
+  return backend.boundBand();
 }

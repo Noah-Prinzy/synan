@@ -107,6 +107,7 @@ export async function seedDev(app: AppContext): Promise<SeedResult> {
       starts_at: new Date(now + startOff), ends_at: new Date(now + endOff), timezone: "Africa/Kampala",
       state, listed_bool: listed, grace_buffer: 72,
       pass_template_jsonb: state === "draft" ? null : { layout: "standard" }, profile_schema_jsonb: [], access_rules_version: 0, revocation_epoch: 0, closed_at: null,
+      wizard_step: state === "draft" ? "venue" : "review", published_at: state === "draft" ? null : new Date(now - 24 * H),
     });
     return id;
   };

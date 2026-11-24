@@ -26,3 +26,31 @@ export async function mayRunDesk(app: AppContext, ctx: AuthContext, venueId: str
   if (ctx.kind === "operator") return true;
   return (await currentCheckpoints(app, ctx.sub, venueId)).some((c) => c.perimeter_bool);
 }
+
+/**
+ * The events a desk clerk may work now (D-23): those of their current, not handed-over assignments
+ * at a perimeter desk — the assignment's event, or (an assignment without one) every published or
+ * live event at that desk's venue.
+ */
+export async function deskEventIds(app: AppContext, userId: string): Promise<string[]> {
+  const out = new Set<string>();
+  for (const a of await currentAssignments(app, userId)) {
+    if (a.handed_over_at) continue;
+    const cp = await app.repos.venues.checkpoint(a.checkpoint_id);
+    if (!cp?.perimeter_bool) continue;
+    if (a.event_id) out.add(a.event_id);
+    else for (const e of await app.repos.events.listAll({ limit: 1000 })) if (e.venue_id === cp.venue_id && (e.state === "published" || e.state === "live")) out.add(e.id);
+  }
+  return [...out];
+}
+
+/**
+ * Desk work on one event: operators always; a desk clerk only for an event of their current desk
+ * assignment; anyone else as `mayRunDesk` (security staff at a perimeter desk of the venue).
+ * Refusals answer like a missing record (no hint that it exists).
+ */
+export async function mayWorkDeskFor(app: AppContext, ctx: AuthContext, event: { id: string; venue_id: string | null }): Promise<boolean> {
+  if (ctx.kind === "operator") return true;
+  if (ctx.role === "desk_clerk") return (await deskEventIds(app, ctx.sub)).includes(event.id);
+  return event.venue_id !== null && mayRunDesk(app, ctx, event.venue_id);
+}

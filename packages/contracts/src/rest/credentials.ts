@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { Id, IsoDateTime, Ok, pageOf, PageQuery, ZoneState } from "../common.js";
 import { AttendeeTier, CarrierKind, CarrierState, ChipProfile, CredentialState } from "../enums/index.js";
-import { endpoint, IdParam, OPERATORS } from "./endpoint.js";
+import { DESK, endpoint, IdParam, OPERATORS, SUPERVISE } from "./endpoint.js";
 
 export const Carrier = z.object({
   id: Id,
@@ -38,6 +38,8 @@ export const CredentialQuery = PageQuery.extend({
 export const Inventory = z.object({
   by_state: z.record(CarrierState, z.number().int()),
   by_chip_profile: z.record(z.string(), z.number().int()),
+  /** Additive, with `event_id` (06 D6.5): the event's credentials by state, every state present. */
+  credentials: z.record(CredentialState, z.number().int()).optional(),
 });
 
 export const RevokeRequest = z.object({ reason: z.string().min(3).max(500) });
@@ -81,14 +83,16 @@ export const DeskCode = z.object({ code: z.string().regex(/^[A-HJ-NP-Z2-9]{6}$/)
 export type DeskCode = z.infer<typeof DeskCode>;
 
 export const credentialEndpoints = {
-  listCredentials: endpoint({ method: "GET", path: "/credentials", access: OPERATORS, query: CredentialQuery, response: pageOf(Credential) }),
-  inventory: endpoint({ method: "GET", path: "/credentials/inventory", access: OPERATORS, query: z.object({ event_id: Id.optional() }), response: Inventory }),
-  resend: endpoint({ method: "POST", path: "/credentials/:id/resend", access: OPERATORS, mfa: true, audited: true, rateLimit: "resend", params: IdParam, response: Ok }),
-  revoke: endpoint({ method: "POST", path: "/credentials/:id/revoke", access: OPERATORS, audited: true, params: IdParam, body: RevokeRequest, response: Credential }),
-  clearReview: endpoint({ method: "POST", path: "/credentials/:id/clear-review", access: OPERATORS, audited: true, params: IdParam, body: ClearReviewRequest, response: Credential }),
+  listCredentials: endpoint({ method: "GET", path: "/credentials", access: SUPERVISE, query: CredentialQuery, response: pageOf(Credential) }),
+  /** Desk clerks (D-23): stock counts, and an event's only for an event of their current desk assignment. */
+  inventory: endpoint({ method: "GET", path: "/credentials/inventory", access: DESK, query: z.object({ event_id: Id.optional() }), response: Inventory }),
+  resend: endpoint({ method: "POST", path: "/credentials/:id/resend", access: DESK, mfa: true, audited: true, rateLimit: "resend", params: IdParam, response: Ok }),
+  /** Supervisors (D-23) need a fresh second factor for revoke and clear-review; admins and organisers as before. */
+  revoke: endpoint({ method: "POST", path: "/credentials/:id/revoke", access: SUPERVISE, audited: true, params: IdParam, body: RevokeRequest, response: Credential }),
+  clearReview: endpoint({ method: "POST", path: "/credentials/:id/clear-review", access: SUPERVISE, audited: true, params: IdParam, body: ClearReviewRequest, response: Credential }),
   importCarriers: endpoint({ method: "POST", path: "/carriers/import", access: OPERATORS, audited: true, body: CarrierImport, response: CarrierImportResult }),
-  bindCarrier: endpoint({ method: "POST", path: "/carriers/bind", access: ["admin", "organiser", "security_staff"], audited: true, body: BindRequest, response: Carrier }),
-  rebindCarrier: endpoint({ method: "POST", path: "/carriers/:id/rebind", access: OPERATORS, mfa: true, audited: true, params: IdParam, body: RebindRequest, response: Carrier }),
+  bindCarrier: endpoint({ method: "POST", path: "/carriers/bind", access: ["admin", "organiser", "security_staff", "desk_clerk"], audited: true, body: BindRequest, response: Carrier }),
+  rebindCarrier: endpoint({ method: "POST", path: "/carriers/:id/rebind", access: DESK, mfa: true, audited: true, params: IdParam, body: RebindRequest, response: Carrier }),
   /** Not in 02 §5: issues the desk code used by POST /me/credential/bind `via: desk_code`. Proposed addition. */
-  deskCode: endpoint({ method: "POST", path: "/carriers/desk-code", access: ["admin", "organiser", "security_staff"], audited: true, body: DeskCodeRequest, response: DeskCode, status: 201 }),
+  deskCode: endpoint({ method: "POST", path: "/carriers/desk-code", access: ["admin", "organiser", "security_staff", "desk_clerk"], audited: true, body: DeskCodeRequest, response: DeskCode, status: 201 }),
 } as const;

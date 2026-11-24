@@ -117,14 +117,15 @@ export const AlertQuery = PageQuery.extend({
 
 export const ResolveAlert = z.object({ note: z.string().min(3).max(1000) });
 
-const OPS_AND_SECURITY: readonly Access[] = ["admin", "organiser", "security_staff"];
+const OPS_AND_SECURITY: readonly Access[] = ["admin", "organiser", "supervisor", "security_staff"];
+const SUPERVISE: readonly Access[] = ["admin", "organiser", "supervisor"];
 
 export const scanEndpoints = {
   postScans: endpoint({ method: "POST", path: "/scans", access: ["security_staff", "device"], rateLimit: "scan", body: ScanBatchRequest, response: ScanBatchResponse }),
-  listScans: endpoint({ method: "GET", path: "/scans", access: OPERATORS, query: ScanQuery, response: pageOf(ScanRecord) }),
+  listScans: endpoint({ method: "GET", path: "/scans", access: SUPERVISE, query: ScanQuery, response: pageOf(ScanRecord) }),
   listAlerts: endpoint({ method: "GET", path: "/breach-alerts", access: OPS_AND_SECURITY, query: AlertQuery, response: pageOf(BreachAlert) }),
   ackAlert: endpoint({ method: "POST", path: "/alerts/:id/ack", access: OPS_AND_SECURITY, audited: true, params: IdParam, response: BreachAlert }),
-  resolveAlert: endpoint({ method: "POST", path: "/alerts/:id/resolve", access: OPERATORS, audited: true, params: IdParam, body: ResolveAlert, response: BreachAlert }),
+  resolveAlert: endpoint({ method: "POST", path: "/alerts/:id/resolve", access: SUPERVISE, audited: true, params: IdParam, body: ResolveAlert, response: BreachAlert }),
   /**
    * Not in 02 §5: the audited access-history lookup of one credential (03 §5, §7). The only way an
    * operator sees one person's movement over time; every call is written to the audit log.

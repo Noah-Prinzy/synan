@@ -10,7 +10,7 @@
  */
 import type { MockClock } from "../clock";
 import { delay } from "../portal";
-import { createRng, idFor, type Rng } from "../random";
+import { createRng, hashString, idFor, type Rng } from "../random";
 import { MockRealtime, type MockGate, type RealtimeClient } from "../realtime";
 import type {
   BreachAlert,
@@ -26,7 +26,18 @@ import type {
 import { buildVenue, type VenueKey, type VenueLayout } from "./venues";
 import { CLOSED_EVENT, ReportJobs, closedSeedDownloads, summaryFor, type ExportFormat, type ReportRow } from "./summary";
 import type { PostEventSummary, ReportKind } from "../types";
-import { createConfigureMock, type ConfigureApi } from "./configure";
+import { createConfigureMock, MockApiError, type ConfigureApi } from "./configure";
+import { SCAN_RESULT_COPY } from "@synan/contracts/copy";
+import {
+  OpsLog,
+  type AlertContext,
+  type AlertCredential,
+  type GateActivity,
+  type GateDetail,
+  type ScanLogQuery,
+  type ScanPage,
+  type TestRead,
+} from "./ops";
 
 /* -------------------------------------------------------------------- types */
 
@@ -42,12 +53,40 @@ export interface CommandEvent {
   timezone: string;
 }
 
-/** NOT IN CONTRACTS — who is signed in, and their shift. Proposed: GET /me/operator. */
+/**
+ * The roles a signed-in user can hold (docs/01 §3, D-23). `supervisor` and `desk_clerk` are
+ * not in the contracts' `Role` yet; when they land this becomes `Role`.
+ */
+export type SessionRole = Role | "supervisor" | "desk_clerk";
+
+/** The mock's sign-in personas, one per role, so every console view can be previewed. */
+export const SESSION_ROLES: readonly SessionRole[] = [
+  "admin",
+  "organiser",
+  "supervisor",
+  "desk_clerk",
+  "security_staff",
+  "speaker",
+  "crew",
+];
+
+/**
+ * Who is signed in, their role and their shift: the "who am I" of the console.
+ * Close to contracts' `OperatorProfile` (GET /me/operator) plus what the console header shows.
+ * NOT IN CONTRACTS: `name`, `event_ids` (the events a desk clerk is assigned to) and
+ * `capabilities` (proposed: the server sends what the role may do, so the console never
+ * keeps its own copy of the rules).
+ */
 export interface OperatorContext {
   id: string;
   name: string;
-  role: Role;
+  email: string;
+  role: SessionRole;
   shift: { label: string; starts_at: string; ends_at: string };
+  /** Events this person may work. `null`: every event in the organisation. */
+  event_ids: string[] | null;
+  /** Proposed. Absent today: the console derives capabilities from the role. */
+  capabilities?: string[];
 }
 
 /**
@@ -73,7 +112,15 @@ export interface CommandApi {
   now(): number;
   dashboard(): Promise<DashboardData>;
   events(): Promise<CommandEvent[]>;
+  /** GET /me/operator. Rejects with UNAUTHENTICATED when no one is signed in. */
   operator(): Promise<OperatorContext>;
+  /** POST /auth/logout. */
+  signOut(): Promise<void>;
+  /**
+   * Mock only: sign back in as the last persona (the real sign-in is password plus second
+   * factor, POST /auth/login + /auth/mfa/verify).
+   */
+  signIn(): Promise<OperatorContext>;
   /** GET /venues/:id for the event's venue, with layout extras. */
   layout(eventId: string): Promise<VenueLayout>;
   summary(eventId: string): Promise<LiveSummary>;
@@ -87,6 +134,20 @@ export interface CommandApi {
   exportReport(eventId: string, body: { format: ExportFormat; kind?: ReportKind }): Promise<ReportRow>;
   /** GET /reports/:eventId — export jobs and their state. */
   reports(eventId: string): Promise<ReportRow[]>;
+
+  /* response (docs/06 D9, D10, D12, D12b) */
+  /** POST /alerts/:id/resolve (contracts `ResolveAlert`: note 3–1000 characters). Rejects with VALIDATION_FAILED. */
+  resolveAlert(alertId: string, body: { note: string }): Promise<BreachAlert>;
+  /** NOT IN CONTRACTS — the scans, credential and rule behind one alert (D10's detail sheet). */
+  alertContext(alertId: string): Promise<AlertContext>;
+  /** GET /scans, newest first, with NOT IN CONTRACTS extras (see `ScanLogQuery`, `OpsScan`). */
+  scans(eventId: string, query?: ScanLogQuery): Promise<ScanPage>;
+  /** NOT IN CONTRACTS — heartbeat, last scan and the 15-minute series per gate (D12). */
+  gateActivity(eventId: string): Promise<GateActivity[]>;
+  /** NOT IN CONTRACTS — one gate's link history, throughput, results and last 50 scans (D12b). NOT_FOUND for a bad id. */
+  gateDetail(eventId: string, checkpointId: string): Promise<GateDetail>;
+  /** NOT IN CONTRACTS — a synthetic read, never logged as attendance (D12b `Test read`). */
+  testRead(eventId: string, checkpointId: string): Promise<TestRead>;
 }
 
 export interface CommandMockOptions {
@@ -101,10 +162,14 @@ export interface CommandMockOptions {
   failFirstLoad?: boolean;
   /** First-run world for the configure screens: no organisation, no venues (D0). */
   freshOrganization?: boolean;
+  /** Who is signed in at start (default `admin`). */
+  role?: SessionRole;
 }
 
 export interface CommandMock {
   api: CommandApi;
+  /** Development only: sign in as another persona at once (the role preview). */
+  setPersona(role: SessionRole): void;
   /** The configure side: first run, venues, events, the wizard and the event workspace. */
   configure: ConfigureApi;
   /** The live socket for one event, or null when the event is not live. */
@@ -174,6 +239,8 @@ export class EventServer {
   readonly rt: MockRealtime;
   readonly alerts = new Map<string, BreachAlert>();
   readonly health = new Map<string, GateHealth>();
+  /** The scan log, gate activity and link history behind D9, D12 and D12b. */
+  readonly ops: OpsLog;
   private readonly clock: MockClock;
   private readonly base: { registered: number; checkedIn: number; onSite: number };
   private readonly history: Omit<SummarySeries, "bucket_ms" | "from">;
@@ -259,6 +326,8 @@ export class EventServer {
     earlier.acked_at = new Date(now - 46 * 60_000).toISOString();
     earlier.resolution_note = "Power cable reseated.";
     this.alerts.set(earlier.id, earlier);
+
+    this.ops = new OpsLog(this.layout, this.rt, clock, this.health, event.id, Date.parse(event.starts_at));
 
     // The server's own bookkeeping: every alert and gate change lands in its tables.
     this.rt.tap("/stream/alerts", (message) => {
@@ -428,12 +497,32 @@ export function createCommandMock(options: CommandMockOptions): CommandMock {
   const { clock } = options;
   const latency = options.latencyMs ?? 300;
   let failLayout = options.failFirstLoad ?? false;
-  const operator: OperatorContext = {
-    id: idFor("user:operator-amara"),
-    name: "Amara Okello",
-    role: "admin",
-    shift: { label: "Day shift", starts_at: "2026-11-22T05:00:00.000Z", ends_at: "2026-11-22T17:00:00.000Z" },
+  const dayShift = { label: "Day shift", starts_at: "2026-11-22T05:00:00.000Z", ends_at: "2026-11-22T17:00:00.000Z" };
+  const persona = (role: SessionRole, slug: string, name: string, shift: OperatorContext["shift"] = dayShift): OperatorContext => ({
+    id: idFor(`user:${slug}`),
+    name,
+    email: `${name.split(" ")[0]?.toLowerCase()}@synan-demo.org`,
+    role,
+    shift,
+    event_ids: null,
+  });
+  // The admin keeps the id every seeded record (exports, alert acks) was written with.
+  const operator: OperatorContext = persona("admin", "operator-amara", "Amara Okello");
+  const personas: Record<SessionRole, OperatorContext> = {
+    admin: operator,
+    organiser: persona("organiser", "operator-daniel", "Daniel Mugisha"),
+    supervisor: persona("supervisor", "operator-grace", "Grace Achieng"),
+    desk_clerk: persona("desk_clerk", "staff-kemi", "Kemi Nakamya", {
+      label: "Registration desk",
+      starts_at: "2026-11-22T05:30:00.000Z",
+      ends_at: "2026-11-22T14:00:00.000Z",
+    }),
+    security_staff: persona("security_staff", "staff-moses", "Moses Opio"),
+    speaker: persona("speaker", "staff-ruth", "Ruth Namutebi"),
+    crew: persona("crew", "staff-owen", "Owen Kizza"),
   };
+  let current: SessionRole = options.role ?? "admin";
+  let signedIn = true;
 
   const events: (CommandEvent & { venue: VenueKey | null })[] = EVENT_SPECS.map((spec) => {
     const venue: VenueKey | null =
@@ -454,6 +543,9 @@ export function createCommandMock(options: CommandMockOptions): CommandMock {
       venue,
     };
   });
+
+  // The desk clerk works the Nexus Summit desk and sees nothing else.
+  personas.desk_clerk.event_ids = [idFor("event:nexus-summit-2026")];
 
   const closedId = idFor(`event:${CLOSED_EVENT.slug}`);
   const jobs = new ReportJobs(clock, operator.id);
@@ -503,7 +595,17 @@ export function createCommandMock(options: CommandMockOptions): CommandMock {
     },
     async operator() {
       await delay(latency);
-      return operator;
+      if (!signedIn) throw new MockApiError("UNAUTHENTICATED");
+      return structuredClone(personas[current]);
+    },
+    async signOut() {
+      await delay(Math.min(latency, 160));
+      signedIn = false;
+    },
+    async signIn() {
+      await delay(latency);
+      signedIn = true;
+      return structuredClone(personas[current]);
     },
     async layout(eventId) {
       await delay(latency);
@@ -534,7 +636,7 @@ export function createCommandMock(options: CommandMockOptions): CommandMock {
         const acked: BreachAlert = {
           ...alert,
           state: "acked",
-          acked_by: operator.id,
+          acked_by: personas[current].id,
           acked_at: new Date(clock.now()).toISOString(),
         };
         server.rt.alertUpdated(acked);
@@ -582,6 +684,108 @@ export function createCommandMock(options: CommandMockOptions): CommandMock {
       await delay(Math.min(latency, 120));
       return jobs.list(eventId);
     },
+
+    async resolveAlert(alertId, body) {
+      await delay(Math.min(latency, 200));
+      const note = body.note.trim();
+      if (note.length < 3) throw new MockApiError("VALIDATION_FAILED", { note: "Write at least three characters on what was done." });
+      if (note.length > 1000) throw new MockApiError("VALIDATION_FAILED", { note: "Keep the note under 1,000 characters." });
+      const found = alertById(alertId);
+      if (!found) throw new MockApiError("NOT_FOUND");
+      const { alert, server } = found;
+      if (alert.state === "resolved") return alert;
+      const resolved: BreachAlert = {
+        ...alert,
+        state: "resolved",
+        // Resolving an open alert acknowledges it too.
+        acked_by: alert.acked_by ?? personas[current].id,
+        acked_at: alert.acked_at ?? new Date(clock.now()).toISOString(),
+        resolution_note: note,
+      };
+      server.rt.alertUpdated(resolved);
+      return resolved;
+    },
+    async alertContext(alertId) {
+      await delay(Math.min(latency, 200));
+      const found = alertById(alertId);
+      if (!found) throw new MockApiError("NOT_FOUND");
+      const { alert, server } = found;
+      return {
+        alert_id: alert.id,
+        ...server.ops.context(alert),
+        credential: await credentialFor(alert),
+        acked_by_name: alert.acked_by ? nameOf(alert.acked_by) : null,
+      };
+    },
+    async scans(eventId, query = {}) {
+      await delay(Math.min(latency, 200));
+      return need(eventId).ops.page(query, (result) => SCAN_RESULT_COPY[result].label);
+    },
+    async gateActivity(eventId) {
+      await delay(Math.min(latency, 120));
+      return need(eventId).ops.activity();
+    },
+    async gateDetail(eventId, checkpointId) {
+      await delay(Math.min(latency, 200));
+      const detail = need(eventId).ops.detail(checkpointId);
+      if (!detail) throw new MockApiError("NOT_FOUND");
+      return detail;
+    },
+    async testRead(eventId, checkpointId) {
+      // A real round trip to the device: a little slower than a REST read.
+      await delay(Math.min(latency, 200) + 250);
+      return need(eventId).ops.testRead(checkpointId);
+    },
+  };
+
+  const alertById = (alertId: string): { alert: BreachAlert; server: EventServer } | null => {
+    for (const server of servers.values()) {
+      const alert = server.alerts.get(alertId);
+      if (alert) return { alert, server };
+    }
+    return null;
+  };
+
+  const nameOf = (userId: string): string => {
+    const persona = Object.values(personas).find((p) => p.id === userId);
+    return persona?.name ?? "Another operator";
+  };
+
+  /**
+   * The registration an alert is about. The scenarios raise alerts without one, so the mock links
+   * each alert to a fitting registration of the event once, and keeps that link: an impossible
+   * travel alert to a pass under review, so `Clear credential` and `Revoke` act on a real row.
+   */
+  const alertCredential = new Map<string, string | null>();
+  const credentialFor = async (alert: BreachAlert): Promise<AlertCredential | null> => {
+    const wants =
+      alert.kind === "impossible_travel"
+        ? ({ credential: "suspended_review" } as const)
+        : alert.kind === "unauthorised_tier"
+          ? ({ tier: "PUBLIC" } as const)
+          : alert.kind === "pass_replayed" || alert.kind === "offline_conflict_pass_reuse" || alert.kind === "offline_conflict_passback"
+            ? ({ credential: "active" } as const)
+            : null;
+    if (!wants) return null;
+    if (!alertCredential.has(alert.id)) {
+      const { items } = await configure.attendees(alert.event_id, wants);
+      const used = new Set(alertCredential.values());
+      const free = items.filter((row) => !used.has(row.registration_id));
+      const pool = free.length > 0 ? free : items;
+      const row = pool[hashString(alert.id) % Math.max(1, pool.length)];
+      alertCredential.set(alert.id, row?.registration_id ?? null);
+    }
+    const registrationId = alertCredential.get(alert.id);
+    if (!registrationId) return null;
+    const row = await configure.deskAttendee(alert.event_id, registrationId);
+    return {
+      registration_id: row.registration_id,
+      credential_id: row.credential_id,
+      state: row.credential_state,
+      tier: row.tier,
+      full_name: row.full_name,
+      band_hint: row.band_hint,
+    };
   };
 
   const configure = createConfigureMock({
@@ -606,6 +810,10 @@ export function createCommandMock(options: CommandMockOptions): CommandMock {
   return {
     api,
     configure,
+    setPersona(role) {
+      current = role;
+      signedIn = true;
+    },
     serverFor,
     realtimeFor(eventId) {
       const server = serverFor(eventId);
