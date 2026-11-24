@@ -43,7 +43,7 @@ export async function chooseConsoleEvent(page: Page, title: string) {
   const switcher = page.getByRole("button", { name: /^Event: .*Change event$/ });
   if ((await switcher.getAttribute("aria-label"))?.includes(title) || (await switcher.textContent())?.includes(title)) return;
   await switcher.click();
-  await page.getByRole("option", { name: new RegExp(escapeRe(title)) }).or(page.getByRole("menuitemradio", { name: new RegExp(escapeRe(title)) })).or(page.getByRole("button", { name: new RegExp(escapeRe(title)) })).first().click();
+  await page.getByRole("menu").getByRole("menuitem", { name: new RegExp(`^${escapeRe(title)} `) }).click();
   await expect(page.getByRole("button", { name: /^Event: .*Change event$/ })).toContainText(title);
 }
 

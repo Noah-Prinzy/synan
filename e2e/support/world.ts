@@ -27,7 +27,7 @@ export interface World {
   title: string;
   zoneId: string;
   rooms: { hall: { id: string; name: string }; lounge: { id: string; name: string } };
-  gates: { entrance: Gate; lounge: Gate };
+  gates: { entrance: Gate; side: Gate; lounge: Gate };
 }
 
 export interface StaffUser {
@@ -65,8 +65,8 @@ export async function assign(admin: Caller, userId: string, checkpointId: string
 }
 
 /**
- * A venue ("E2E Hall …") with one zone and two rooms drawn on the grid, a perimeter entrance and an
- * interior lounge door (wristband only), and a live event on it with ORDINARY admitted to the hall
+ * A venue ("E2E Hall …") with one zone and two rooms drawn on the grid, two perimeter entrances (Front
+ * Door, Side Door) and an interior lounge door (wristband only), and a live event on it with ORDINARY admitted to the hall
  * and VIP to both rooms. One security-staff member is on shift at each gate.
  */
 export async function createWorld(opts: { name?: string } = {}): Promise<World> {
@@ -90,6 +90,9 @@ export async function createWorld(opts: { name?: string } = {}): Promise<World> 
   });
   const entrance = await admin.call<{ id: string }>("POST", "/checkpoints", {
     venue_id: venue.id, zone_id: zoneId, room_id: null, direction: "in", perimeter: true, hardware_id: null, label: "Front Door", position: { x: 5, y: 11, side: "s" },
+  });
+  const sideDoor = await admin.call<{ id: string }>("POST", "/checkpoints", {
+    venue_id: venue.id, zone_id: zoneId, room_id: null, direction: "in", perimeter: true, hardware_id: null, label: "Side Door", position: { x: 19, y: 9, side: "e" },
   });
   const loungeDoor = await admin.call<{ id: string }>("POST", "/checkpoints", {
     venue_id: venue.id, zone_id: zoneId, room_id: lounge.id, direction: "in", perimeter: false, hardware_id: null, label: "Lounge Door", position: { x: 12, y: 3, side: "w" },
@@ -120,7 +123,7 @@ export async function createWorld(opts: { name?: string } = {}): Promise<World> 
   };
   return {
     admin, venueId: venue.id, venueName, eventId: event.id, slug, title, zoneId, rooms: { hall, lounge },
-    gates: { entrance: await gate(entrance.id, "Front Door", true, null), lounge: await gate(loungeDoor.id, "Lounge Door", false, lounge.id) },
+    gates: { entrance: await gate(entrance.id, "Front Door", true, null), side: await gate(sideDoor.id, "Side Door", true, null), lounge: await gate(loungeDoor.id, "Lounge Door", false, lounge.id) },
   };
 }
 
@@ -199,4 +202,13 @@ export async function currentPassCode(guest: Guest, eventId: string): Promise<st
   const c = batch.codes.find((x) => Date.parse(x.not_before) <= now && Date.parse(x.expires_at) > now);
   if (!c) throw new Error("no code valid now");
   return c.code;
+}
+
+/** A staff member with an authenticator enrolled (POST /auth/mfa/enrol, then confirm with a code). */
+export async function createStaffWithMfa(admin: Caller, role: string, label = role): Promise<StaffUser & { mfaSecret: string }> {
+  const u = await createStaff(admin, role, label);
+  const me = await signIn(u.email, u.password);
+  const enrol = await me.call<{ secret: string }>("POST", "/auth/mfa/enrol");
+  await me.call("POST", "/auth/mfa/enrol/confirm", { code: await ctl.totp(enrol.secret) });
+  return { ...u, mfaSecret: enrol.secret };
 }

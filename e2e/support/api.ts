@@ -171,14 +171,29 @@ export interface ScanOutcome {
   alert_ids: string[];
 }
 
-/** One online scan through POST /scans, as the gate's own staff member (a second, API-only device). */
-export async function scanAt(gate: { id: string; staff: { email: string; password: string } }, eventId: string, presented: Presented): Promise<ScanOutcome> {
+/**
+ * One scan through POST /scans, as the gate's own staff member (a second, API-only device). Online by
+ * default; `offline` sends it as a queued scan decided on the device `atMs` (server time) earlier.
+ */
+export async function scanAt(
+  gate: { id: string; staff: { email: string; password: string } },
+  eventId: string,
+  presented: Presented,
+  opts: { offline?: { atMs: number; localResult?: string }; deviceId?: string } = {},
+): Promise<ScanOutcome> {
   const pair = await api<TokenPair>("POST", "/auth/login", { body: { email: gate.staff.email, password: gate.staff.password } });
   const { now } = await ctl.clock();
   const idem = `e2e-${uniq("scan")}`;
+  const at = opts.offline?.atMs ?? now;
   const r = await api<{ results: ScanOutcome[]; rejected?: unknown[] }>("POST", "/scans", {
     token: pair.access_token,
-    body: { event_id: eventId, device_id: `e2e-api-${gate.id.slice(0, 8)}`, scans: [{ idem_key: idem, checkpoint_id: gate.id, presented, occurred_at: new Date(now).toISOString(), clock_offset_ms: 0, offline: false }] },
+    body: {
+      event_id: eventId, device_id: opts.deviceId ?? `e2e-api-${gate.id.slice(0, 8)}`,
+      scans: [{
+        idem_key: idem, checkpoint_id: gate.id, presented, occurred_at: new Date(at).toISOString(), clock_offset_ms: 0,
+        offline: !!opts.offline, ...(opts.offline ? { local_result: opts.offline.localResult ?? "admitted" } : {}),
+      }],
+    },
   });
   if (!r.results[0]) throw new Error(`scan rejected: ${JSON.stringify(r.rejected)}`);
   return r.results[0];
