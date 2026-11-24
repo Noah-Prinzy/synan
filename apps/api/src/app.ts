@@ -196,7 +196,7 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<RunningApp
   const reportExports = new ReportExporter(repos, reportStorage, config, clock, cipher);
 
   const ctx: AppContext = {
-    config, clock, repos, mailer, mail, notifications, scannerTrust: new ScannerTrust({ repos, alerts, audit, clock }), gates: new GateService({ repos, clock, alerts, rateLimited: (cp, now) => scans.rateLimitedRecently(cp, now) }), keys, qr, auth, audit, alerts, credentials, scans, telemetry, rateLimiter, webhooks, reportExports, reportStorage, jobs,
+    config, clock, repos, mailer, mail, notifications, scannerTrust: new ScannerTrust({ repos, alerts, audit, clock }), gates: new GateService({ repos, clock, alerts, audit, rateLimited: (cp, now) => scans.rateLimitedRecently(cp, now) }), keys, qr, auth, audit, alerts, credentials, scans, telemetry, rateLimiter, webhooks, reportExports, reportStorage, jobs,
     reportSchedules: null as unknown as ReportScheduler,
     mounted: new Set(),
   };

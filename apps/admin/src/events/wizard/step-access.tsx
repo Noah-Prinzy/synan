@@ -162,7 +162,7 @@ export function AccessStep({ record, forms, setForm, saved, goto, close, loadVen
             {problem}
           </Notice>
         ) : null}
-        <div className="max-w-240">
+        <div className="mt-4 max-w-5xl">
           <WizardFooter
             onBack={() => goto("venue")}
             onSaveClose={ready ? async () => close(await persist(null)) : async () => close(record)}

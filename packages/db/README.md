@@ -82,7 +82,9 @@ while its child is unused is re-issued, `reissued: true`, and the unused child i
   audit), `diffProposedAccessRules`, `diffAccessRuleVersions`, `accessPermits`, `credentialMayEnter`.
 - **Carriers** (`src/carriers.ts`): `importBands` / `importCarriers` / `importCarrierIdentifiers`, `bindCarrier`,
   `confirmCarrier`, `rebindCarrier`, `replaceLostBand`, `carrierInventory`, `nfcIdentifierHash`. Credential and
-  carrier state machines are enforced by triggers on every update.
+  carrier state machines are enforced by triggers on every update. A band's readable hint (`identifier_hint`,
+  the UID's last four in upper-case hex; `nfcIdentifierHint`) is stored by `importBands` and by
+  `noteCarrierHints(db, uids)` whenever a UID is presented; the UID itself is never stored (0035).
 
 ## Registration, webhooks, jobs, staff and devices
 
@@ -167,6 +169,10 @@ attendee sheet has no name or email columns.
   `position`. The venue grid extent is derived, not stored.
 - **Devices**: `token_version` goes up on every token change and whenever a device leaves `active` (a trigger,
   whoever writes). Check it per request with `deviceTokenVersion`; `rotateDeviceTokenVersioned` returns it.
+  A staff phone (kind `scanner`, no token) is one row per install at the venue, whoever is signed in;
+  `last_user_id` is the user at its last heartbeat (0033).
+- **Handover**: `shiftHandoverSummary` / `handOverShift` count an undone admission (a `scan_voids` record) as
+  `undone`, not in `let_through` or `by_result`; `scans` still counts it (0034).
 
 ## Testing
 
@@ -240,6 +246,10 @@ live in hand-written migrations that `push` does not know about.
 | `0029_scanner_attendee_functions.sql` | Hand-written: `auth_rotate_session(_by_kind)` with a reuse grace (`p_grace`, `reissued`); `device_heartbeat` records the allowlist held; `gate_health` adds `allowlist_issued_at` / `allowlist_stale`; forced RLS and app_vault grants on `pending_registrations`; `scan_voids` append-only |
 | `0030_attendee_phone.sql` | Generated: `pii_vault.attendees.phone` (optional, AES-256-GCM envelope like `email`, `attendees_phone_encrypted`); written and read through `src/secrets.ts`, re-encrypted by `reencryptSecrets` |
 | `0031_attendee_phone_erasure.sql` | Hand-written: `erase_attendee` also nulls `phone` and deletes the attendee's `pending_registrations` |
+| `0032_console_invitation_gaps.sql` | Generated: `alert_kind` gains `band_reported_lost`; `events.contact_name` / `contact_email` |
+| `0033_scanner_install_devices.sql` | Generated: `devices.last_user_id` (staff phone rows are one per install, keyed by venue + install id; the last signed-in user recorded) |
+| `0034_handover_undone_scanner_rows.sql` | Hand-written: `shift_handover_summary` leaves scans with a `scan_voids` record out of `let_through` and `by_result` and returns them as `undone`; old per-user phone rows retired |
+| `0035_band_hint.sql` | Generated: `carriers.identifier_hint` (an NFC UID's last four, upper-case hex; CHECK `carriers_identifier_hint_shape`) |
 
 ## SQL functions
 

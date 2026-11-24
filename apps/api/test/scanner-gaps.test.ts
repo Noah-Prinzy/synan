@@ -43,6 +43,15 @@ describe("A2 · GET /me/assignments", () => {
       id: x.assignmentId, event_id: h.seed.eventId, event: { id: h.seed.eventId },
       checkpoint: { id: h.seed.checkpoints.auditorium, label: "Auditorium Doors", perimeter: false, direction: "both", room_id: h.seed.rooms.auditorium, room_name: "Main Auditorium", zone_id: h.seed.zones.ground, zone_name: "Ground" },
     });
+    // The event's slug and its rooms by name (the scanner's room chips), names only.
+    const event = (await h.app.ctx.repos.events.byId(h.seed.eventId))!;
+    const ev = r.body.items[0]!.event!;
+    expect(ev.slug).toBe(event.slug);
+    const want = await h.app.ctx.repos.venues.roomsByIds((await h.app.ctx.repos.events.rooms(event.id)).map((x) => x.room_id));
+    expect(ev.rooms).toEqual(want.map((x) => ({ room_id: x.id, name: x.name })).sort((p, q) => p.name.localeCompare(q.name)));
+    expect(ev.rooms!.length).toBeGreaterThan(0);
+    expect(ev.rooms!.find((x) => x.room_id === h.seed.rooms.auditorium)).toEqual({ room_id: h.seed.rooms.auditorium, name: "Main Auditorium" });
+    expect(Object.keys(ev.rooms![0]!).sort()).toEqual(["name", "room_id"]);
     await h.call("POST", `/staff-assignments/${x.assignmentId}/handover`, { token: t });
     expect((await h.call<{ items: StaffAssignment[] }>("GET", "/me/assignments", { token: t })).body.items).toHaveLength(0);
   });
@@ -103,7 +112,7 @@ describe("A4 · allowlist age on heartbeats", () => {
     const t = await h.gateToken(cp);
     const now = h.clock.now();
     expect((await heartbeat(t, cp, "vip-phone", { allowlist_issued_at: iso(now - 20 * MIN) })).status).toBe(200);
-    const health = async () => (await h.call<{ items: GateHealth[] }>("GET", `/gates/health?event_id=${h.seed.eventId}`, { token: admin })).body.items.find((g) => g.checkpoint_id === cp)!;
+    const health = async () => (await h.call<{ items: GateHealth[] }>("GET", `/gates/health?event_id=${h.seed.eventId}`, { token: (await h.login(h.seed.emails.admin)).access_token })).body.items.find((g) => g.checkpoint_id === cp)!;
     expect(await health()).toMatchObject({ allowlist_issued_at: iso(now - 20 * MIN), allowlist_stale: true });
     await heartbeat(t, cp, "vip-phone", { allowlist_issued_at: iso(now - 21 * MIN) });
     const alerts = (await h.app.ctx.repos.alerts.list({ eventId: h.seed.eventId, checkpointIds: [cp], limit: 100 })).filter((a) => a.kind === "stale_allowlist");
@@ -174,10 +183,107 @@ describe("A5 · undo a mistaken admission", () => {
   });
 });
 
-describe("A6 · the QR leeway is published", () => {
+describe("A6 · the QR leeway and the undo window are published", () => {
   it("on GET /time and GET /auth/signing-keys", async () => {
-    expect((await h.call<ServerTime>("GET", "/time")).body.qr_leeway_s).toBe(h.app.ctx.config.qrLeewayS);
-    expect((await h.call<SigningKeys>("GET", "/auth/signing-keys")).body.qr_leeway_s).toBe(h.app.ctx.config.qrLeewayS);
+    const time = (await h.call<ServerTime>("GET", "/time")).body;
+    const keys = (await h.call<SigningKeys>("GET", "/auth/signing-keys")).body;
+    expect(time.qr_leeway_s).toBe(h.app.ctx.config.qrLeewayS);
+    expect(keys.qr_leeway_s).toBe(h.app.ctx.config.qrLeewayS);
+    expect(time.undo_window_s).toBe(h.app.ctx.config.scanUndoWindowS);
+    expect(keys.undo_window_s).toBe(h.app.ctx.config.scanUndoWindowS);
+    expect(time.undo_window_s).toBe(60); // SCAN_UNDO_WINDOW_S default
+  });
+});
+
+describe("B1 · one phone handed from one person to the next is one device", () => {
+  it("keeps one device row; the next user's allowlist age replaces the previous one's, with no false stale flag or alert", async () => {
+    const cp = h.seed.checkpoints.boardroom;
+    const T = h.clock.now();
+    const x = await staffWithShift(cp, T - H, T + H);
+    const y = await staffWithShift(cp, T - H, T + H);
+    const xt = await x.token();
+    const health = async () => (await h.call<{ items: GateHealth[] }>("GET", `/gates/health?event_id=${h.seed.eventId}`, { token: (await h.login(h.seed.emails.admin)).access_token })).body.items.find((g) => g.checkpoint_id === cp)!;
+    const phones = async () => (await h.app.ctx.repos.devices.list(h.seed.venueId)).filter((d) => d.kind === "scanner" && d.checkpoint_id === cp && d.state === "active");
+
+    // 08:20: X's heartbeat reports an allowlist issued 08:12. X hands over.
+    expect((await heartbeat(xt, cp, "shared-phone", { allowlist_issued_at: iso(T - 8 * MIN) })).status).toBe(200);
+    expect(await health()).toMatchObject({ allowlist_issued_at: iso(T - 8 * MIN), allowlist_stale: false });
+    expect((await h.call("POST", `/staff-assignments/${x.assignmentId}/handover`, { token: xt })).status).toBe(200);
+
+    // 08:22: Y signs in on the same phone; its first heartbeat holds no allowlist yet. X's is not shown.
+    h.clock.advance(2 * MIN);
+    const yt = await y.token();
+    expect((await heartbeat(yt, cp, "shared-phone")).status).toBe(200);
+    expect(await phones()).toHaveLength(1);
+    expect((await health()).allowlist_issued_at).toBeNull();
+    // Then Y's phone fetches the allowlist issued 08:18 and reports it.
+    expect((await heartbeat(yt, cp, "shared-phone", { allowlist_issued_at: iso(T - 2 * MIN) })).status).toBe(200);
+
+    // 08:29: X's 08:12 would be 17 minutes old (stale); the phone holds 08:18 (11 minutes): not stale.
+    h.clock.advance(7 * MIN);
+    expect((await heartbeat(yt, cp, "shared-phone", { allowlist_issued_at: iso(T - 2 * MIN) })).status).toBe(200);
+    expect(await phones()).toHaveLength(1);
+    expect(await health()).toMatchObject({ allowlist_issued_at: iso(T - 2 * MIN), allowlist_stale: false, link_state: "online" });
+    const event = (await h.app.ctx.repos.events.byId(h.seed.eventId))!;
+    expect((await h.app.ctx.gates.health(event)).find((g) => g.checkpoint_id === cp)!.allowlist_stale).toBe(false); // what the gate.health feed publishes
+    expect((await h.app.ctx.repos.alerts.list({ eventId: h.seed.eventId, checkpointIds: [cp], limit: 100 })).filter((a) => a.kind === "stale_allowlist")).toHaveLength(0);
+
+    // The takeover is on the record, once.
+    const phoneId = (await phones())[0]!.id;
+    const changes = (await h.app.ctx.repos.audit.all()).filter((e) => e.action === "scanner.user_change" && e.target === `device:${phoneId}`);
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({ actor_id: y.id, meta_jsonb: { checkpoint_id: cp, previous_user_id: x.id } });
+  });
+
+  it("an install's row moves with it to another gate, leaving nothing behind; a different install is another device", async () => {
+    const T = h.clock.now();
+    const a = h.seed.checkpoints.press;
+    const z = await staffWithShift(a, T - H, T + H);
+    const zt = await z.token();
+    expect((await heartbeat(zt, a, "phone-Z", { queue_depth: 3 })).status).toBe(200);
+    expect((await heartbeat(zt, a, "phone-Z2")).status).toBe(200);
+    const atGate = async (cp: string) => (await h.app.ctx.repos.devices.list(h.seed.venueId)).filter((d) => d.kind === "scanner" && d.checkpoint_id === cp && d.state === "active");
+    expect(await atGate(a)).toHaveLength(2);
+    // The hardware id is a hash: the install id never reaches the row.
+    for (const d of await atGate(a)) expect(d.hardware_id).toMatch(/^phone:[0-9a-f]{40}$/);
+    expect((await atGate(a)).some((d) => d.hardware_id.includes("phone-Z"))).toBe(false);
+    const health = async (cp: string) => (await h.call<{ items: GateHealth[] }>("GET", `/gates/health?event_id=${h.seed.eventId}`, { token: (await h.login(h.seed.emails.admin)).access_token })).body.items.find((g) => g.checkpoint_id === cp)!;
+    expect((await health(a)).queue_depth).toBe(3);
+    // phone-Z is carried to the Boardroom door and used there by the person staffing it.
+    const b = h.seed.checkpoints.boardroom;
+    const w = await staffWithShift(b, T - H, T + H);
+    const before = (await atGate(b)).length;
+    expect((await heartbeat(await w.token(), b, "phone-Z")).status).toBe(200);
+    expect(await atGate(a)).toHaveLength(1);
+    expect(await atGate(b)).toHaveLength(before + 1);
+    expect((await health(a)).queue_depth).toBe(0); // its 3 queued scans no longer count at the gate it left
+  });
+});
+
+describe("B2 · the handover summary leaves undone admissions out", () => {
+  it("counts them as undone, not admitted or let through, on both backends", async () => {
+    const cp = h.seed.checkpoints.press;
+    const now = h.clock.now();
+    const x = await staffWithShift(cp, now - MIN, now + H);
+    const t = await x.token();
+    const ids: string[] = [];
+    for (let k = 0; k < 3; k++) {
+      const a = await addAttendee(h, "ORDINARY");
+      const r = await postScans<ScanBatchResponse>(h, [scan(h, cp, band(a.uid), { direction: "in" })], { token: t });
+      expect(r.body.results[0]!.result).toBe("admitted");
+      ids.push(r.body.results[0]!.scan_id);
+      h.clock.advance(1_000);
+    }
+    for (const id of [ids[0]!, ids[2]!]) {
+      expect((await h.call<UndoScanResult>("POST", `/scans/${id}/undo`, { token: t, body: { event_id: h.seed.eventId, reason: "wrong person" } })).status).toBe(200);
+    }
+    const sum = await h.call<HandoverSummary>("POST", `/staff-assignments/${x.assignmentId}/handover`, { token: t });
+    expect(sum.status).toBe(200);
+    expect(sum.body).toMatchObject({ admitted: 1, let_through: 1, undone: 2, scans: 3, by_result: { admitted: 1 } });
+    // Asked again (re-read, not re-stamped): the same figures; the audit entry carries them too.
+    expect((await h.call<HandoverSummary>("POST", `/staff-assignments/${x.assignmentId}/handover`, { token: t })).body).toMatchObject({ admitted: 1, undone: 2 });
+    const entry = (await h.app.ctx.repos.audit.all()).find((e) => e.action === "staff.handover" && e.target === `staff_assignment:${x.assignmentId}`);
+    expect(entry?.meta_jsonb).toMatchObject({ let_through: 1, undone: 2 });
   });
 });
 

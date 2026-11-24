@@ -444,6 +444,9 @@ function Staff({
       <SectionHead id="gate-staff" title="Assigned staff" />
       {assignments.status === "loading" ? (
         <p className="px-4 py-3 text-12 text-muted-foreground">Loading…</p>
+      ) : assignments.status === "error" && errorCode(assignments.error) === "FORBIDDEN" ? (
+        // A supervisor may watch the gate but not read the shift plan (GET /staff-assignments is operators only).
+        <p className="px-4 py-3 text-12 text-muted-foreground">Shift assignments are kept by the organisers and admins.</p>
       ) : assignments.status === "error" ? (
         <p className="px-4 py-3 text-12 text-destructive">
           Could not load the assignments.{" "}

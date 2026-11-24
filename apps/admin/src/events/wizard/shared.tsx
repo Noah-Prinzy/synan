@@ -8,6 +8,7 @@ import { ArrowLeft } from "lucide-react";
 import type { AccessRule } from "@synan/contracts/rest";
 import type { EventRecord, PassTemplate, RuleInput, VenueDetail, WizardStep } from "@synan/mock/command";
 import { ActionButton, Button, cn } from "@synan/ui/components";
+import { GUTTER_X } from "../../kit";
 import type { MatrixRoom } from "../parts/tier-matrix";
 
 export const STEP_LABEL: Record<WizardStep, string> = {
@@ -115,13 +116,18 @@ export function StepLayout({
   return (
     <div
       className={cn(
-        "grid grid-cols-1 gap-8 px-4 py-6 sm:px-6 xl:gap-10",
-        Boolean(aside) && (width === "wide" ? "xl:grid-cols-[minmax(0,60rem)_minmax(16rem,22rem)]" : "xl:grid-cols-[minmax(0,40rem)_minmax(16rem,24rem)]"),
+        "grid grid-cols-1 gap-8 py-6 xl:gap-10 2xl:gap-16",
+        GUTTER_X,
+        Boolean(aside) &&
+          (width === "wide"
+            ? "xl:grid-cols-[minmax(0,60rem)_minmax(16rem,22rem)] 2xl:grid-cols-[minmax(0,64rem)_24rem]"
+            : "xl:grid-cols-[minmax(0,40rem)_minmax(16rem,24rem)] 2xl:grid-cols-[minmax(0,40rem)_26rem]"),
       )}
     >
-      <div className={cn("min-w-0", width === "form" ? "max-w-160" : "max-w-240")}>{children}</div>
+      <div className={cn("min-w-0", width === "form" ? "max-w-160" : "max-w-5xl")}>{children}</div>
       {aside ? (
-        <aside aria-label={asideLabel} className={cn("min-w-0", asideAlways ? "max-w-160" : "hidden xl:block")}>
+        // Beside the step from 1280 the aside stays in view while a long step scrolls.
+        <aside aria-label={asideLabel} className={cn("min-w-0 xl:sticky xl:top-6 xl:self-start", asideAlways ? "max-w-160 xl:max-w-none" : "hidden xl:block")}>
           {aside}
         </aside>
       ) : null}
@@ -133,11 +139,11 @@ export function StepLayout({
 export function StepSection({ id, title, children, meta }: { id: string; title: string; meta?: ReactNode; children: ReactNode }) {
   return (
     <section aria-labelledby={id} className="flex flex-col gap-4">
-      <div className="flex items-baseline justify-between gap-3 border-b border-border pb-1.5">
-        <h2 id={id} className="text-12 font-medium">
+      <div className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
+        <h2 id={id} className="text-13 font-medium">
           {title}
         </h2>
-        {meta ? <span className="text-11 text-muted-foreground">{meta}</span> : null}
+        {meta ? <span className="text-12 text-muted-foreground">{meta}</span> : null}
       </div>
       {children}
     </section>
@@ -147,9 +153,9 @@ export function StepSection({ id, title, children, meta }: { id: string; title: 
 /** Context for the aside: a short ruled list of facts or guidance. */
 export function AsideBlock({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="mb-6">
-      <h2 className="border-b border-border pb-1.5 text-12 font-medium">{title}</h2>
-      <div className="mt-2 text-13">{children}</div>
+    <div className="mb-8 last:mb-0">
+      <h2 className="border-b border-border pb-2 text-13 font-medium">{title}</h2>
+      <div className="mt-3 text-13">{children}</div>
     </div>
   );
 }
@@ -175,7 +181,7 @@ export function WizardFooter({
   extra?: ReactNode;
 }) {
   return (
-    <div className="mt-8 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
       <div className="flex flex-wrap items-center gap-2">
         {onBack ? (
           <Button variant="secondary" size="compact" onClick={onBack}>

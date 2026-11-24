@@ -19,7 +19,7 @@ import { endpoints, ProfileField, RsvpRequest, type BatchItemRejection, type Pro
 import type { z } from "zod";
 import type { AppContext } from "../app.js";
 import { API_BRAND } from "../brand.js";
-import { carrierDto, hint } from "../domain/credential-service.js";
+import { carrierDto, credentialsNamed, hint } from "../domain/credential-service.js";
 import type { AuthContext } from "../domain/principal.js";
 import { mayRunDesk, mayWorkDeskFor } from "../domain/scope.js";
 import { nfcIdentifier } from "../domain/scan-service.js";
@@ -249,9 +249,17 @@ export function registrationRoutes(x: Express, app: AppContext) {
     const { credOf, bandOf, bandLost } = facts;
     let matching: Set<string> | null = null;
     if (query.q) {
-      // Operators search identity: a bounded decrypt-and-filter over this event's attendees (SQL backend).
+      // Identity: a bounded decrypt-and-filter over this event's attendees (SQL backend). And, with no
+      // identity involved, a pass reference or id, a band UID or a band hint's last four — so a kiosk
+      // walk-in (Public tier, no name or email) can be found by the pass or band in hand.
       const found = await app.repos.attendees.search(query.q, { attendeeIds: [...new Set(all.map((r) => r.attendee_id))], limit: 5000 });
-      matching = new Set(found.map((a) => a.id));
+      const people = new Set(found.map((a) => a.id));
+      const byPass = new Set<string>();
+      const creds = await credentialsNamed(app.repos, e.id, query.q);
+      for (const c of creds.length ? await app.repos.credentials.forRegistrations(all.map((r) => r.id)) : []) {
+        if (creds.includes(c.id) && c.registration_id) byPass.add(c.registration_id);
+      }
+      matching = new Set(all.filter((r) => people.has(r.attendee_id) || byPass.has(r.id)).map((r) => r.id));
     }
     const regs = all
       .filter((r) => !query.tier || r.tier === query.tier)
@@ -259,7 +267,7 @@ export function registrationRoutes(x: Express, app: AppContext) {
       .filter((r) => !query.credential || credOf.get(r.id)?.state === query.credential)
       .filter((r) => query.unbound === undefined || (query.unbound ? !bandOf.has(credOf.get(r.id)?.id ?? "") : bandOf.has(credOf.get(r.id)?.id ?? "")))
       .filter((r) => query.band_lost === undefined || bandLost(credOf.get(r.id)?.id) === query.band_lost)
-      .filter((r) => !matching || matching.has(r.attendee_id))
+      .filter((r) => !matching || matching.has(r.id))
       .sort((a, b) => a.id.localeCompare(b.id))
       .filter((r) => !query.cursor || r.id > query.cursor);
     const page = regs.slice(0, query.limit);
@@ -414,6 +422,7 @@ export function registrationRoutes(x: Express, app: AppContext) {
       throw new ContractError("CHECKPOINT_NOT_ASSIGNED", "A kiosk runs only at a perimeter desk you are staffing now.");
     }
     const bandHash = body.band_uid ? nfcIdentifier(body.band_uid) : null;
+    if (body.band_uid) await app.repos.carriers.noteHints([body.band_uid]); // the readable last four (0035)
     if (bandHash) {
       const band = await app.repos.carriers.byIdentifier("nfc", bandHash);
       if (!band || band.state !== "stock") throw invalid("body.band_uid", "this band is not in stock");

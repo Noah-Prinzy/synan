@@ -431,8 +431,8 @@ These are binding and testable.
 | Admin map, 60 rooms, 4 Hz deltas | ≥ 55 FPS sustained |
 | Telemetry ingest | ≤ 4 Hz per channel, coalesced 250 ms |
 | Scan verdict render | < 16 ms after the local decision |
-| Admin initial JS, route-split | ≤ 180 KB gzip per surface |
-| Attendee pass screen | ≤ 90 KB gzip, first paint < 1.2 s on 4G. **Under review (O-15):** React and the router alone measure 81 KB, so this figure cannot be met on the current stack |
+| Admin initial JS, route-split | ≤ 200 KB gzip, including the client that checks every request and reply against the contracts (O-26) |
+| Attendee pass screen | ≤ 125 KB gzip for everything loaded before the pass appears (HTML, styles, code; fonts excluded), first paint < 1.2 s on 4G (O-15) |
 | Scanner first interactive | < 1.5 s, fully usable offline thereafter |
 
 **Implementation notes**

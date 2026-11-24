@@ -9,6 +9,8 @@ import {
   importCarrierIdentifiers,
   importCarriers,
   nfcIdentifierHash,
+  nfcIdentifierHint,
+  noteCarrierHints,
   rebindCarrier,
   replaceLostBand,
 } from "../src/carriers";
@@ -43,6 +45,20 @@ describe("bulk import", () => {
     const raw = await importCarrierIdentifiers(db, ["short", b64Hash("x"), b64Hash("x")]);
     expect(raw).toEqual({ inserted: 1, duplicates: [b64Hash("x")], invalid: ["short"] });
     expect((await carrierInventory(db)).stock).toBe(3001);
+    // The readable hint (0035): the UID's last four, upper-case hex; the UID itself is not stored.
+    const [b] = await db.select().from(s.carriers).where(eq(s.carriers.identifier, nfcIdentifierHash(uid(42))));
+    expect(b!.identifier_hint).toBe(uid(42).slice(-4));
+    expect(JSON.stringify(b)).not.toContain(uid(42));
+  });
+
+  it("notes a hint when a UID is presented, once, and refuses a malformed hint (0035)", async () => {
+    await importCarrierIdentifiers(db, [nfcIdentifierHash("04AABBCCDD81bf")]);
+    expect(await noteCarrierHints(db, ["04aabbccdd81BF", "not hex"])).toBe(1);
+    const [c] = await db.select().from(s.carriers).where(eq(s.carriers.identifier, nfcIdentifierHash("04AABBCCDD81BF")));
+    expect(c!.identifier_hint).toBe("81BF");
+    expect(nfcIdentifierHint(" 04aabbccdd81bf ")).toBe("81BF");
+    expect(await noteCarrierHints(db, ["04AABBCCDD81BF"])).toBe(0); // already noted
+    await rejects(db.update(s.carriers).set({ identifier_hint: "81bf" }).where(eq(s.carriers.id, c!.id)), /carriers_identifier_hint_shape/);
   });
 });
 

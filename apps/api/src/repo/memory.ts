@@ -8,6 +8,7 @@
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { ALERT_RETENTION_MONTHS, AUDIT_RETENTION_MONTHS, entryHash, GENESIS_HASH, monthsBefore, verifyChain } from "../domain/audit.js";
+import { sha256b64url } from "../lib/crypto.js";
 import { inProcessDeskCodes, inProcessUserInvites } from "./pending.js";
 import { memoryReports } from "./memory-reports.js";
 import { memoryExportedFiles, memoryReportSchedules, type MemSchedule } from "./memory-delivery.js";
@@ -558,10 +559,10 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       async accessRules(eventId) {
         return [...t.accessRules.values()].filter((r) => r.event_id === eventId).map(clone);
       },
-      async listAll({ state, q, after, limit }) {
+      async listAll({ state, states, q, after, limit }) {
         const needle = q?.toLowerCase();
         return [...t.events.values()]
-          .filter((e) => (!state || e.state === state) && (!needle || e.title.toLowerCase().includes(needle)))
+          .filter((e) => (!state || e.state === state) && (!states || states.includes(e.state)) && (!needle || e.title.toLowerCase().includes(needle)))
           .sort(byStart)
           .filter((e) => afterStart(e, after))
           .slice(0, limit)
@@ -850,6 +851,15 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
         }
         for (const [id, c] of t.carriers) if (c.id === "") c.id = id;
         return { inserted, duplicates: [...new Set(duplicates)].sort() };
+      },
+      async noteHints(uids) {
+        // Mirrors @synan/db noteCarrierHints: the hint of each presented UID, on its carriers that have none.
+        for (const raw of uids) {
+          const u = raw.trim().toUpperCase();
+          if (!/^[0-9A-F]{8,32}$/.test(u)) continue;
+          const h = sha256b64url(`nfc:${u}`);
+          for (const c of t.carriers.values()) if (c.kind === "nfc" && c.identifier === h && !c.identifier_hint) c.identifier_hint = u.slice(-4);
+        }
       },
       async bind({ identifier, credentialId, actorId, now }) {
         const k = liveNfc(identifier);
@@ -1384,7 +1394,7 @@ function memoryAllowlist(t: MemoryTables, e: EventRow, from: number, to: number,
 function memoryDevices(t: MemoryTables): DevicesRepo {
   const hash = (token: string) => createHash("sha256").update(token).digest("base64url");
   const pub = (d: MemDevice): DeviceRow => {
-    const { token_hash: _h, allowlist_issued_at: _a, ...row } = d;
+    const { token_hash: _h, allowlist_issued_at: _a, last_user_id: _u, ...row } = d;
     return clone(row);
   };
   return {
@@ -1431,21 +1441,27 @@ function memoryDevices(t: MemoryTables): DevicesRepo {
       return "ok";
     },
     async ensureScanner(i) {
-      let d = [...t.devices.values()].find((x) => x.hardware_id === i.hardwareId);
+      const d = [...t.devices.values()].find((x) => x.hardware_id === i.hardwareId);
       if (!d) {
         const r = await this.register({ venueId: i.venueId, kind: "scanner", label: i.label, hardwareId: i.hardwareId, checkpointId: i.checkpointId });
         if (r === "duplicate") throw new Error("unreachable");
-        return r.id;
+        t.devices.get(r.id)!.last_user_id = i.userId;
+        return { id: r.id, previousUserId: null };
       }
-      if (d.checkpoint_id !== i.checkpointId) d.checkpoint_id = i.checkpointId;
-      return d.id;
+      const prev = d.last_user_id ?? null;
+      const handedOver = prev !== i.userId;
+      if (d.checkpoint_id !== i.checkpointId || handedOver) {
+        // Another gate's or another person's allowlist age no longer describes this install.
+        Object.assign(d, { checkpoint_id: i.checkpointId, last_user_id: i.userId, allowlist_issued_at: null });
+      }
+      return { id: d.id, previousUserId: handedOver ? prev : null };
     },
     async gateHealth(venueId, { eventId, now }) {
       return memoryGateHealth(t, venueId, eventId, now);
     },
   };
 }
-type MemDevice = DeviceRow & { token_hash: string | null; allowlist_issued_at?: Date | null };
+type MemDevice = DeviceRow & { token_hash: string | null; allowlist_issued_at?: Date | null; last_user_id?: string | null };
 
 /** Mirrors @synan/db webhook_enqueue / webhook_claim / webhook_record_attempt (migration 0014). */
 function memoryWebhookDeliveries(t: MemoryTables): WebhookDeliveriesRepo {

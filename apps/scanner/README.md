@@ -42,12 +42,19 @@ includes `http://localhost:5175`). Sign in on S1 with a gate staff account from 
 API prints them at start). Code lives in `src/data/api/`:
 
 - `client.ts` typed fetch client (types from `@synan/contracts/rest`, no Zod in the bundle), the
-  session, and refresh under a Web Lock shared by tabs (refresh tokens are single-use).
+  session, and refresh under a Web Lock shared by tabs (refresh tokens are single-use; a refresh
+  whose answer is lost is retried once with the same token, inside the server's 10 s grace).
 - `crypto.ts` WebCrypto Ed25519: portal and emailed QR codes, and the signed allowlist, verified
   with public keys from `GET /auth/signing-keys`. Without Ed25519 or outside a secure context
   (HTTPS or localhost) nothing is trusted offline: every offline read is refused.
 - `decide.ts` the offline decision, in the server's order, for what a scanner can know.
-- `queue.ts`, `idb.ts` the IndexedDB queue: each scan is stored before its verdict shows, with an
-  idempotency key, `occurred_at` and the clock offset, and sent in order with `POST /scans`.
+- `queue.ts`, `idb.ts` the IndexedDB queue (schema v2): each scan is stored before its verdict
+  shows, with an idempotency key, `occurred_at`, the clock offset and the assignment it was made
+  under, and sent in order with `POST /scans`. Scans left by a signed-out or handed-over shift stay
+  on the device and are sent by the next staff member on shift at that gate (same install id);
+  refusals for "not your gate / not your shift" are kept and retried under the next signer. Undo
+  of a scan that never left the device withholds it; otherwise it calls `POST /scans/:id/undo`.
 - `stream.ts` `/stream/scans` with a single-use ticket in the subprotocol, heartbeats, backoff.
-- `runtime.ts` ties it together and feeds the existing screens through `src/data/store.ts`.
+- `runtime.ts` ties it together (gates from `GET /me/assignments` alone, QR leeway from
+  `GET /time`, heartbeats with the allowlist's `issued_at`) and feeds the existing screens through
+  `src/data/store.ts`.

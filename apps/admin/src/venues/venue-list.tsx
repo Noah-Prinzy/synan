@@ -90,13 +90,13 @@ function VenueTable({ rows }: { rows: VenueRow[] }) {
       <thead>
         <tr>
           <Th>Name</Th>
-          <Th>City</Th>
-          <Th numeric>Floors</Th>
-          <Th numeric>Zones</Th>
-          <Th numeric>Rooms</Th>
-          <Th numeric>Capacity</Th>
-          <Th numeric>Active events</Th>
-          <Th>Layout</Th>
+          <Th fit className="pr-8">City</Th>
+          <Th numeric fit>Floors</Th>
+          <Th numeric fit>Zones</Th>
+          <Th numeric fit>Rooms</Th>
+          <Th numeric fit>Capacity</Th>
+          <Th numeric fit>Active events</Th>
+          <Th fit className="pl-8">Layout</Th>
         </tr>
       </thead>
       <tbody>
@@ -107,17 +107,17 @@ function VenueTable({ rows }: { rows: VenueRow[] }) {
                 {row.venue.name}
               </Link>
             </Td>
-            <Td className="whitespace-nowrap text-muted-foreground">{row.venue.city ?? "—"}</Td>
-            <Td numeric title={row.floors.join(", ")}>
+            <Td fit className="pr-8 text-muted-foreground">{row.venue.city ?? "—"}</Td>
+            <Td numeric fit title={row.floors.join(", ")}>
               {formatNumber(row.floors.length)}
             </Td>
-            <Td numeric>{formatNumber(row.zones)}</Td>
-            <Td numeric>{formatNumber(row.rooms)}</Td>
-            <Td numeric>{row.capacity > 0 ? formatNumber(row.capacity) : <span className="text-muted-foreground">—</span>}</Td>
-            <Td numeric className={row.active_events === 0 ? "text-muted-foreground" : undefined}>
+            <Td numeric fit>{formatNumber(row.zones)}</Td>
+            <Td numeric fit>{formatNumber(row.rooms)}</Td>
+            <Td numeric fit>{row.capacity > 0 ? formatNumber(row.capacity) : <span className="text-muted-foreground">—</span>}</Td>
+            <Td numeric fit className={row.active_events === 0 ? "text-muted-foreground" : undefined}>
               {formatNumber(row.active_events)}
             </Td>
-            <Td className="whitespace-nowrap">
+            <Td fit className="pl-8">
               <LayoutState row={row} />
             </Td>
           </tr>

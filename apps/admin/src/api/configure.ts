@@ -56,8 +56,8 @@ function updateBody(patch: EventPatch) {
   const { rules: _rules, pass_template, venue_id, rooms, ...rest } = patch;
   return {
     ...rest,
-    // DIFFERENCE: the server cannot clear a venue (venue_id is not nullable); null is left out.
-    ...(venue_id ? { venue_id } : {}),
+    // null clears a draft's venue (UpdateEvent.venue_id is nullable).
+    ...(venue_id !== undefined ? { venue_id } : {}),
     ...(rooms ? { rooms: rooms.map((r) => ({ room_id: r.room_id, capacity_override: r.capacity_override })) } : {}),
     ...(pass_template !== undefined ? { pass_template: pass_template ? { ...pass_template } : null } : {}),
   };
@@ -108,20 +108,19 @@ export function createConfigureApi(client: ApiClient, cache: SharedCache): Confi
     );
 
   /**
-   * One registration as the desk sees it. NOT ON THE SERVER as one call (proposed: GET
-   * /registrations/:id): found in the event's registrations, its band through GET /credentials.
+   * One registration as the desk sees it: GET /registrations/:id, which carries the band to act on
+   * (`carrier_id`: the live band, else a lost one) and when the pass last went out. When the band last
+   * changed is its `bound_at`, from GET /credentials.
    */
   const deskAttendee = async (eventId: string, registrationId: string): Promise<DeskAttendee> => {
-    const { items } = await registrations(eventId);
-    const row = items.find((r) => r.id === registrationId);
-    if (!row) throw new ApiFailure("NOT_FOUND", 404);
-    const carrier = row.credential_id ? await liveBand(eventId, row.credential_id).catch(() => null) : null;
+    const row = await client.call("getRegistration", { params: { id: registrationId } });
+    if (row.event_id !== eventId) throw new ApiFailure("NOT_FOUND", 404);
+    const carrier = row.credential_id && row.band_hint ? await liveBand(eventId, row.credential_id).catch(() => null) : null;
     return {
       ...toAttendeeRow(row),
       credential_id: row.credential_id ?? null,
-      carrier_id: carrier?.id ?? null,
-      // DIFFERENCE: not served — when the pass email last went out, and when the band last changed.
-      pass_sent_at: null,
+      carrier_id: row.carrier_id ?? carrier?.id ?? null,
+      pass_sent_at: row.pass_sent_at ?? null,
       band_changed_at: carrier?.bound_at ?? null,
     };
   };
@@ -366,8 +365,9 @@ export function createConfigureApi(client: ApiClient, cache: SharedCache): Confi
     },
 
     /**
-     * GET /credentials/inventory?event_id. DIFFERENCE: `recent` (the desk's last band actions) is not
-     * served — empty (proposed: GET /carriers/recent?event_id).
+     * GET /credentials/inventory?event_id, with the latest band actions (`recent`). DIFFERENCE: the
+     * server names no attendee there (ids and band hints only), so the name shows as a dash; only
+     * binds and replacements are listed (the screen's vocabulary).
      */
     async credentialOverview(eventId) {
       const inventory = await client.call("inventory", { query: { event_id: eventId } });
@@ -375,7 +375,9 @@ export function createConfigureApi(client: ApiClient, cache: SharedCache): Confi
         by_state: carrierCounts(inventory.by_state),
         by_chip_profile: { ...inventory.by_chip_profile },
         credentials: credentialCounts(inventory.credentials),
-        recent: [],
+        recent: (inventory.recent ?? [])
+          .filter((r): r is typeof r & { action: "bound" | "replaced" } => r.action === "bound" || r.action === "replaced")
+          .map((r) => ({ at: r.at, band_hint: r.band_hint, attendee: "—", action: r.action })),
       };
       return overview;
     },
@@ -413,9 +415,7 @@ export function createConfigureApi(client: ApiClient, cache: SharedCache): Confi
       const current = await deskAttendee(eventId, registrationId);
       if (!current.credential_id) throw new ApiFailure("NO_CREDENTIAL", 404);
       await client.call("resend", { params: { id: current.credential_id } });
-      const after = await deskAttendee(eventId, registrationId);
-      // DIFFERENCE: the server does not say when the pass went out; it went out now.
-      return { ...after, pass_sent_at: new Date(Date.now() + client.offsetMs()).toISOString() };
+      return deskAttendee(eventId, registrationId);
     },
 
     /** POST /credentials/:id/clear-review (a supervisor needs MFA: the client prompts). */
@@ -433,15 +433,13 @@ export function createConfigureApi(client: ApiClient, cache: SharedCache): Confi
       return deskAttendee(eventId, registrationId);
     },
 
-    /**
-     * GET /credentials/inventory. DIFFERENCE: `today` (the desk's own work this shift) is not served
-     * (zeros; proposed on the inventory, per desk assignment).
-     */
+    /** GET /credentials/inventory: the stock, the event's bands, and this desk's own work this shift (`today`; zeros with no shift). */
     async deskStock(eventId) {
       const [all, event] = await Promise.all([client.call("inventory", {}), client.call("inventory", { query: { event_id: eventId } })]);
       const stock = carrierCounts(all.by_state);
       const mine = carrierCounts(event.by_state);
-      return { stock: stock.stock, bound: mine.bound + mine.active, lost: mine.lost, today: { bound: 0, replaced: 0, resent: 0 } };
+      const today = event.today ?? null;
+      return { stock: stock.stock, bound: mine.bound + mine.active, lost: mine.lost, today: { bound: today?.bound ?? 0, replaced: today?.replaced ?? 0, resent: today?.resent ?? 0 } };
     },
 
     async staff() {

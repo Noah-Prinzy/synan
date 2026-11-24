@@ -53,6 +53,7 @@ import {
   decryptAttendeeRow,
   emailBlindIndex,
   importCarriers,
+  noteCarrierHints,
   runReport,
   postEventSummary,
   withWorkbookData,
@@ -156,7 +157,7 @@ type Json = Record<string, unknown>;
 const toHandover = (s: DbHandoverSummary) => ({
   assignment_id: s.assignment_id, checkpoint_id: s.checkpoint_id, user_id: s.user_id, period_start: s.period_start, period_end: s.period_end,
   scans: s.scans, let_through: s.let_through, refused: s.refused, duplicates: s.duplicates, offline: s.offline, late_synced: s.late_synced,
-  by_result: s.by_result, first_scan_at: s.first_scan_at, last_scan_at: s.last_scan_at,
+  by_result: s.by_result, first_scan_at: s.first_scan_at, last_scan_at: s.last_scan_at, undone: s.undone,
 });
 const one =<T>(rows: T[]): T | null => rows[0] ?? null;
 
@@ -283,6 +284,7 @@ const toCarrier = (r: typeof carriers.$inferSelect): CarrierRow => ({
   credential_id: r.credential_id,
   kind: r.kind,
   identifier: r.identifier,
+  identifier_hint: r.identifier_hint,
   chip_profile: r.chip_profile,
   state: r.state,
   bound_at: r.bound_at,
@@ -579,19 +581,26 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
         return recordHeartbeat(db, { deviceId: i.deviceId, checkpointId: i.checkpointId ?? null, clockOffsetMs: i.clockOffsetMs, queueDepth: i.queueDepth, appVersion: i.appVersion, allowlistIssuedAt: i.allowlistIssuedAt ?? null, now: i.now });
       },
       async ensureScanner(i) {
-        const find = async () => one(await db.select({ id: devices.id, checkpoint_id: devices.checkpoint_id }).from(devices).where(eq(devices.hardware_id, i.hardwareId)).limit(1));
+        const find = async () =>
+          one(await db.select({ id: devices.id, checkpoint_id: devices.checkpoint_id, last_user_id: devices.last_user_id }).from(devices).where(eq(devices.hardware_id, i.hardwareId)).limit(1));
         let d = await find();
         if (!d) {
           try {
             const r = await registerDevice(db, { venueId: i.venueId, kind: "scanner", label: i.label, hardwareId: i.hardwareId, checkpointId: i.checkpointId, issueToken: false });
-            return r.id;
+            await db.update(devices).set({ last_user_id: i.userId }).where(eq(devices.id, r.id));
+            return { id: r.id, previousUserId: null };
           } catch (e) {
             if (pgCode(e) !== "23505") throw e;
             d = await find(); // registered concurrently
           }
         }
-        if (d!.checkpoint_id !== i.checkpointId) await db.update(devices).set({ checkpoint_id: i.checkpointId }).where(eq(devices.id, d!.id));
-        return d!.id;
+        const moved = d!.checkpoint_id !== i.checkpointId;
+        const handedOver = d!.last_user_id !== i.userId;
+        if (moved || handedOver) {
+          // Another gate's or another person's allowlist age no longer describes this install.
+          await db.update(devices).set({ checkpoint_id: i.checkpointId, last_user_id: i.userId, allowlist_issued_at: null }).where(eq(devices.id, d!.id));
+        }
+        return { id: d!.id, previousUserId: handedOver ? d!.last_user_id : null };
       },
       async gateHealth(venueId, { eventId, now }) {
         return (await gateHealth(db, venueId, { eventId, now })).map((g) => ({
@@ -816,9 +825,10 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       async accessRules(eventId) {
         return db.select().from(access_rules).where(eq(access_rules.event_id, eventId));
       },
-      async listAll({ state, q, after, limit }) {
+      async listAll({ state, states, q, after, limit }) {
         const conds = [];
         if (state) conds.push(eq(events.state, state));
+        if (states) conds.push(states.length ? inArray(events.state, [...states]) : sql`false`);
         if (q) conds.push(ilike(events.title, `%${q.replace(/[%_\\]/g, (c) => `\\${c}`)}%`));
         if (after) conds.push(or(gt(events.starts_at, after.starts_at), and(eq(events.starts_at, after.starts_at), gt(events.id, after.id)))!);
         return (await db.select().from(events).where(conds.length ? and(...conds) : undefined).orderBy(asc(events.starts_at), asc(events.id)).limit(limit)).map(toEvent);
@@ -1091,6 +1101,9 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
         const r = await importCarriers(db, hashes.map((h) => ({ identifier_hash: h, chip_profile: chipProfile })));
         return { inserted: r.imported, duplicates: [...new Set(r.duplicates)].sort() };
       },
+      async noteHints(uids) {
+        for (let i = 0; i < uids.length; i += 5000) await noteCarrierHints(db, uids.slice(i, i + 5000));
+      },
       async bind(i) {
         const r = await bindCarrier(db, { identifier: i.identifier, credentialId: i.credentialId, actorId: i.actorId, confirm: true, kind: "nfc", now: i.now });
         return { status: r.status, carrier_id: r.carrier_id };
@@ -1304,7 +1317,12 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
         if (targets) conds.push(inArray(audit_log.target, [...targets]));
         if (actorId) conds.push(eq(audit_log.actor_id, actorId));
         if (since) conds.push(gte(audit_log.at, since));
-        return (await db.select().from(audit_log).where(and(...conds)).orderBy(desc(audit_log.id)).limit(limit)).map(toAudit);
+        // Narrowed to targets (a desk's bands, one alert): read them through audit_log_target_idx and sort
+        // what matched. Ordering by the bare id lets the planner walk the primary key backwards and filter,
+        // which reads the whole log when the targets have few or only old entries (measured: 300k entries,
+        // 3000 bands without recent actions: ~180 ms walking the key vs ~17–70 ms by target).
+        const order = targets ? desc(sql`${audit_log.id} + 0`) : desc(audit_log.id);
+        return (await db.select().from(audit_log).where(and(...conds)).orderBy(order).limit(limit)).map(toAudit);
       },
       async verify() {
         const problems = await auditVerify(db);

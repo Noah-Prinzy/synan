@@ -251,9 +251,10 @@ export function toLiveSummary(s: EventLiveSummary): LiveSummary {
 }
 
 /**
- * GET /me/operator → who is signed in. DIFFERENCES: no display name on the server (the email stands
- * in); `shift` is the current staff assignment or null (an admin rarely has one: the sign-in session
- * stands in, labelled "Signed in"); `event_ids` comes from `desk_event_ids` for a desk clerk.
+ * GET /me/operator → who is signed in: `name` is the display name, else the email; `shift` is the
+ * current assignment with the server's `shift_label`. With no current shift nothing is invented:
+ * the shift's label and times are empty and the console shows none. `event_ids` comes from
+ * `desk_event_ids` for a desk clerk.
  */
 export function toOperatorContext(
   p: {
@@ -261,22 +262,18 @@ export function toOperatorContext(
     email: string;
     role: Role;
     current_shift: (StaffAssignment & { checkpoint_label: string }) | null;
+    display_name?: string | null | undefined;
+    shift_label?: string | null | undefined;
     capabilities?: string[] | undefined;
     desk_event_ids?: string[] | undefined;
   },
-  session: { signed_in_at: number; refresh_expires_at: number } | null,
-  now: number,
 ): OperatorContext {
   const shift = p.current_shift
-    ? { label: p.current_shift.checkpoint_label || "Shift", starts_at: p.current_shift.shift_start, ends_at: p.current_shift.shift_end }
-    : {
-        label: "Signed in",
-        starts_at: new Date(session?.signed_in_at ?? now).toISOString(),
-        ends_at: new Date(session?.refresh_expires_at ?? now).toISOString(),
-      };
+    ? { label: p.shift_label || p.current_shift.checkpoint_label || "Shift", starts_at: p.current_shift.shift_start, ends_at: p.current_shift.shift_end }
+    : { label: "", starts_at: "", ends_at: "" };
   return {
     id: p.id,
-    name: p.email,
+    name: p.display_name?.trim() || p.email,
     email: p.email,
     role: p.role,
     shift,

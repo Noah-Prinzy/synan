@@ -104,7 +104,7 @@ describe("2 · a lost band reaches the desk", () => {
 
     // Recent band actions and the clerk's own shift counts on the inventory.
     const inv = await h.call<{ recent: { action: string; carrier_id: string; band_hint: string }[]; today: { bound: number; replaced: number; resent: number; since: string } }>("GET", `/credentials/inventory?event_id=${h.seed.eventId}`, { token: people.clerk.token });
-    expect(inv.body.recent[0]).toMatchObject({ action: "bound", carrier_id: first.body.id });
+    expect(inv.body.recent[0]).toMatchObject({ action: "replaced", carrier_id: first.body.id }); // a replacement reads replaced, as today.replaced counts it
     expect(inv.body.recent.some((x) => x.action === "reported_lost" && x.carrier_id === row.carrier_id)).toBe(true);
     expect(JSON.stringify(inv.body.recent)).not.toContain("Test");
     expect(inv.body.today).toMatchObject({ bound: 0, replaced: 1, resent: 0 });
@@ -143,7 +143,7 @@ describe("3 · GET /scans", () => {
 
     expect(errCode((await h.call("GET", `/scans?event_id=${h.seed.eventId}&q=${p.credentialId}`, { token: people.supervisor.token })).body)).toBe("FORBIDDEN");
     const before = (await h.app.ctx.repos.audit.all()).filter((a) => a.action === "credential.access_history").length;
-    const hintText = (await h.app.ctx.repos.carriers.forCredential(p.credentialId)).find((c) => c.kind === "nfc")!.identifier!.slice(-4);
+    const hintText = `••••${p.uid.slice(-4)}`; // the band hint as shown: the UID's last four
     for (const q of [p.credentialId, p.uid, hintText]) {
       const s = await h.call<{ items: { ephemeral_id: string | null }[]; total: number }>("GET", `/scans?event_id=${h.seed.eventId}&q=${encodeURIComponent(q)}`, { token: organiser });
       expect(s.status).toBe(200);

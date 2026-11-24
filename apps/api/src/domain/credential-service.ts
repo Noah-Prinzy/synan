@@ -16,15 +16,55 @@ import { evaluateAccess } from "./decision.js";
 import { currentOf, eventRef } from "./event-ref.js";
 import type { AuthContext } from "./principal.js";
 import type { QrService } from "./qr.js";
+import { nfcIdentifier } from "./scan-service.js";
 
 export function credentialRef(): string {
   return createHash("sha256").update(randomBytes(32)).digest().subarray(0, 16).toString("base64url");
 }
 
+/**
+ * What a carrier shows people. A band: the last four characters of its UID in upper-case hex, as
+ * printed on or read from the band in hand ("••••81BF"), stored when the UID was presented (0035);
+ * "band" until then. Never more of the UID, and never derived from its hash.
+ */
 export function hint(c: CarrierRow): string {
-  if (c.kind === "nfc") return `band ••${(c.identifier ?? "").slice(-4)}`;
+  if (c.kind === "nfc") return c.identifier_hint ? `••••${c.identifier_hint}` : "band";
   if (c.kind === "qr_email") return "emailed code";
   return "app pass";
+}
+
+/**
+ * The event's credentials a search names, without identity: a credential id, a credential reference
+ * (22 characters, as on the pass), a band's full UID (hex), or a band hint's last four ("81BF",
+ * "••••81BF", "band 81bf"). Used by the scan-log search (GET /scans `q`) and the desk's registration
+ * search (GET /events/:id/registrations `q`), so kiosk walk-ins with no name or email can be found.
+ */
+export async function credentialsNamed(repos: Repos, eventId: string, raw: string): Promise<string[]> {
+  const q = raw.trim().replace(/^band\s*/i, "").replace(/[•\s]/g, "");
+  const regs = new Set((await repos.registrations.forEvent(eventId)).map((r) => r.id));
+  const ofEvent = (c: { registration_id: string | null } | null) => !!c && c.registration_id !== null && regs.has(c.registration_id);
+  const out = new Set<string>();
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(q)) {
+    const c = await repos.credentials.byId(q.toLowerCase());
+    if (c && ofEvent(c)) out.add(c.id);
+  }
+  if (/^[A-Za-z0-9_-]{22}$/.test(q)) {
+    const c = await repos.credentials.byTokenHash(q);
+    if (c && ofEvent(c)) out.add(c.id);
+  }
+  if (/^[0-9A-Fa-f]{8,32}$/.test(q)) {
+    const band = await repos.carriers.byIdentifier("nfc", nfcIdentifier(q));
+    const c = band?.credential_id ? await repos.credentials.byId(band.credential_id) : null;
+    if (c && ofEvent(c)) out.add(c.id);
+  }
+  if (/^[0-9A-Fa-f]{4}$/.test(q)) {
+    const last4 = q.toUpperCase();
+    const creds = await repos.credentials.forRegistrations([...regs]);
+    for (const band of await repos.carriers.forCredentials(creds.map((c) => c.id))) {
+      if (band.kind === "nfc" && band.credential_id && band.identifier_hint === last4) out.add(band.credential_id);
+    }
+  }
+  return [...out];
 }
 
 export function carrierDto(c: CarrierRow): Credential["carriers"][number] {

@@ -71,10 +71,17 @@ export function carrierRoutes(x: Express, app: AppContext) {
     const credentials = Object.fromEntries(CREDENTIAL_STATE_VALUES.map((s) => [s, creds.filter((c) => c.state === s).length])) as Record<(typeof CREDENTIAL_STATE_VALUES)[number], number>;
     // Every band this event's passes ever had (lost and retired ones too): the audit targets to read.
     const bands = new Map((await app.repos.carriers.forCredentials(creds.map((c) => c.id))).filter((c) => c.kind === "nfc").map((c) => [`carrier:${c.id}`, c]));
+    // A band bound as the replacement of a lost one (its `carrier.bind` is part of the replacement) reads
+    // `replaced`, as `today.replaced` counts it — never `bound`.
+    const swaps = creds.length
+      ? await app.repos.audit.find({ actions: ["carrier.replace_lost", "carrier.replace_damaged"], targets: creds.map((c) => `credential:${c.id}`), limit: 10_000 })
+      : [];
+    const replacedInto = new Set(swaps.map((a) => `carrier:${String(a.meta_jsonb.new_carrier_id)}`));
     const recent = (await app.repos.audit.find({ actions: Object.keys(RECENT_ACTION), targets: [...bands.keys()], limit: 20 })).map((a) => {
       const band = bands.get(a.target)!;
       const credentialId = typeof a.meta_jsonb.credential_id === "string" ? a.meta_jsonb.credential_id : band.credential_id;
-      return { at: a.at.toISOString(), action: RECENT_ACTION[a.action]!, carrier_id: band.id, credential_id: credentialId, band_hint: hint(band) };
+      const action = a.action === "carrier.bind" && replacedInto.has(a.target) ? "replaced" : RECENT_ACTION[a.action]!;
+      return { at: a.at.toISOString(), action, carrier_id: band.id, credential_id: credentialId, band_hint: hint(band) };
     });
     return { ...(await app.repos.carriers.inventory(creds.map((c) => c.id))), credentials, recent, today: await deskShift(ctx!.sub, e, [...bands.keys(), ...creds.map((c) => `credential:${c.id}`)]) };
   });
@@ -111,6 +118,7 @@ export function carrierRoutes(x: Express, app: AppContext) {
     }
     const hashes = body.identifiers.map(nfcIdentifier);
     const r = await app.repos.carriers.importStock(hashes, body.chip_profile);
+    await app.repos.carriers.noteHints(body.identifiers); // the readable last four (0035)
     const dupHashes = new Set(r.duplicates);
     const duplicates = hashes.length - r.inserted;
     await audit(ctx!.sub, "carrier.import", "carriers", { chip_profile: body.chip_profile, imported: r.inserted, duplicates });
@@ -124,6 +132,7 @@ export function carrierRoutes(x: Express, app: AppContext) {
     if (reg.state !== "confirmed") throw new ContractError("CONFLICT", "The registration is not confirmed.");
     const cred = await app.repos.credentials.forRegistration(reg.id);
     if (!cred) throw new ContractError("NO_CREDENTIAL");
+    await app.repos.carriers.noteHints([body.identifier]);
     const r = await app.repos.carriers.bind({ identifier: nfcIdentifier(body.identifier), credentialId: cred.id, actorId: ctx!.sub, now: now() });
     if (r.status !== "bound") throw bindError(r.status, "body.identifier");
     await app.notifications.forCredential(cred.id, NOTE.bandBound);
@@ -141,6 +150,7 @@ export function carrierRoutes(x: Express, app: AppContext) {
       if (!e || !(await mayWorkDeskFor(app, ctx!, e))) throw new ContractError("NOT_FOUND");
     }
     const newIdentifier = nfcIdentifier(body.identifier);
+    await app.repos.carriers.noteHints([body.identifier]);
     if (body.disposition === "lost" && old.state === "lost") {
       // Already lost — reported by its holder (the pass is kept, 01 §5.3), or this replacement already
       // ran. Idempotent: bind the new band to the holder's current pass, or answer the band already
@@ -183,6 +193,7 @@ export function carrierRoutes(x: Express, app: AppContext) {
   });
 
   mount(x, app, endpoints.deskCode, async ({ body, ctx }) => {
+    await app.repos.carriers.noteHints([body.identifier]);
     const band = await app.repos.carriers.byIdentifier("nfc", nfcIdentifier(body.identifier));
     if (!band || band.state !== "stock") throw invalid("body.identifier", "this band is not in stock");
     // Staff hand out codes only while staffing a perimeter desk.
@@ -205,6 +216,7 @@ export function carrierRoutes(x: Express, app: AppContext) {
     let identifier: string;
     if (body.binding.via === "nfc") {
       identifier = nfcIdentifier(body.binding.uid);
+      await app.repos.carriers.noteHints([body.binding.uid]);
     } else {
       // Do not spend a code on a pass that cannot take a band.
       if ((await app.repos.carriers.forCredential(cred.id)).some((c) => c.kind === "nfc" && ["assigned", "bound", "active"].includes(c.state))) {

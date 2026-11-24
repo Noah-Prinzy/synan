@@ -1,7 +1,10 @@
 /**
- * Dense tables (docs/05 §7 tier 3, `Table` dense): 13px rows of 36px, sans header in 11px,
- * hairline row rules, numbers in mono and right-aligned, a sticky head inside a scrolling
- * region. On a narrow screen the table scrolls inside its own frame; the page never does.
+ * Tables (docs/05 §7 tier 3, `Table`; layout rules in kit/page.tsx): 13px rows of 40px (44px
+ * under a coarse pointer), a 36px head in 12px, hairline row rules, numbers in mono and
+ * right-aligned, a sticky head inside a scrolling region. First and last cells line up with the
+ * page gutter. A column that holds a short value (a number, a state, a date, an action) takes
+ * `fit`, so it hugs its content and the text columns get the room. On a narrow screen the table
+ * scrolls inside its own frame; the page never does.
  */
 import type { ReactNode, ThHTMLAttributes, TdHTMLAttributes } from "react";
 import { cn } from "@synan/ui/components";
@@ -16,27 +19,43 @@ export function Table({ children, label, className }: { children: ReactNode; lab
   );
 }
 
-export function Th({ className, numeric, ...props }: ThHTMLAttributes<HTMLTableCellElement> & { numeric?: boolean }) {
+const edge = "first:pl-4 last:pr-4 sm:first:pl-6 sm:last:pr-6 2xl:first:pl-8 2xl:last:pr-8";
+
+export function Th({
+  className,
+  numeric,
+  fit,
+  ...props
+}: ThHTMLAttributes<HTMLTableCellElement> & { numeric?: boolean; fit?: boolean }) {
   return (
     <th
       scope="col"
       {...props}
       className={cn(
-        "sticky top-0 z-[1] h-8 border-b border-border bg-background px-3 text-11 font-normal whitespace-nowrap text-muted-foreground first:pl-4 last:pr-4 sm:first:pl-6 sm:last:pr-6",
+        "sticky top-0 z-[1] h-9 border-b border-border bg-background px-3 text-12 font-normal whitespace-nowrap text-muted-foreground",
+        edge,
         numeric ? "text-right" : "text-left",
+        fit && "w-px",
         className,
       )}
     />
   );
 }
 
-export function Td({ className, numeric, ...props }: TdHTMLAttributes<HTMLTableCellElement> & { numeric?: boolean }) {
+export function Td({
+  className,
+  numeric,
+  fit,
+  ...props
+}: TdHTMLAttributes<HTMLTableCellElement> & { numeric?: boolean; fit?: boolean }) {
   return (
     <td
       {...props}
       className={cn(
-        "h-9 border-b border-border px-3 align-middle first:pl-4 last:pr-4 sm:first:pl-6 sm:last:pr-6",
-        numeric && "text-right font-mono text-12 tabular-nums",
+        "h-10 border-b border-border px-3 align-middle pointer-coarse:h-11",
+        edge,
+        numeric && "text-right font-mono text-13 tabular-nums",
+        fit && "w-px whitespace-nowrap",
         className,
       )}
     />
@@ -83,12 +102,12 @@ export function FilterChips<V extends string>({
             }}
             tabIndex={on ? 0 : -1}
             className={cn(
-              "pressable inline-flex h-7 items-center gap-1.5 border px-2.5 text-12 transition-colors duration-120 ease-standard motion-reduce:transition-none pointer-coarse:h-10",
+              "pressable inline-flex h-8 items-center gap-2 border px-3 text-13 transition-colors duration-120 ease-standard motion-reduce:transition-none pointer-coarse:h-10",
               on ? "border-brand text-foreground" : "border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground",
             )}
           >
             {option.label}
-            {option.count !== undefined ? <span className="font-mono text-11 tabular-nums text-muted-foreground">{option.count}</span> : null}
+            {option.count !== undefined ? <span className="font-mono text-12 tabular-nums text-muted-foreground">{option.count}</span> : null}
           </button>
         );
       })}

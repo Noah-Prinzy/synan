@@ -62,7 +62,7 @@ export const RegistrationRow = Registration.extend({
   /** The registration's current credential (not replaced); null when none was issued. */
   credential_id: Id.nullable().optional(),
   credential_state: CredentialState.nullable().optional(),
-  /** The bound wristband, masked (`band ••1A2B`); null when no band is bound. */
+  /** The bound wristband, masked: its UID's last four in upper-case hex (`••••81BF`); null when no band is bound. */
   band_hint: z.string().nullable().optional(),
   /** First admission at the event; null until checked in. */
   checked_in_at: IsoDateTime.nullable().optional(),
@@ -85,6 +85,10 @@ export type RegistrationRow = z.infer<typeof RegistrationRow>;
 export const EventRegistrationsQuery = PageQuery.extend({
   tier: AttendeeTier.optional(),
   state: RegistrationState.optional(),
+  /**
+   * Name or email (operators and desk clerks); also, with no identity involved, a pass id or reference,
+   * a band UID, or a band hint's last four (`81BF`, `••••81BF`) — kiosk walk-ins have no name or email.
+   */
   q: z.string().trim().min(1).max(100).optional(),
   credential: CredentialState.optional(),
   unbound: z.stringbool().optional(),

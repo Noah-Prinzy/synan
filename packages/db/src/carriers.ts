@@ -17,6 +17,30 @@ export function nfcIdentifierHash(uid: string): string {
   return createHash("sha256").update(`nfc:${uid.trim().toUpperCase()}`, "utf8").digest("base64url");
 }
 
+/** What a band shows people (0035): the UID's last four characters in upper-case hex. Never more of the UID. */
+export function nfcIdentifierHint(uid: string): string {
+  return uid.trim().toUpperCase().slice(-4);
+}
+
+/**
+ * Stores the readable hint of each presented UID on the NFC carriers with its identifier that have none
+ * yet (0035). Safe to call whenever a UID is presented: hint and identifier both derive from the UID.
+ * Returns how many carriers were updated.
+ */
+export async function noteCarrierHints(db: DbOrTx, uids: readonly string[]): Promise<number> {
+  const valid = [...new Set(uids.map((u) => u.trim().toUpperCase()).filter((u) => /^[0-9A-F]{8,32}$/.test(u)))];
+  if (valid.length === 0) return 0;
+  const arr = (xs: string[]) => `{${xs.join(",")}}`; // base64url and hex need no quoting
+  const r = await rows(
+    db,
+    sql`with v as (select * from unnest(${arr(valid.map(nfcIdentifierHash))}::text[], ${arr(valid.map(nfcIdentifierHint))}::text[]) as v(h, hint))
+        update public.carriers c set identifier_hint = v.hint from v
+         where c.kind = 'nfc' and c.identifier = v.h and c.identifier_hint is null
+        returning c.id`,
+  );
+  return r.length;
+}
+
 export interface ImportResult {
   inserted: number;
   /** Identifiers repeated in the input or already present among non-retired carriers. */
@@ -76,6 +100,9 @@ export async function importBands(
     if (seen.has(h)) dup.add(byHash.get(h)!);
     seen.add(h);
   }
+  // The readable hint of each band (0035).
+  const valid = [...byHash.values()];
+  for (let i = 0; i < valid.length; i += chunk) await noteCarrierHints(db, valid.slice(i, i + chunk));
   return { inserted, duplicateUids: [...dup], invalidUids };
 }
 

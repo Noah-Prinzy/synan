@@ -8,7 +8,10 @@ export const Carrier = z.object({
   id: Id,
   credential_id: Id.nullable(),
   kind: CarrierKind,
-  /** Masked for display; the full NFC UID is never returned. */
+  /**
+   * Masked for display. A band: the last four characters of its UID in upper-case hex (`••••81BF`),
+   * matching the band in hand; `band` until its UID has been presented once. The full UID is never returned.
+   */
   identifier_hint: z.string(),
   chip_profile: ChipProfile.nullable(),
   state: CarrierState,
@@ -43,7 +46,8 @@ export const Inventory = z.object({
   /**
    * Additive, with `event_id`: the event's latest wristband actions, newest first (at most 20), from
    * the audit log — ids and band hints only, never a name. `bound`: a stock band bound to a pass;
-   * `replaced`: a band swapped for another; `lost`: marked lost (by the desk, or `reported_lost` by
+   * `replaced`: a band swapped for another (also the new band of a lost-band replacement, as `today.replaced`
+   * counts it); `lost`: marked lost (by the desk, or `reported_lost` by
    * its holder); `retired`: taken out of service when swapped as damaged.
    */
   recent: z

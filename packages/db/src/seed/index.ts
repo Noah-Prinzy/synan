@@ -409,7 +409,11 @@ export async function seed(db: AnyDb, options: SeedOptions = {}): Promise<SeedSu
 
     const carriers: (typeof s.carriers.$inferInsert)[] = [];
     /** NFC identifier: base64url SHA-256 of a 7-byte UID in uppercase hex. */
-    const bandId = () => sha("04" + hex(6).toUpperCase());
+    // A band: its identifier (the hash) and its readable last four (0035).
+    const bandId = () => {
+      const u = "04" + hex(6).toUpperCase();
+      return { identifier: sha(u), identifier_hint: u.slice(-4) };
+    };
     const scans: (typeof s.scans.$inferInsert)[] = [];
     const adjustments: (typeof s.occupancy_adjustments.$inferInsert)[] = [];
     const alerts: (typeof s.breach_alerts.$inferInsert)[] = [];
@@ -615,14 +619,14 @@ export async function seed(db: AnyDb, options: SeedOptions = {}): Promise<SeedSu
       if (bound !== undefined || c.staffUserId) {
         const lostBand = c.state === "replaced";
         carriers.push({
-          id: uuid(), credential_id: c.id, kind: "nfc", identifier: bandId(),
+          id: uuid(), credential_id: c.id, kind: "nfc", ...bandId(),
           chip_profile: tier === "VIP" || tier === "PRIVATE_INVITE" ? (chance(0.5) ? "ntag424_dna" : "desfire_ev3") : "ntag_uid",
           state: lostBand ? "lost" : c.state === "revoked" ? "retired" : "active", bound_at: d(bound ?? c.issuedAt),
         });
       }
     }
-    for (let i = 0; i < 300; i++) carriers.push({ id: uuid(), kind: "nfc", identifier: bandId(), chip_profile: i < 60 ? "ntag424_dna" : "ntag_uid", state: "stock" });
-    for (let i = 0; i < 40; i++) carriers.push({ id: uuid(), credential_id: null, kind: "nfc", identifier: bandId(), chip_profile: "ntag424_dna", state: "stock" });
+    for (let i = 0; i < 300; i++) carriers.push({ id: uuid(), kind: "nfc", ...bandId(), chip_profile: i < 60 ? "ntag424_dna" : "ntag_uid", state: "stock" });
+    for (let i = 0; i < 40; i++) carriers.push({ id: uuid(), credential_id: null, kind: "nfc", ...bandId(), chip_profile: "ntag424_dna", state: "stock" });
     await insertMany(tx, s.carriers, carriers);
     const ephRows: (typeof s.ephemeral_ids.$inferInsert)[] = [];
     for (const c of creds) for (const [eventId, e] of c.ephemeral) ephRows.push({ event_id: eventId, credential_id: c.id, ephemeral_id: e, created_at: d(c.issuedAt) });

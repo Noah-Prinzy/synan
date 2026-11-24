@@ -1,8 +1,8 @@
 /**
  * Gate health (01 §8, D-14) from one place: the `devices` table. Fixed readers and kiosks heartbeat
  * with their device token; staff phones running the Gate Scanner are registered as `scanner`
- * devices on their first heartbeat (no device token: they act through the signed-in user) and move
- * with the user's current assignment. Heartbeats, queue depth and clock offset all land on the
+ * devices on their first heartbeat (no device token: they act through the signed-in user), one row
+ * per install whoever uses it, and move with the current assignment. Heartbeats, queue depth and clock offset all land on the
  * device and its checkpoint, so every API instance sees the same health.
  *
  * Contract mapping (@synan/db gate_health → GateHealth):
@@ -18,6 +18,7 @@ import type { GateHealth } from "@synan/contracts/rest";
 import type { Clock } from "../lib/clock.js";
 import type { EventRow, GateHealthDbRow, Repos } from "../repo/types.js";
 import type { AlertService } from "./alerts.js";
+import type { AuditService } from "./audit.js";
 
 /** The offline fail-open window (01 §8, O-05). */
 export const STALE_ALLOWLIST_MS = 15 * 60_000;
@@ -30,10 +31,10 @@ export function linkState(g: Pick<GateHealthDbRow, "link_state" | "queue_depth" 
 }
 
 export class GateService {
-  /** hardware id → device id (device rows are stable; saves a lookup per heartbeat). */
-  private known = new Map<string, string>();
+  /** hardware id → device id, and the checkpoint and user it was last resolved for (saves a lookup per heartbeat). */
+  private known = new Map<string, { id: string; checkpointId: string; userId: string }>();
 
-  constructor(private readonly deps: { repos: Repos; clock: Clock; rateLimited?: (checkpointId: string, nowMs: number) => number; alerts?: AlertService }) {}
+  constructor(private readonly deps: { repos: Repos; clock: Clock; rateLimited?: (checkpointId: string, nowMs: number) => number; alerts?: AlertService; audit?: AuditService }) {}
 
   /** `${event}|${checkpoint}` → when a stale-allowlist alert was last raised or found open (this instance). */
   private staleSeen = new Map<string, number>();
@@ -66,26 +67,39 @@ export class GateService {
 
   /**
    * A staff phone's heartbeat (REST /gates/heartbeat or the `/stream/scans` heartbeat frame). The
-   * caller has already checked the checkpoint is the user's current assignment. The phone's own id
-   * is namespaced by the user and hashed, so one person can never write to another's device row.
+   * caller has already checked the checkpoint is the user's current assignment.
+   *
+   * One install is one device: the row is keyed by the venue and the scanner's install id (hashed;
+   * the id itself is never stored), whoever is signed in, so a phone handed from one person to the
+   * next stays one device for gate health and allowlist age. The row records its last user; when
+   * another user takes it over (or it moves gate) the allowlist age it held is cleared, and a change
+   * of user is audited (`scanner.user_change`). Trust: a write needs a current assignment at the
+   * checkpoint written to (checked by the caller) and the install id, a random id that only ever
+   * leaves the phone in its own requests — the same proof of holding the phone that already lets the
+   * next person at the gate sync the previous person's queued scans (A1). Without an install id
+   * (an old stream client) the row stays per user.
    */
-  async phoneHeartbeat(i: { userId: string; venueId: string; checkpointId: string; clientDeviceId: string; clockOffsetMs: number; queueDepth: number; online: boolean; allowlistIssuedAt?: Date | null }) {
-    const { repos } = this.deps;
-    const hardwareId = `phone:${createHash("sha256").update(`${i.userId}\n${i.clientDeviceId}`).digest("hex").slice(0, 40)}`;
-    let id = this.known.get(hardwareId);
-    // Resolved once per phone, and again only when it moves to another checkpoint.
-    if (!id || this.lastCheckpoint.get(hardwareId) !== i.checkpointId) {
-      id = await repos.devices.ensureScanner({ venueId: i.venueId, hardwareId, label: "Gate Scanner (staff phone)", checkpointId: i.checkpointId });
-      this.known.set(hardwareId, id);
-      this.lastCheckpoint.set(hardwareId, i.checkpointId);
+  async phoneHeartbeat(i: { userId: string; venueId: string; checkpointId: string; clientDeviceId: string | null | undefined; clockOffsetMs: number; queueDepth: number; online: boolean; allowlistIssuedAt?: Date | null }) {
+    const { repos, audit } = this.deps;
+    const install = i.clientDeviceId ? `install\n${i.venueId}\n${i.clientDeviceId}` : `user\n${i.userId}`;
+    const hardwareId = `phone:${createHash("sha256").update(install).digest("hex").slice(0, 40)}`;
+    const cached = this.known.get(hardwareId);
+    let id = cached?.id;
+    // Resolved once per install, and again when it moves to another checkpoint or another user.
+    if (!cached || cached.checkpointId !== i.checkpointId || cached.userId !== i.userId) {
+      const r = await repos.devices.ensureScanner({ venueId: i.venueId, hardwareId, label: "Gate Scanner (staff phone)", checkpointId: i.checkpointId, userId: i.userId });
+      id = r.id;
+      this.known.set(hardwareId, { id, checkpointId: i.checkpointId, userId: i.userId });
+      if (r.previousUserId && audit) {
+        await audit.append({ actorId: i.userId, action: "scanner.user_change", target: `device:${id}`, meta: { checkpoint_id: i.checkpointId, previous_user_id: r.previousUserId } });
+      }
     }
     // A phone that reports itself offline is holding scans: count at least one queued.
     const queueDepth = i.online ? i.queueDepth : Math.max(1, i.queueDepth);
-    const r = await repos.devices.heartbeat({ deviceId: id, checkpointId: i.checkpointId, clockOffsetMs: i.clockOffsetMs, queueDepth, appVersion: null, allowlistIssuedAt: i.allowlistIssuedAt ?? null, now: new Date(this.deps.clock.now()) });
+    const r = await repos.devices.heartbeat({ deviceId: id!, checkpointId: i.checkpointId, clockOffsetMs: i.clockOffsetMs, queueDepth, appVersion: null, allowlistIssuedAt: i.allowlistIssuedAt ?? null, now: new Date(this.deps.clock.now()) });
     if (r !== "ok") this.known.delete(hardwareId); // retired by an operator: re-resolved (and refused) next time
     return r;
   }
-  private lastCheckpoint = new Map<string, string>();
 
   async health(event: EventRow): Promise<GateHealth[]> {
     const { repos, clock } = this.deps;

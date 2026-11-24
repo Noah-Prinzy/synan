@@ -294,7 +294,7 @@ function onChannel(app: AppContext, ws: WebSocket, channel: WsChannel, g: Channe
             const cp = await app.repos.venues.checkpoint(heartbeatCheckpoint);
             if (!cp) return;
             const r = await app.gates.phoneHeartbeat({
-              userId, venueId: cp.venue_id, checkpointId: cp.id, clientDeviceId: m.device_id ?? "stream",
+              userId, venueId: cp.venue_id, checkpointId: cp.id, clientDeviceId: m.device_id ?? null,
               clockOffsetMs: m.clock_offset_ms, queueDepth: m.queue_depth, online: m.online,
               allowlistIssuedAt: m.allowlist_issued_at ? new Date(m.allowlist_issued_at) : null,
             });

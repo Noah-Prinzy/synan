@@ -54,8 +54,9 @@ export interface HandoverSummary {
   user_id: string;
   period_start: Date;
   period_end: Date;
+  /** Every scan recorded in the period (implied exits excluded), undone ones included. */
   scans: number;
-  /** admitted + already_inside */
+  /** admitted + already_inside, not undone (0034) */
   let_through: number;
   refused: number;
   duplicates: number;
@@ -63,15 +64,18 @@ export interface HandoverSummary {
   offline: number;
   /** Received after the shift ended: they were still queued on the device at handover. */
   late_synced: number;
+  /** Results as recorded, undone scans left out (0034). */
   by_result: Record<string, number>;
   first_scan_at: Date | null;
   last_scan_at: Date | null;
+  /** Admissions a scanner undid (scan_voids); not in let_through or by_result (0034). */
+  undone: number;
 }
 const toSummary = (x: Record<string, unknown>): HandoverSummary => ({
   assignment_id: String(x.assignment_id), checkpoint_id: String(x.checkpoint_id), user_id: String(x.user_id),
   period_start: date(x.period_start)!, period_end: date(x.period_end)!, scans: num(x.scans), let_through: num(x.let_through),
   refused: num(x.refused), duplicates: num(x.duplicates), offline: num(x.offline), late_synced: num(x.late_synced),
-  by_result: json(x.by_result), first_scan_at: date(x.first_scan_at), last_scan_at: date(x.last_scan_at),
+  by_result: json(x.by_result), first_scan_at: date(x.first_scan_at), last_scan_at: date(x.last_scan_at), undone: num(x.undone ?? 0),
 });
 
 /** What happened at the gate during a shift. */

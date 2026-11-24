@@ -46,7 +46,7 @@ function SampleCode() {
           <path d={SAMPLE_PATH} fill="currentColor" />
         </svg>
       </div>
-      <figcaption className="mt-2 font-mono text-11 tracking-wide text-muted-foreground uppercase">Sample code</figcaption>
+      <figcaption className="mt-2 text-12 text-muted-foreground">Sample code</figcaption>
     </figure>
   );
 }
@@ -79,12 +79,12 @@ export function PassPreview({
 
       <div className="grid grid-cols-[minmax(0,1fr)_auto] border-b border-border">
         <div className="px-4 py-3">
-          <p className="text-11 font-medium text-muted-foreground">Guest</p>
+          <p className="text-12 text-muted-foreground">Guest</p>
           <p className="mt-0.5 font-display text-21 leading-none">Sample Attendee</p>
         </div>
         {template.show_tier ? (
           <div className="flex flex-col justify-end border-l border-border px-4 py-3">
-            <p className="text-11 font-medium text-muted-foreground">Tier</p>
+            <p className="text-12 text-muted-foreground">Tier</p>
             <p className="mt-0.5 font-mono text-13">{TIER_LABEL[tier]}</p>
           </div>
         ) : null}
@@ -101,7 +101,9 @@ export function PassPreview({
         <div className="flex items-center gap-2 border-t border-border px-4 py-2.5 text-12">
           <CalendarDays size={14} strokeWidth={1.5} aria-hidden="true" className="text-muted-foreground" />
           <span>Your sessions</span>
-          <span className="ml-auto font-mono text-11 text-muted-foreground tabular-nums">3 booked</span>
+          <span className="ml-auto text-12 text-muted-foreground">
+            <span className="font-mono tabular-nums">3</span> booked
+          </span>
         </div>
       ) : null}
       {template.wallet ? (

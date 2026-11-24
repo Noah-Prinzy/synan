@@ -7,7 +7,7 @@
  * and `fields` (field name → message). Read by shape, so neither class is imported here and
  * neither backend is pulled into the other's build.
  */
-import { ERROR_COPY } from "@synan/contracts/copy";
+import { ERROR_COPY, FAILURE_COPY } from "@synan/contracts/copy";
 
 export type ErrorCode = keyof typeof ERROR_COPY;
 
@@ -29,15 +29,8 @@ export function errorCode(error: unknown): ErrorCode {
   return raw in ERROR_COPY ? (raw as ErrorCode) : "INTERNAL";
 }
 
-/**
- * NOT IN CONTRACTS: words for "nothing answered" (the real API only; the mock always answers).
- * The same sentences as api/failure.ts's NETWORK_COPY, kept here so this file imports neither
- * backend; both move to `@synan/contracts/copy` when the proposed NETWORK / OFFLINE codes land.
- */
-const NO_ANSWER_COPY = {
-  offline: { title: "You are offline", message: "This needs a connection. It will work again when you are back online." },
-  unreachable: { title: "Server not reachable", message: "The server did not answer. Check the connection and try again." },
-} as const;
+/** Words for "nothing answered" (the real API only; the mock always answers), from the contracts. */
+const NO_ANSWER_COPY = { offline: FAILURE_COPY.offline, unreachable: FAILURE_COPY.network } as const;
 
 export function errorCopy(error: unknown): ErrorInfo {
   const code = errorCode(error);

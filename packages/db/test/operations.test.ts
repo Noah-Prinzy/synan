@@ -72,6 +72,25 @@ describe("staff", () => {
     const audit = await q<{ n: number }>(db, `select count(*)::int n from audit_log where action = 'staff.handover'`);
     expect(audit[0]!.n).toBe(1);
   });
+
+  it("leaves undone admissions out of let_through and by_result and counts them as undone (0034)", async () => {
+    const other = await insertUser(db, devCipher, { email: "guard2@example.test", role: "security_staff" });
+    const [a] = await db.insert(s.staff_assignments).values({ user_id: other, checkpoint_id: v.cpBin, event_id: v.eventId, shift_start: T("08:00"), shift_end: T("10:00") }).returning();
+    const base = { staff_user_id: other };
+    const kept: string[] = [];
+    for (const m of ["08:10", "08:20", "08:30"]) {
+      const p = await attendeeWithCredential(db, v.eventId);
+      kept.push((await scan(db, v, v.cpBin, p.ephemeralId, "admitted", `2026-12-01T${m}:00Z`, base)).id);
+    }
+    await db.insert(s.scan_voids).values([kept[0]!, kept[2]!].map((scan_id) => ({ event_id: v.eventId, scan_id, voided_by: other, reason: "wrong person" })));
+    const sum = (await shiftHandoverSummary(db, a!.id))!;
+    expect(sum).toMatchObject({ scans: 3, let_through: 1, undone: 2 });
+    expect(sum.by_result).toEqual({ admitted: 1 });
+    const h = await handOverShift(db, a!.id, { actorId: other, now: T("09:00") });
+    expect(h).toMatchObject({ let_through: 1, undone: 2 });
+    const meta = await q<{ m: { undone: number; let_through: number } }>(db, `select meta_jsonb m from audit_log where action = 'staff.handover' and target = 'staff_assignment:${a!.id}'`);
+    expect(meta[0]!.m).toMatchObject({ undone: 2, let_through: 1 });
+  });
 });
 
 describe("devices and gate health", () => {

@@ -192,8 +192,13 @@ export const EventListQuery = PageQuery.extend({
   /** Discovery only returns published or live events; with scope=all (operators) any state. */
   state: EventState.optional(),
   q: z.string().max(100).optional(),
-  /** `all`: every event in every state, listed or not — operators only (403 otherwise). */
-  scope: z.enum(["public", "all"]).default("public"),
+  /**
+   * `all`: every event in every state, listed or not — operators only (403 otherwise).
+   * `work` (additive): the events the caller may work, listed or not (unlisted Private Invitation events
+   * included) — admins, organisers and supervisors: published and live events; desk clerks: only the
+   * events of their current desk assignments. Signed-in staff only (403 for anyone else, never public).
+   */
+  scope: z.enum(["public", "all", "work"]).default("public"),
 });
 
 /**

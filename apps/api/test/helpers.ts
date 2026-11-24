@@ -136,7 +136,7 @@ export async function addAttendee(h: Harness, tier: AttendeeTier, eventId = h.se
   const cred = await h.app.ctx.credentials.issueForRegistration(registrationId);
   const uid = randomBytes(7).toString("hex").toUpperCase();
   await h.app.ctx.repos.carriers.insert({
-    id: randomUUID(), credential_id: cred.id, kind: "nfc", identifier: nfcIdentifier(uid),
+    id: randomUUID(), credential_id: cred.id, kind: "nfc", identifier: nfcIdentifier(uid), identifier_hint: uid.slice(-4),
     chip_profile: "ntag_uid", state: "bound", bound_at: new Date(h.clock.now()), redeemed_at: null,
   });
   return { id, registrationId, credentialId: cred.id, uid };

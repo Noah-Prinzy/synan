@@ -356,6 +356,8 @@ export class ScanService {
       carrierKind = "nfc";
       carrier = await this.repos.carriers.byIdentifier("nfc", nfcIdentifier(p.uid));
       if (!carrier) return unknown("unknown_carrier");
+      // A band imported as a bare hash learns its readable last four the first time it is read (0035).
+      if (!carrier.identifier_hint) await this.repos.carriers.noteHints([p.uid]);
       if (!carrier.credential_id || carrier.state === "stock" || carrier.state === "assigned") return unknown("carrier_unbound");
       credential = await this.repos.credentials.byId(carrier.credential_id);
       if (!credential) return unknown("unknown_credential");

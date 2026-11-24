@@ -389,9 +389,11 @@ export class CommandStore {
     const down = health.link_state === "offline";
     let offlineSince: number | null = null;
     if (down) {
+      // A gate the server has never heard from (heartbeat_age_s null) has no "since": it reads
+      // "never heard", not "lost a second ago". The mock sends no age, and keeps its old reading.
       offlineSince =
         previous?.offlineSince ??
-        (health.last_heartbeat_at ? Date.parse(health.last_heartbeat_at) : this.now());
+        (health.last_heartbeat_at ? Date.parse(health.last_heartbeat_at) : health.heartbeat_age_s === null ? null : this.now());
     }
     return { ...health, offlineSince, perimeter, roomId };
   }

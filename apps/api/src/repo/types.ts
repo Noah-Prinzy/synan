@@ -243,6 +243,8 @@ export interface CarrierRow {
   kind: CarrierKind;
   /** NFC: base64url SHA-256 of the UID (never the raw UID). Emailed QR: hex SHA-256 of the code id. Portal QR: null. */
   identifier: string | null;
+  /** NFC: the UID's last four in upper-case hex, once the UID has been presented (0035); null otherwise. */
+  identifier_hint?: string | null;
   chip_profile: ChipProfile | null;
   state: CarrierState;
   bound_at: Date | null;
@@ -511,9 +513,10 @@ export interface EventsRepo {
   accessRules(eventId: string): Promise<AccessRuleRow[]>;
   /**
    * Every event (operators), optionally by state; ordered by starts_at, id; keyset on (starts_at, id).
-   * Events without dates (drafts) sort last, among themselves by id.
+   * Events without dates (drafts) sort last, among themselves by id. `states`: only events in one of
+   * these (with `state`, both apply).
    */
-  listAll(opts: { state?: EventState; q?: string; after?: { starts_at: Date; id: string }; limit: number }): Promise<EventRow[]>;
+  listAll(opts: { state?: EventState; states?: readonly EventState[]; q?: string; after?: { starts_at: Date; id: string }; limit: number }): Promise<EventRow[]>;
   /** Every event, drafts included, most recently changed first; keyset on (updated_at, id) descending. */
   listAdmin(opts: { state?: EventState; q?: string; venueId?: string; after?: { updated_at: Date; id: string }; limit: number }): Promise<EventRow[]>;
   update(id: string, patch: Partial<Omit<EventRow, "id" | "org_id" | "venue_id" | "created_at" | "updated_at">>): Promise<EventRow>;
@@ -604,6 +607,11 @@ export interface CarriersRepo {
 
   /** Bulk import of NFC identifier hashes into `stock`. Duplicates (in the list or already present) are reported, never fatal. */
   importStock(hashes: readonly string[], chipProfile: ChipProfile): Promise<{ inserted: number; duplicates: string[] }>;
+  /**
+   * A UID was presented: store its readable hint (last four, upper-case hex) on the NFC carriers with its
+   * identifier that have none yet (SQL: @synan/db noteCarrierHints, 0035). Safe at any time.
+   */
+  noteHints(uids: readonly string[]): Promise<void>;
   /** Desk binding of a stock band: stock → bound. Audit `carrier.bind`. */
   bind(i: { identifier: string; credentialId: string; actorId: string | null; now: Date }): Promise<{ status: BindStatus; carrier_id: string | null }>;
   /** Swap the credential's live band for a stock band; the old band → retired | lost. Audit `carrier.mark_<d>`, `carrier.rebind`. */
@@ -906,9 +914,12 @@ export interface DevicesRepo {
   heartbeat(i: { deviceId: string; checkpointId?: string | null; clockOffsetMs: number; queueDepth: number; appVersion: string | null; allowlistIssuedAt?: Date | null; now: Date }): Promise<"ok" | "unknown_device" | "not_active">;
   /**
    * The device row of a staff phone running the Gate Scanner (kind `scanner`, no device token),
-   * found by its hardware id or created, and moved to `checkpointId` (its current assignment).
+   * found by its hardware id (one per install at the venue) or created, moved to `checkpointId` (its
+   * current assignment) and stamped with `userId` as its last user (0033). When the checkpoint or the
+   * user changes, the allowlist age it held is cleared (it was another gate's or another person's).
+   * `previousUserId`: the user it was taken over from, when that changed; null otherwise.
    */
-  ensureScanner(i: { venueId: string; hardwareId: string; label: string; checkpointId: string }): Promise<string>;
+  ensureScanner(i: { venueId: string; hardwareId: string; label: string; checkpointId: string; userId: string }): Promise<{ id: string; previousUserId: string | null }>;
   /** Gate health for a venue, faults first (SQL: @synan/db gateHealth). */
   gateHealth(venueId: string, opts: { eventId: string | null; now: Date }): Promise<GateHealthDbRow[]>;
 }
@@ -1103,9 +1114,12 @@ export interface HandoverRow {
   offline: number;
   /** Received after the period ended (still queued on the device at handover). */
   late_synced: number;
+  /** Results as recorded, undone scans left out. */
   by_result: Record<string, number>;
   first_scan_at: Date | null;
   last_scan_at: Date | null;
+  /** Admissions undone by the scanner (scan_voids): not in let_through or by_result (0034). */
+  undone: number;
 }
 
 export interface ExportedFileRow {

@@ -64,7 +64,8 @@ describe("slice 4 · desk binding", () => {
     const r = await h.call<Carrier>("POST", "/carriers/bind", { token: gate, body: { identifier: A, registration_id: reg.id } });
     expect(r.status).toBe(200);
     expect(r.body.state).toBe("bound");
-    expect(r.body.identifier_hint).not.toContain(A.slice(-4));
+    expect(r.body.identifier_hint).toBe(`••••${A.slice(-4)}`); // the UID's last four, as on the band
+    expect(r.body.identifier_hint).not.toContain(A);
     expect(errCode((await h.call("POST", "/carriers/bind", { token: gate, body: { identifier: B, registration_id: reg.id } })).body)).toBe("CONFLICT");
     expect(errCode((await h.call("POST", "/carriers/bind", { token: gate, body: { identifier: A, registration_id: reg.id } })).body)).toBe("CONFLICT");
     expect(await scanAt(h.seed.checkpoints.expo, A)).toBe("admitted");

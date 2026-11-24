@@ -159,7 +159,7 @@ export function VenueStep({ record, forms, setForm, saved, goto, close, loadVenu
       aside={
         <>
           <AsideBlock title="This event">
-            <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-y-1 text-13">
+            <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 text-13">
               <dt className="text-muted-foreground">Venue</dt>
               <dd className="text-right">{chosenRow?.venue.name ?? "—"}</dd>
               <dt className="text-muted-foreground">Rooms</dt>
@@ -177,7 +177,7 @@ export function VenueStep({ record, forms, setForm, saved, goto, close, loadVenu
         </>
       }
     >
-      <form noValidate aria-label="Venue and rooms" onSubmit={(event: FormEvent) => event.preventDefault()} className="flex flex-col gap-6">
+      <form noValidate aria-label="Venue and rooms" onSubmit={(event: FormEvent) => event.preventDefault()} className="flex flex-col gap-8">
         <StepSection id="venue-where" title="Where">
           {venues.status === "loading" ? <LoadingState label="Loading venues…" className="px-0 py-2 sm:px-0" /> : null}
           {venues.status === "error" ? <ErrorState title="Could not load the venues" error={venues.error} onRetry={() => venues.reload()} className="m-0 sm:m-0" /> : null}
@@ -259,8 +259,8 @@ export function VenueStep({ record, forms, setForm, saved, goto, close, loadVenu
                   </Button>
                 </div>
                 <div role="group" aria-labelledby="venue-rooms" aria-describedby="rooms-message" className="border-t border-border">
-                  <div aria-hidden="true" className="grid grid-cols-[minmax(0,1fr)_4.5rem_7.5rem] items-center gap-3 border-b border-border py-1.5 text-11 text-muted-foreground">
-                    <span>Room</span>
+                  <div aria-hidden="true" className="grid h-9 grid-cols-[minmax(0,1fr)_4.5rem_7.5rem] items-center gap-3 border-b border-border text-12 text-muted-foreground">
+                    <span className="pl-2">Room</span>
                     <span className="text-right">Venue</span>
                     <span>For this event</span>
                   </div>
@@ -271,8 +271,8 @@ export function VenueStep({ record, forms, setForm, saved, goto, close, loadVenu
                     return (
                       <fieldset key={group.id} className="min-w-0">
                         <legend className="sr-only">{group.label}</legend>
-                        <div className="flex h-8 items-center justify-between gap-3 border-b border-border bg-foreground/2.5 pl-2">
-                          <span aria-hidden="true" className="text-11 text-muted-foreground">
+                        <div className="flex min-h-9 items-center justify-between gap-3 border-b border-border bg-foreground/2.5 pl-2">
+                          <span aria-hidden="true" className="text-12 text-muted-foreground">
                             {group.label}{" "}
                             <span className="font-mono tabular-nums">
                               · {count}/{ids.length}
@@ -281,7 +281,7 @@ export function VenueStep({ record, forms, setForm, saved, goto, close, loadVenu
                           <button
                             type="button"
                             onClick={() => setPicked(ids, !all)}
-                            className="px-2 text-11 text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-brand pointer-coarse:py-3"
+                            className="self-stretch px-3 text-12 text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground hover:decoration-brand pointer-coarse:min-h-11"
                           >
                             {all ? "Clear" : "Select all"}
                             <span className="sr-only"> in {group.label}</span>

@@ -116,7 +116,7 @@ Also unverified in the apps:
    period ends.
 6. **Gate Scanner:** real scan submission, the IndexedDB queue, and allowlist signature checks are
    not built.
-7. **Pass bundle over budget** (O-15).
+7. **Pass bundle:** within the 125 KB budget with the real API (120.9 KB); 131.0 KB on the mock layer, which is not shipped.
 8. **Admin:** the leave-without-saving guard does not catch the browser's Back button.
 9. **Operator login lockout** (5 failures in 15 minutes) can be used to lock a named operator out.
 10. **MSW request handlers** are not built in `packages/mock`.

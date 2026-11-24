@@ -23,6 +23,7 @@ import {
   ErrorState,
   EventStateChip,
   FilterChips,
+  GUTTER_X,
   LoadingState,
   Notice,
   PageHeader,
@@ -139,7 +140,7 @@ export default function EventList() {
         actions={<NewEventLink />}
       />
       {arrival ? (
-        <div className="px-4 pt-3 sm:px-6">
+        <div className={`${GUTTER_X} pt-3`}>
           <Notice className="max-w-160">{arrival}</Notice>
         </div>
       ) : null}
@@ -159,7 +160,7 @@ export default function EventList() {
 
       {events.status === "ready" && rows.length > 0 ? (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-6">
+          <div className={`flex flex-wrap items-center justify-between gap-3 border-b border-border py-3 ${GUTTER_X}`}>
             <FilterChips<StateFilter>
               label="Filter by state"
               value={state}
@@ -236,11 +237,11 @@ function EventTable({
         <tr>
           <Th>Title</Th>
           <Th>Venue</Th>
-          <Th>Dates</Th>
-          <Th>State</Th>
-          <Th numeric>Registrations</Th>
-          <Th>Last edited</Th>
-          <Th>
+          <Th fit>Dates</Th>
+          <Th fit>State</Th>
+          <Th numeric fit>Registrations</Th>
+          <Th fit>Last edited</Th>
+          <Th fit>
             <span className="sr-only">Actions</span>
           </Th>
         </tr>
@@ -263,12 +264,12 @@ function EventTable({
                 "—"
               )}
             </Td>
-            <Td className="whitespace-nowrap">
+            <Td fit>
               {row.starts_at && row.ends_at ? (
                 <>
                   <span className="font-mono text-12 tabular-nums">{formatDateRange(row.starts_at, row.ends_at, row.timezone)}</span>
                   {/* The zone, so dates read as event-local: "UTC+3" with the city on hover and for screen readers. */}
-                  <span className="ml-2 text-11 text-muted-foreground" title={zoneLabel(row.timezone, Date.parse(row.starts_at))}>
+                  <span className="ml-2 text-12 text-muted-foreground" title={zoneLabel(row.timezone, Date.parse(row.starts_at))}>
                     <span className="sr-only">{zoneLabel(row.timezone, Date.parse(row.starts_at)).split(" · ")[0]} · </span>
                     {zoneLabel(row.timezone, Date.parse(row.starts_at)).split(" · ")[1]}
                   </span>
@@ -277,23 +278,28 @@ function EventTable({
                 <span className="text-muted-foreground">Dates not set</span>
               )}
             </Td>
-            <Td>
+            <Td fit>
               <EventStateChip state={row.state} />
             </Td>
-            <Td numeric className={row.registrations === 0 ? "text-muted-foreground" : undefined}>
+            <Td numeric fit className={row.registrations === 0 ? "text-muted-foreground" : undefined}>
               {row.state === "draft" ? "—" : formatNumber(row.registrations)}
             </Td>
-            <Td className="py-1 whitespace-nowrap text-11 leading-tight text-muted-foreground">
-              <span className="block font-mono text-12 tabular-nums text-foreground/80">{formatStamp(row.updated_at, row.timezone)}</span>
-              <span className="block">{row.updated_by}</span>
+            {/* One line: when, then who (beside it on a wide screen; on hover and for screen readers otherwise). */}
+            <Td fit className="text-12 text-muted-foreground" title={`${formatStamp(row.updated_at, row.timezone)} by ${row.updated_by}`}>
+              <span className="font-mono tabular-nums text-foreground/80">{formatStamp(row.updated_at, row.timezone)}</span>
+              <span className="sr-only 2xl:not-sr-only 2xl:ml-2 2xl:whitespace-nowrap">
+                <span className="sr-only">by </span>
+                {row.updated_by}
+              </span>
             </Td>
-            <Td className="w-0 text-right">
+            <Td fit className="text-right">
               <ActionButton
                 action={() => onDuplicate(row)}
                 doneLabel="Copied"
                 failedLabel="Try again"
-                variant="quiet"
+                variant="plain"
                 size="compact"
+                className="-mr-3 text-muted-foreground hover:border-border hover:text-foreground focus-visible:border-border focus-visible:text-foreground"
                 aria-label={`Duplicate ${row.title || "untitled draft"}`}
               >
                 <Copy size={14} strokeWidth={1.5} aria-hidden="true" />

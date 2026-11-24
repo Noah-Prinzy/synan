@@ -16,14 +16,26 @@ export interface KpiCellProps {
   className?: string;
 }
 
+/**
+ * The cell sizes to its own width (a container query), not the viewport: a numeral is 40px
+ * where the cell's content is at least 9rem wide and 28px below, and the sparkline only shows where
+ * there is room for a line worth reading (11rem), so a narrow strip never clips its figures.
+ */
 export function KpiCell({ label, value, valueClassName, delta, spark, className }: KpiCellProps) {
   return (
-    <div className={cn("flex min-w-0 flex-col gap-2 bg-background px-4 pt-3 pb-3", className)}>
-      <dt className="flex items-center gap-2 truncate text-12 text-muted-foreground">{label}</dt>
-      <dd className={cn("font-mono text-40 leading-none tracking-tight tabular-nums contain-content", valueClassName)}>{value}</dd>
+    <div className={cn("@container flex min-w-0 flex-col gap-2 bg-background px-4 py-3 sm:py-4", className)}>
+      <dt className="flex items-center gap-2 truncate text-13 text-muted-foreground">{label}</dt>
+      <dd
+        className={cn(
+          "truncate font-mono text-28 leading-none tracking-tight tabular-nums contain-content @min-[9rem]:text-40",
+          valueClassName,
+        )}
+      >
+        {value}
+      </dd>
       <dd className="flex min-w-0 items-center gap-3">
-        <span className="shrink-0 font-mono text-12 text-muted-foreground tabular-nums">{delta}</span>
-        <span className="min-w-0 flex-1">{spark}</span>
+        <span className="min-w-0 truncate font-mono text-12 text-muted-foreground tabular-nums">{delta}</span>
+        <span className="hidden min-w-0 flex-1 @min-[11rem]:block">{spark}</span>
       </dd>
     </div>
   );

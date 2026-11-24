@@ -22,7 +22,7 @@
  */
 import type { MockClock } from "@synan/mock";
 import type { CommandApi, CommandMock, ConfigureApi } from "@synan/mock/command";
-import type { AdminAuth } from "../api";
+import type { AdminAuth, ApiClient } from "../api";
 import type { LiveTransport } from "./transport";
 
 /**
@@ -91,6 +91,8 @@ interface Backend {
   connect(eventId: string): LiveTransport | null;
   /** Real API only: sign-in, the second-factor prompt, sign-out from the server. */
   auth: AdminAuth | null;
+  /** Real API only: the typed client, for calls the two interfaces do not cover (the desk). */
+  client: ApiClient | null;
   /** Mock only: personas, scenarios and link control for the development tools. */
   mock: CommandMock | null;
 }
@@ -107,12 +109,13 @@ async function load(): Promise<Backend> {
       clock: real.clock as unknown as MockClock,
       connect: real.connect,
       auth: real.auth,
+      client: real.client,
       mock: null,
     };
   }
   const { createMockBackend } = await import("./mock-backend");
   const mock = createMockBackend({ ...devParams, wantedRole: devRole() });
-  return { ...mock, auth: null };
+  return { ...mock, auth: null, client: null };
 }
 
 const chosen = await load();
@@ -128,6 +131,9 @@ export const connect: (eventId: string) => LiveTransport | null = chosen.connect
 
 /** Real API only (null on the mock). */
 export const auth: AdminAuth | null = chosen.auth;
+
+/** Real API only (null on the mock): the typed client. */
+export const apiClient: ApiClient | null = chosen.client;
 
 /** Mock only (null on the real API): the development tools' handle on the mock server. */
 export const mockBackend: CommandMock | null = chosen.mock;

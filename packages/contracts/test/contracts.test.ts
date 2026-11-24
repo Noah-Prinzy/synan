@@ -74,7 +74,7 @@ describe("REST registry", () => {
     expect(allowed("supervisor")).toEqual([
       ...signedIn, "ackAlert", "checkpointScans", "clearReview", "dashboard", "eventRegistrations", "eventSummary", "gateHealth", "getVenue",
       "listAlerts", "listAttendees", "listCheckpoints", "listCredentials", "listScans", "recountRoom", "resolveAlert", "revoke",
-      "getAlert", "checkpointActivity", "getRegistration",
+      "getAlert", "checkpointActivity", "getRegistration", "listAssignments",
     ].sort());
     expect(allowed("desk_clerk")).toEqual([
       ...signedIn, "bindCarrier", "deskCode", "eventRegistrations", "inventory", "myAssignments", "rebindCarrier", "resend",

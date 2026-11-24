@@ -3,6 +3,7 @@ import { ContractError } from "@synan/contracts/errors";
 import { endpoints, type EventDetail, type EventSummary } from "@synan/contracts/rest";
 import type { AppContext } from "../app.js";
 import type { AuthContext } from "../domain/principal.js";
+import { deskEventIds } from "../domain/scope.js";
 import { mount } from "../http/route.js";
 import { isScheduled, type EventRow, type ScheduledEvent, type SessionRow } from "../repo/types.js";
 
@@ -81,6 +82,28 @@ export function eventRoutes(x: Express, app: AppContext) {
       // Every state, listed or not: operators only. Refused (not silently narrowed) for anyone else.
       if (ctx?.kind !== "operator") throw new ContractError("FORBIDDEN");
       rows = await app.repos.events.listAll({ state: query.state, q: query.q, after: decodeCursor(query.cursor), limit: query.limit + 1 });
+    } else if (query.scope === "work") {
+      // The events the caller may work, unlisted ones included: operators (admin, organiser,
+      // supervisor) every published or live event; a desk clerk only their desk events. Never public.
+      const working = ["published", "live"] as const;
+      if (ctx?.kind === "operator") {
+        rows = await app.repos.events.listAll({ state: query.state, states: working, q: query.q, after: decodeCursor(query.cursor), limit: query.limit + 1 });
+      } else if (ctx?.role === "desk_clerk") {
+        const after = decodeCursor(query.cursor);
+        const needle = query.q?.toLowerCase();
+        const mine = [];
+        for (const id of await deskEventIds(app, ctx.sub)) {
+          const e = await app.repos.events.byId(id);
+          if (e && (working as readonly string[]).includes(e.state) && (!query.state || e.state === query.state) && (!needle || e.title.toLowerCase().includes(needle))) mine.push(e);
+        }
+        rows = mine
+          .filter(isScheduled)
+          .sort((a, b) => a.starts_at.getTime() - b.starts_at.getTime() || a.id.localeCompare(b.id))
+          .filter((e) => !after || e.starts_at > after.starts_at || (e.starts_at.getTime() === after.starts_at.getTime() && e.id > after.id))
+          .slice(0, query.limit + 1);
+      } else {
+        throw new ContractError("FORBIDDEN");
+      }
     } else {
       // Discovery: published or live, listed only. Any other requested state matches nothing.
       if (query.state && query.state !== "published" && query.state !== "live") return { items: [], next_cursor: null };

@@ -176,14 +176,20 @@ export function due(r: QueueRecord, s: Signer, now: number): boolean {
  *   - never sent (offline):        withheld on the device, so the whole window;
  *   - sent, or possibly sent:      the server must agree, so the window less a margin, from the
  *                                  earlier of the read and the server's time for it.
+ * `windowMs` is the server's (`undo_window_s`, see undoWindowMs), 60 s until it has said.
  */
-export function undoUntil(r: QueueRecord, s: Signer | null): number | null {
+export function undoUntil(r: QueueRecord, s: Signer | null, windowMs: number = UNDO_WINDOW_MS): number | null {
   if (!s || r.user !== s.user || !s.onShift.has(r.checkpoint.id)) return null;
   if (r.undone || r.undo || r.direction !== "in" || resultOf(r) !== "admitted") return null;
-  if (r.state === "pending") return r.online === null ? r.at + UNDO_WINDOW_MS : r.at + UNDO_WINDOW_MS - UNDO_MARGIN_MS;
+  if (r.state === "pending") return r.online === null ? r.at + windowMs : r.at + windowMs - UNDO_MARGIN_MS;
   if (r.state !== "sent" || !r.outcome) return null;
   const serverAt = Date.parse(r.outcome.corrected_at) - r.offline.clock_offset_ms;
-  return Math.min(r.at, Number.isFinite(serverAt) ? serverAt : r.at) + UNDO_WINDOW_MS - UNDO_MARGIN_MS;
+  return Math.min(r.at, Number.isFinite(serverAt) ? serverAt : r.at) + windowMs - UNDO_MARGIN_MS;
+}
+
+/** The undo window in ms from the server's `undo_window_s` (GET /time, GET /auth/signing-keys); 60 s when it has not said. */
+export function undoWindowMs(undoWindowS: unknown): number {
+  return typeof undoWindowS === "number" && Number.isFinite(undoWindowS) && undoWindowS >= 0 ? undoWindowS * 1000 : UNDO_WINDOW_MS;
 }
 
 /* ------------------------------------------------------------ store */

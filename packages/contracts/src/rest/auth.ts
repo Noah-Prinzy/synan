@@ -103,14 +103,20 @@ export type SigningKey = z.infer<typeof SigningKey>;
  * window (and an emailed code's expiry). A scanner verifying codes offline should allow the same.
  */
 const QrLeeway = z.number().int().min(0).optional();
+/**
+ * Additive: how long after a scan's judged time, in seconds, its admission may still be undone
+ * (POST /scans/:id/undo; SCAN_UNDO_WINDOW_S). A scanner hides its Undo button once this has passed.
+ */
+const UndoWindow = z.number().int().min(0).optional();
 
-export const SigningKeys = z.object({ keys: z.array(SigningKey), qr_leeway_s: QrLeeway });
+export const SigningKeys = z.object({ keys: z.array(SigningKey), qr_leeway_s: QrLeeway, undo_window_s: UndoWindow });
 export type SigningKeys = z.infer<typeof SigningKeys>;
 
 export const ServerTime = z.object({
   server_time: IsoDateTime,
   epoch_ms: z.number().int(),
   qr_leeway_s: QrLeeway,
+  undo_window_s: UndoWindow,
 });
 export type ServerTime = z.infer<typeof ServerTime>;
 

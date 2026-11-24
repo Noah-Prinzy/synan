@@ -260,11 +260,18 @@ function OperatorMenu() {
                 {/* The real API has no display name yet: the email stands in, so it is not repeated. */}
                 {operator.email !== operator.name ? <span className="block truncate">{operator.email}</span> : null}
                 <span className="mt-1.5 block">
-                  <span className="text-foreground">{roleLabel}</span> · {operator.shift.label}{" "}
-                  <span className="font-mono tabular-nums">
-                    {formatClock(operator.shift.starts_at, zone, { seconds: false })}–
-                    {formatClock(operator.shift.ends_at, zone, { seconds: false })}
-                  </span>
+                  <span className="text-foreground">{roleLabel}</span>
+                  {/* The real API sends no shift when there is none; nothing is invented. */}
+                  {operator.shift.label ? (
+                    <>
+                      {" "}
+                      · {operator.shift.label}{" "}
+                      <span className="font-mono tabular-nums">
+                        {formatClock(operator.shift.starts_at, zone, { seconds: false })}–
+                        {formatClock(operator.shift.ends_at, zone, { seconds: false })}
+                      </span>
+                    </>
+                  ) : null}
                 </span>
               </MenuNote>
             ) : null}

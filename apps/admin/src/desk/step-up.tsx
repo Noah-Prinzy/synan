@@ -11,7 +11,7 @@
  */
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { Button, Dialog, Field } from "@synan/ui/components";
-import { deskErrorCode, deskFailure, desk, fieldMessage, isOffline } from "./desk-api";
+import { deskErrorCode, deskFailure, desk, deskIsMock, fieldMessage, isOffline } from "./desk-api";
 import { DeskInput } from "./desk-input";
 import { StepUpCancelled, StepUpContext, type Guard } from "./step-up-guard";
 
@@ -24,6 +24,8 @@ export function StepUpProvider({ children }: { children: ReactNode }) {
       return await action();
     } catch (error) {
       if (deskErrorCode(error) !== "MFA_REQUIRED") throw error;
+      // Real API: the console's prompt already asked; MFA_REQUIRED here means it was cancelled.
+      if (!deskIsMock) throw new StepUpCancelled();
       await new Promise<void>((resolve, reject) => {
         waiting.current = { resolve, reject };
         setOpen(true);

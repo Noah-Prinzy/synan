@@ -97,8 +97,12 @@ export function AttendeeCard({
   const cannotResend = resendBlock(row);
   const pass = row.credential_state ? CREDENTIAL_STATE_COPY[row.credential_state] : null;
   const registration = REGISTRATION_STATE_COPY[row.state];
-  const canBind = !readOnly && !block && !row.band_hint;
+  // A band reported lost (by the attendee, or marked lost earlier) is replaced, not bound anew: the
+  // replacement goes through the lost band's carrier, so the old one stays refused at the gates.
+  const reportedLost = !row.band_hint && Boolean(row.band_lost) && Boolean(row.carrier_id);
+  const canBind = !readOnly && !block && !row.band_hint && !reportedLost;
   const canReplace = !readOnly && !block && Boolean(row.band_hint);
+  const canReplaceLost = !readOnly && !block && reportedLost;
 
   const start = (next: Flow) => {
     setOutcome(null);
@@ -178,6 +182,13 @@ export function AttendeeCard({
                   <ActionRow title="Rebind" detail="The band is here but does not work. Their pass stays the same." onClick={() => start("rebind")} />
                   <ActionRow title="Lost band" detail="The band is gone. Mark it lost and bind a new one." onClick={() => start("lost")} />
                 </>
+              ) : null}
+              {canReplaceLost ? (
+                <ActionRow
+                  title="Replace the lost band"
+                  detail="Their band was reported lost and gates already refuse it. Check their ID, then bind a new one."
+                  onClick={() => start("lost")}
+                />
               ) : null}
               {!readOnly && !cannotResend ? (
                 <ActionRow title="Resend the pass" detail={`Email a fresh copy to ${row.attendee.email ?? ""}.`} onClick={() => start("resend")} />

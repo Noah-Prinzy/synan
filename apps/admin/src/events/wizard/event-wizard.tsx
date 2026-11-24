@@ -15,7 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { WIZARD_STEPS, type EventRecord, type VenueDetail, type WizardStep } from "@synan/mock/command";
 import { buttonClass } from "@synan/ui/components";
-import { EmptyState, ErrorState, LoadingState, Notice, PageHeader, Stepper, errorCode, formatStamp, linkClass, useDocumentTitle } from "../../kit";
+import { EmptyState, ErrorState, GUTTER_X, LoadingState, Notice, PageHeader, Stepper, errorCode, formatStamp, linkClass, useDocumentTitle } from "../../kit";
 import { configure } from "../../live/backend";
 import { STEP_LABEL, type StepContext, type WizardForms } from "./shared";
 import { BasicsStep } from "./step-basics";
@@ -247,7 +247,7 @@ export default function EventWizard() {
         onStep={record && record.state !== "draft" ? undefined : (key) => goto(key as WizardStep)}
       />
       {duplicatedFrom && stepParam === "basics" ? (
-        <div className="px-4 pt-4 sm:px-6">
+        <div className={`${GUTTER_X} pt-6`}>
           <Notice className="max-w-160">
             Copied from “{duplicatedFrom}”: venue, rooms, access rules and pass came with it. Set the new dates, then continue.
           </Notice>

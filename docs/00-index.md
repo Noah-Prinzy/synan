@@ -118,6 +118,7 @@ Decisions taken by the project owner to reconcile sources that disagreed. Each r
 | D-21 | 2026-11-23 | How is an event's data retrieved afterwards? | **A post-event summary screen, and an Excel workbook download.** Every closed event has a one-page summary of how it went. The primary export is a real `.xlsx` workbook: a summary sheet, one sheet per report, and an attendee sheet. CSV and a PDF summary remain. Both are built from data that survives the purge. | [01 §10](01-product.md), [06 D13c](06-screens.md) |
 | D-22 | 2026-11-23 | Should the website have ambient motion, and what needs work in the interface? | **Little animation overall; motion is spent on rewarding interaction.** Pressing something that matters is acknowledged instantly, and key moments (completing registration, the pass becoming ready, binding a wristband, acknowledging an alert, an admitted scan) get a short, crafted confirmation. A single minimal ambient background on the Attendee Portal is allowed as an exception to the no-decorative-motion rule. The visual style is approved as it stands; the work now is user-friendliness, app flow, and how content balances on screen. The Command Center is to be calmer and cleaner. | [05 §5](05-design-system.md) |
 | D-23 | 2026-11-24 | Which kinds of account does the operator side have? | **Seven roles, each seeing only what its job needs.** Two are added: **Supervisor** (runs the live event: Command Center, alerts, gates, passes under review) and **Desk clerk** (the registration desk: find an attendee, bind and replace wristbands). Security Staff stay scanner-only. The server enforces every role on every request; the console shows each role only its own screens. A read-only Viewer role was considered and left until someone needs it. | [01 §3](01-product.md) |
+| D-24 | 2026-11-24 | Is the product dark only? | **No: a light theme is added to all three apps.** Each device can choose System (the default, following the device), Light, or Dark. The dark theme stays as it is. The light theme is the same brand: the same type and logo, an off-white ground with near-black ink, and a deeper companion of the Daybreak blue where the original lacks contrast. The pass QR code is black on white in both. | [05 §3](05-design-system.md) |
 
 ---
 
@@ -141,7 +142,7 @@ Tracked here so they are not scattered. None blocks frontend work unless marked.
 | O-10 | Kiosk onboarding for the Public tier: own device mode, or a route in the Attendee Portal? | A locked route in the Attendee Portal. Design not started. |
 | O-11 | Do breach alerts keep the credential reference after the purge? | Yes, for 12 months, as a security record. Confirm with legal. |
 | O-12 | Edge inference hardware per venue | Undecided. Sized in Phase 6. |
-| O-15 | Bundle budget for the attendee pass screen. 90 KB cannot be met: React and the router alone are 81 KB | 110 KB, provisional. The alternative is a lighter framework for the Attendee Portal. Owner to decide. |
+| O-15 | Bundle budget for the attendee pass screen. 90 KB cannot be met: React and the router alone are 81 KB | Settled 2026-11-24: **125 KB gzip, counting HTML, styles and code loaded before the pass appears.** The current framework stays; a rebuild on a lighter one was rejected. |
 | O-16 | Should a repeat read of a spent emailed QR at the same gate be ignored as a duplicate, rather than shown as `pass_spent`? | No: the specified order stands for now. |
 | O-17 | How fixed readers authenticate, since they have no signed-in user | Settled: each device holds a device token and exchanges it at `POST /auth/device-token` for a short-lived access token. |
 | O-18 | Should a revoked or suspended credential be refused at an exit gate? | Yes, as built. Confirm with operations: it may be better to let the person leave and raise an alert. |
@@ -152,6 +153,7 @@ Tracked here so they are not scattered. None blocks frontend work unless marked.
 | O-23 | Keep per-person session attendance after the event, for example for attendance certificates? | No. It would reverse part of D-03. Owner to say if wanted. |
 | O-24 | Where is Synan hosted, and on which managed PostgreSQL? | Undecided. Needed before any real event, and to run the tests that need a real server. |
 | O-25 | How long should the link in a scheduled-report email last? Anyone holding the link can download the file. | 24 hours, provisional (configurable from 5 minutes to 72 hours). Owner to confirm. |
+| O-26 | Admin Command loads about 188 KB at start with the real API, over its 180 KB budget, because the client checks every request and reply against the contracts | Settled 2026-11-24: **the budget is 200 KB and the checks stay.** The console runs on laptops and venue Wi-Fi, and the checks stop bad data reaching a screen. Dropping them (about 40 KB) was rejected. |
 
 ---
 

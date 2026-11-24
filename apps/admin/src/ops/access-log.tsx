@@ -132,18 +132,23 @@ function AccessLog({ event }: { event: CommandEvent }) {
   const linkLive = useSlice(store.link).status === "live";
   const [params, setParams] = useSearchParams();
   const timeZone = event.timezone;
+  const { role } = useSession();
+  // The real API searches for one pass (credential or band), for admins and organisers only, and
+  // writes each search to the audit log; the mock searches gate and result words for everyone.
+  const passSearch = mode === "api";
+  const canSearch = !passSearch || role === "admin" || role === "organiser";
 
   const filters = useMemo<Filters>(() => {
     const result = params.get("result");
     const gate = params.get("gate");
     const room = params.get("room");
     return {
-      q: params.get("q") ?? "",
+      q: canSearch ? (params.get("q") ?? "") : "",
       result: (SCAN_RESULT_VALUES as readonly string[]).includes(result ?? "") ? (result as ScanResult) : null,
       gate: gate && layout?.checkpoints.some((c) => c.id === gate) ? gate : null,
       room: room && layout?.rooms.some((r) => r.id === room) ? room : null,
     };
-  }, [params, layout]);
+  }, [params, layout, canSearch]);
   const filtered = Boolean(filters.q || filters.result || filters.gate || filters.room);
 
   const update = useCallback(
@@ -185,13 +190,15 @@ function AccessLog({ event }: { event: CommandEvent }) {
       if (query.checkpoint_ids && !query.checkpoint_ids.includes(scan.checkpoint_id)) return false;
       if (query.result && scan.result !== query.result) return false;
       if (query.q) {
+        // A pass search is the server's to answer: the reconcile below brings its matches in.
+        if (passSearch) return false;
         const q = query.q.toLowerCase();
         const label = labels.get(scan.checkpoint_id)?.toLowerCase() ?? "";
         if (!label.includes(q) && !scan.result.replace(/_/g, " ").includes(q) && !resultLabel(scan.result).toLowerCase().includes(q)) return false;
       }
       return true;
     },
-    [query, labels],
+    [query, labels, passSearch],
   );
 
   /* ------------------------------------------------------------ the rows */
@@ -199,6 +206,8 @@ function AccessLog({ event }: { event: CommandEvent }) {
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [rows, setRows] = useState<OpsScan[]>([]);
   const [total, setTotal] = useState(0);
+  /** False when the server stopped counting (over 10,000): the total is then a floor. */
+  const [exact, setExact] = useState(true);
   const [older, setOlder] = useState(false);
   const [history, setHistory] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -223,6 +232,7 @@ function AccessLog({ event }: { event: CommandEvent }) {
         if (mine !== generation.current) return;
         setRows(page.items);
         setTotal(page.total);
+        setExact((page as { total_exact?: boolean }).total_exact !== false);
         setOlder(page.next_cursor !== null);
         setLoad({ status: "ready" });
       },
@@ -269,6 +279,7 @@ function AccessLog({ event }: { event: CommandEvent }) {
           if (mine !== generation.current || pausedRef.current) return;
           setRows((current) => merge(page.items, current).slice(0, WINDOW));
           setTotal(page.total);
+          setExact((page as { total_exact?: boolean }).total_exact !== false);
         },
         () => undefined,
       );
@@ -382,15 +393,21 @@ function AccessLog({ event }: { event: CommandEvent }) {
       <LastKnown />
 
       <div className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3 sm:px-6">
-        <Field label="Search" className="w-full sm:w-64">
-          <TextInput
-            type="search"
-            value={typed}
-            onChange={(e) => setTyped(e.target.value)}
-            placeholder="Gate or result"
-            suffix={<Search size={14} strokeWidth={1.5} aria-hidden="true" />}
-          />
-        </Field>
+        {canSearch ? (
+          <Field
+            label={passSearch ? "Find a pass" : "Search"}
+            aside={passSearch ? "each search is recorded" : undefined}
+            className="w-full sm:w-64"
+          >
+            <TextInput
+              type="search"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              placeholder={passSearch ? "Band number, or its hint (••1A2B)" : "Gate or result"}
+              suffix={<Search size={14} strokeWidth={1.5} aria-hidden="true" />}
+            />
+          </Field>
+        ) : null}
         <Field label="Result" className="w-[calc(50%-0.375rem)] sm:w-44">
           <Select options={resultOptions} value={filters.result ?? ANY} onChange={(v) => update({ result: v === ANY ? null : v })} />
         </Field>
@@ -475,8 +492,8 @@ function AccessLog({ event }: { event: CommandEvent }) {
           <footer className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-12 text-muted-foreground sm:px-6">
             <span>
               Showing <span className="font-mono tabular-nums">{formatNumber(rows.length)}</span> of{" "}
-              {/* The real API does not count the whole log: with more to load, the total is a floor. */}
-              {mode === "api" && older ? "at least " : null}
+              {/* The server counts exactly up to 10,000; past that its total is a floor. */}
+              {exact ? null : "at least "}
               <span className="font-mono tabular-nums">{formatNumber(Math.max(total, rows.length))}</span>
               {filtered ? " matching" : ""} scans{rows.length >= WINDOW ? ` · ${WINDOW} at a time` : ""}
             </span>

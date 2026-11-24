@@ -184,7 +184,7 @@ export function BasicsStep({ record, forms, setForm, saved, goto, close }: StepC
         </>
       }
     >
-      <form noValidate aria-label="Basics" onSubmit={(event: FormEvent) => event.preventDefault()} className="flex flex-col gap-6">
+      <form noValidate aria-label="Basics" onSubmit={(event: FormEvent) => event.preventDefault()} className="flex flex-col gap-8">
         <StepSection id="basics-what" title="The event">
           <Field label="Name" id="event-title" error={errors.title} hint="As attendees will see it, e.g. Founders Forum 2027.">
             <TextInput

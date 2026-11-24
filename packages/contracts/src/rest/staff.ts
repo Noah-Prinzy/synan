@@ -43,7 +43,20 @@ export const StaffAssignment = z.object({
     })
     .optional(),
   /** Additive (GET /me/assignments): the event this shift works (the assignment's, else the venue's event running in the shift); null when none. */
-  event: z.object({ id: Id, title: z.string() }).nullable().optional(),
+  event: z
+    .object({
+      id: Id,
+      title: z.string(),
+      /** Additive: the event's slug (no public event read needed, also for an unlisted event). */
+      slug: z.string().optional(),
+      /**
+       * Additive: the event's rooms by name, sorted by name — the scanner's "rooms this pass opens"
+       * chips map `permitted_room_ids` through it. Names only: no capacity or occupancy.
+       */
+      rooms: z.array(z.object({ room_id: Id, name: z.string() })).optional(),
+    })
+    .nullable()
+    .optional(),
 });
 export type StaffAssignment = z.infer<typeof StaffAssignment>;
 export const CreateStaffAssignment = z.object({
@@ -66,14 +79,17 @@ export const HandoverSummary = z.object({
   shift_start: IsoDateTime,
   shift_end: IsoDateTime,
   handed_over_at: IsoDateTime,
-  /** Let through: admitted + already_inside (= `let_through`). */
+  /** Let through: admitted + already_inside (= `let_through`), admissions undone at the scanner left out. */
   admitted: z.number().int(),
   refused: z.number().int(),
   /** Scans decided offline on the device and synced (= `offline`). */
   queued: z.number().int(),
+  /** Count per recorded result; undone admissions left out. */
   by_result: z.record(z.string(), z.number().int()),
+  /** Additive: admissions undone at the scanner (POST /scans/:id/undo) in the period; not in `admitted` or `by_result`. */
+  undone: z.number().int().optional(),
   /* ---- additive: the full summary ---- */
-  /** All scans recorded by this person at this gate in the period (implied exits excluded). */
+  /** All scans recorded by this person at this gate in the period (implied exits excluded; undone ones included). */
   scans: z.number().int().optional(),
   let_through: z.number().int().optional(),
   duplicates: z.number().int().optional(),
@@ -230,8 +246,14 @@ export type OperatorProfile = z.infer<typeof OperatorProfile>;
 export const staffEndpoints = {
   myOperator: endpoint({ method: "GET", path: "/me/operator", access: ["admin", "organiser", "security_staff", "speaker", "crew", "supervisor", "desk_clerk"], response: OperatorProfile }),
   listStaff: endpoint({ method: "GET", path: "/staff", access: ADMIN_ONLY, query: PageQuery, response: pageOf(StaffMember) }),
-  /** `event_id` (additive): the shifts tied to that event (06 D6.6). */
-  listAssignments: endpoint({ method: "GET", path: "/staff-assignments", access: OPERATORS, query: PageQuery.extend({ checkpoint_id: Id.optional(), user_id: Id.optional(), event_id: Id.optional() }), response: pageOf(StaffAssignment) }),
+  /**
+   * `event_id` (additive): the shifts tied to that event (06 D6.6).
+   * Supervisors (additive, read only — the gate detail page): `checkpoint_id` or `event_id` is required
+   * (VALIDATION_FAILED otherwise); only current and upcoming shifts (not over, not handed over); each item
+   * carries the gate, the shift times and the person's display name only (`staff_name` absent when they
+   * have none; never an email). `user_id` filtering is not available to them.
+   */
+  listAssignments: endpoint({ method: "GET", path: "/staff-assignments", access: SUPERVISE, query: PageQuery.extend({ checkpoint_id: Id.optional(), user_id: Id.optional(), event_id: Id.optional() }), response: pageOf(StaffAssignment) }),
   createAssignment: endpoint({ method: "POST", path: "/staff-assignments", access: ADMIN_ONLY, audited: true, body: CreateStaffAssignment, response: StaffAssignment, status: 201 }),
   /* ---- additions (not in 02 §5; proposed) ---- */
   inviteStaff: endpoint({ method: "POST", path: "/staff", access: ADMIN_ONLY, audited: true, body: InviteStaff, response: StaffMember, status: 201 }),

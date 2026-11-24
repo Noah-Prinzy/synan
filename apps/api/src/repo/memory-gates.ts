@@ -52,15 +52,20 @@ export function memoryHandoverSummary(t: MemoryTables, assignmentId: string): Ha
       x.checkpoint_id === a.checkpoint_id && x.staff_user_id === a.user_id && (!a.event_id || x.event_id === a.event_id) &&
       corrected(x) >= a.shift_start.getTime() && corrected(x) < pend.getTime() && x.result !== "implied_exit",
   );
+  // 0034: an undone scan (scan_voids) is not let through and not in by_result; it counts as undone.
+  const voided = new Set(t.scanVoids.map((v) => `${v.event_id}|${v.scan_id}`));
+  const isVoided = (x: (typeof s)[number]) => voided.has(`${x.event_id}|${x.id}`);
+  const standing = s.filter((x) => !isVoided(x));
   const by: Record<string, number> = {};
-  for (const x of s) by[x.result] = (by[x.result] ?? 0) + 1;
+  for (const x of standing) by[x.result] = (by[x.result] ?? 0) + 1;
   const times = s.map(corrected);
   return {
     assignment_id: a.id, checkpoint_id: a.checkpoint_id, user_id: a.user_id, period_start: a.shift_start, period_end: pend,
-    scans: s.length, let_through: s.filter((x) => x.result === "admitted" || x.result === "already_inside").length,
+    scans: s.length, let_through: standing.filter((x) => x.result === "admitted" || x.result === "already_inside").length,
     refused: s.filter((x) => REFUSED.has(x.result)).length, duplicates: s.filter((x) => x.result === "duplicate_read").length,
     offline: s.filter((x) => x.offline_bool).length, late_synced: s.filter((x) => x.received_at >= pend).length, by_result: by,
     first_scan_at: times.length ? new Date(Math.min(...times)) : null, last_scan_at: times.length ? new Date(Math.max(...times)) : null,
+    undone: s.length - standing.length,
   };
 }
 

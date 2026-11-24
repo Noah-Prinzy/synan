@@ -9,7 +9,7 @@
  *
  * Zod-free on purpose: the copy module is plain data.
  */
-import { ERROR_COPY } from "@synan/contracts/copy";
+import { ERROR_COPY, FAILURE_COPY } from "@synan/contracts/copy";
 import type { ErrorCode } from "@synan/contracts/errors";
 
 /** One field-level problem as the API reports it (`path` like `body.rooms.3.zone_id`, or `zone:<id>`). */
@@ -115,21 +115,14 @@ export interface FailureCopy {
   network: boolean;
 }
 
-/**
- * NOT IN CONTRACTS: words for "no answer". Proposed as `NETWORK` / `OFFLINE` entries in
- * `@synan/contracts/copy` (client-only codes; the attendee app has its own copy of the same idea).
- */
-const NETWORK_COPY = {
-  offline: { title: "You are offline", message: "This needs a connection. It will work again when you are back online." },
-  network: { title: "Server not reachable", message: "The server did not answer. Check the connection and try again." },
-} as const;
 
 /** The single error mapper: any thrown value → the copy to show. */
 export function failureCopy(error: unknown): FailureCopy {
   if (error instanceof ApiFailure) {
     if (error.kind === "network") {
-      const copy = error.offline ? NETWORK_COPY.offline : NETWORK_COPY.network;
-      return { code: error.code, ...copy, fields: {}, issues: [], network: true };
+      // Words for "no answer" come from the contracts (FAILURE_COPY), like every other failure's.
+      const { title, message } = error.offline ? FAILURE_COPY.offline : FAILURE_COPY.network;
+      return { code: error.code, title, message, fields: {}, issues: [], network: true };
     }
     const copy = ERROR_COPY[error.code];
     return { code: error.code, title: copy.title, message: copy.message, fields: error.fields, issues: error.issues, network: false };

@@ -7,7 +7,7 @@ import { useState, type FormEvent } from "react";
 import type { AttendeeTier } from "@synan/contracts/enums";
 import type { EventRecord, VenueDetail } from "@synan/mock/command";
 import { Checkbox, Field, TextArea, TextInput } from "@synan/ui/components";
-import { FilterChips, Notice, TIER_LABEL, TIER_ORDER, errorCopy, formatDateRange, useResource } from "../../kit";
+import { FilterChips, GUTTER_X, Notice, PROSE, TIER_LABEL, TIER_ORDER, errorCopy, formatDateRange, useResource } from "../../kit";
 import { configure } from "../../live/backend";
 import { PassPreview } from "../parts/pass-preview";
 import { StepSection, WizardFooter, defaultPass, focusFirstInvalid, type PassForm, type StepContext } from "./shared";
@@ -64,9 +64,9 @@ export function PassStep({ record, forms, setForm, saved, goto, close, loadVenue
   const venueName = venue.status === "ready" && venue.data ? venue.data.venue.name : null;
 
   return (
-    <div className="grid grid-cols-1 gap-8 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,40rem)_20rem] lg:gap-10 xl:gap-14">
-      <form noValidate aria-label="Pass template" onSubmit={(event: FormEvent) => event.preventDefault()} className="flex min-w-0 flex-col gap-6">
-        <p className="text-13 text-muted-foreground">
+    <div className={`grid grid-cols-1 gap-8 py-6 lg:grid-cols-[minmax(0,40rem)_20rem] lg:gap-10 xl:gap-14 2xl:gap-16 ${GUTTER_X}`}>
+      <form noValidate aria-label="Pass template" onSubmit={(event: FormEvent) => event.preventDefault()} className="flex min-w-0 flex-col gap-8">
+        <p className={`text-13 text-muted-foreground ${PROSE}`}>
           Every attendee carries this pass on their phone and gets it by email. The code on it is unique to them and changes every minute.
         </p>
         <StepSection id="pass-words" title="On the pass">
@@ -78,7 +78,7 @@ export function PassStep({ record, forms, setForm, saved, goto, close, loadVenue
           </Field>
         </StepSection>
         <StepSection id="pass-shows" title="Also show">
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4">
             <Checkbox
               label="The attendee's tier"
               description="Helps staff at a door see at a glance who the pass is for. The gate decides from the server, never from the pass."
@@ -110,10 +110,10 @@ export function PassStep({ record, forms, setForm, saved, goto, close, loadVenue
         />
       </form>
 
-      <aside aria-label="Pass preview" className="min-w-0 lg:sticky lg:top-4 lg:self-start">
-        <div className="mb-3 flex items-baseline justify-between gap-3 border-b border-border pb-1.5">
-          <h2 className="text-12 font-medium">Preview</h2>
-          <span className="text-11 text-muted-foreground">Sample attendee</span>
+      <aside aria-label="Pass preview" className="min-w-0 lg:sticky lg:top-6 lg:self-start">
+        <div className="mb-3 flex items-baseline justify-between gap-3 border-b border-border pb-2">
+          <h2 className="text-13 font-medium">Preview</h2>
+          <span className="text-12 text-muted-foreground">Sample attendee</span>
         </div>
         {form.show_tier ? (
           <div className="mb-3">

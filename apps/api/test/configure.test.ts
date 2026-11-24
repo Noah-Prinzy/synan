@@ -394,7 +394,7 @@ describe("D6.7 · report rows; D6.4 attendees; D6.5 inventory; D6.6 staff", () =
     expect(all.body.total).toBe(all.body.items.length);
     const vera = all.body.items.find((r) => r.attendee.full_name === "Vera Ip")!;
     expect(vera.credential_state).toMatch(/issued|active|suspended_review/);
-    expect(vera.band_hint).toMatch(/^band ••/);
+    expect(vera.band_hint).toBe(`••••${h.seed.attendees.vip.uid.slice(-4)}`);
     const q = await h.call<{ items: Row[]; total: number }>("GET", `/events/${h.seed.eventId}/registrations?q=orla`, { token: organiser });
     expect(q.body.items.map((r) => r.attendee.full_name)).toEqual(["Orla Dinary"]);
     expect(q.body.total).toBe(all.body.total);

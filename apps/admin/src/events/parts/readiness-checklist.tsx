@@ -48,9 +48,9 @@ export function ReadinessChecklist({
   const summary = readinessSummary(items, published);
   return (
     <section aria-label={title} className="min-w-0 border border-border">
-      <header className="flex min-h-8 flex-wrap items-center justify-between gap-x-3 border-b border-border px-4">
-        <h2 className="py-1.5 text-12 font-medium">{title}</h2>
-        <p role="status" className={cn("flex items-center gap-1.5 py-1.5 text-12", summary.ready ? "text-success" : "text-foreground")}>
+      <header className="flex min-h-10 flex-wrap items-center justify-between gap-x-3 border-b border-border px-4">
+        <h2 className="py-2 text-13 font-medium">{title}</h2>
+        <p role="status" className={cn("flex items-center gap-1.5 py-2 text-12", summary.ready ? "text-success" : "text-foreground")}>
           <SignalShape state={summary.ready ? "ok" : "stop"} className={summary.ready ? undefined : "text-destructive"} />
           {summary.text}
           {summary.suggestions > 0 ? (
@@ -66,7 +66,7 @@ export function ReadinessChecklist({
           const state = stateOf(item) as "ok" | "stop" | "warn";
           const fixable = !item.met && item.step !== null && onFix;
           return (
-            <li key={item.key} className="grid grid-cols-[1rem_minmax(0,1fr)_auto] items-start gap-x-2 border-b border-border px-4 py-2 last:border-b-0">
+            <li key={item.key} className="grid grid-cols-[1rem_minmax(0,1fr)_auto] items-start gap-x-2 border-b border-border px-4 py-2.5 last:border-b-0">
               <SignalShape state={state} className={cn("mt-1", signalTone(state))} />
               <div className="min-w-0">
                 <p className="text-13">
@@ -76,7 +76,7 @@ export function ReadinessChecklist({
                 <p className="mt-0.5 text-12 text-muted-foreground">{item.detail}</p>
               </div>
               <div className="flex items-center gap-3 pt-0.5">
-                <span aria-hidden="true" className={cn("text-11", item.met ? "text-muted-foreground" : signalTone(state))}>
+                <span aria-hidden="true" className={cn("text-12", item.met ? "text-muted-foreground" : signalTone(state))}>
                   {WORD[state]}
                 </span>
                 {fixable ? (

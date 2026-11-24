@@ -22,3 +22,274 @@
     scrollbar-color: var(--muted) transparent;
   }
 }
+
+/* -------------------------------------------------------------------------------------------
+   The venue map (Command Center D1, docs/05 map rules). Unlayered on purpose: these override
+   the utility classes the shared bar carries. Every colour is a theme token; the level tints
+   are faint (8–12 %) so a full room is noticed without the map shouting. State is always a
+   shape and a word too, never colour alone.
+   ------------------------------------------------------------------------------------------- */
+
+.map-zone {
+  fill: color-mix(in oklab, var(--foreground) 2.5%, transparent);
+  stroke: color-mix(in oklab, var(--foreground) 24%, transparent);
+  stroke-width: 1px;
+}
+
+.map-zone-label {
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.map-room {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  contain: strict;
+  text-align: left;
+  border: 1px solid color-mix(in oklab, var(--foreground) 14%, transparent);
+  background: color-mix(in oklab, var(--foreground) 5%, var(--background));
+  transition:
+    background-color var(--duration-state) var(--ease-standard),
+    border-color var(--duration-state) var(--ease-standard);
+}
+.map-room[data-level="warn"] {
+  border-color: color-mix(in oklab, var(--warning) 55%, transparent);
+  background: color-mix(in oklab, var(--warning) 9%, var(--background));
+}
+.map-room[data-level="block"] {
+  border-color: color-mix(in oklab, var(--destructive) 70%, transparent);
+  background: color-mix(in oklab, var(--destructive) 11%, var(--background));
+}
+.map-room:hover,
+.map-room[data-highlight] {
+  border-color: color-mix(in oklab, var(--foreground) 60%, transparent);
+  background-color: color-mix(in oklab, var(--foreground) 9%, var(--background));
+}
+.map-room[data-level="warn"]:hover,
+.map-room[data-level="warn"][data-highlight] {
+  background-color: color-mix(in oklab, var(--warning) 14%, var(--background));
+}
+.map-room[data-level="block"]:hover,
+.map-room[data-level="block"][data-highlight] {
+  background-color: color-mix(in oklab, var(--destructive) 16%, var(--background));
+}
+/* Selected (linked to the rail): a 2px accent frame — blue marks where you are acting. */
+.map-room[data-selected]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--brand);
+  pointer-events: none;
+}
+/* An open high or critical alert: a 2px stop frame over any level colour, until acknowledged. */
+.map-room[data-alert="stop"] {
+  border-color: var(--destructive);
+}
+.map-room[data-alert="stop"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--destructive);
+  pointer-events: none;
+}
+.map-room:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.map-room-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
+  padding: 7px 8px 0;
+  font-size: var(--text-12);
+  line-height: 1.3;
+  color: color-mix(in oklab, var(--foreground) 82%, transparent);
+}
+.map-room[data-fit="lg"] .map-room-name {
+  padding: 9px 10px 0;
+  font-size: var(--text-13);
+}
+/* Low, wide rooms: name and count on one row. */
+.map-room[data-row] {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 4px;
+}
+.map-room[data-row] .map-room-name {
+  min-width: 0;
+  padding: 0 0 0 8px;
+}
+.map-room[data-row] .map-room-count {
+  padding: 0 8px 0 0;
+}
+
+.map-room-count {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 0 8px 9px;
+  white-space: nowrap;
+  font-family: var(--type-data);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+.map-room[data-fit="lg"] .map-room-count {
+  padding: 0 10px 12px;
+}
+.map-room[data-fit="xs"] .map-room-count,
+.map-room[data-fit="sm"] .map-room-count {
+  padding: 0 6px 7px;
+}
+.map-room-value {
+  color: var(--foreground);
+}
+.map-room[data-level="warn"] .map-room-value {
+  color: var(--warning);
+}
+.map-room[data-level="block"] .map-room-value {
+  color: var(--destructive);
+}
+.map-room-cap {
+  color: var(--muted-foreground);
+}
+.map-room-shape {
+  display: none;
+  align-self: center;
+}
+.map-room-shape-warn {
+  color: var(--warning);
+}
+.map-room-shape-stop {
+  color: var(--destructive);
+}
+.map-room[data-level="warn"] .map-room-shape-warn,
+.map-room[data-level="block"] .map-room-shape-stop {
+  display: inline-flex;
+}
+
+.map-room-bar {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 4px;
+  background: color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+
+/* An open alert at the room's door: a small flag at the start of the count line. */
+.map-room-alert {
+  align-self: center;
+  margin-right: 2px;
+  padding: 2px 4px;
+  font-family: var(--type-ui);
+  font-size: var(--text-11);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+  border: 1px solid currentColor;
+  background: var(--background);
+}
+.map-room-alert[data-tone="stop"] {
+  color: var(--destructive);
+}
+.map-room-alert[data-tone="warn"] {
+  color: var(--warning);
+}
+
+/* Perimeter gates: a chip outside the zone edge, joined to it by a tick. */
+.map-gate {
+  position: absolute;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 7px;
+  white-space: nowrap;
+  font-family: var(--type-data);
+  font-size: var(--text-12);
+  line-height: 1;
+  border: 1px solid color-mix(in oklab, var(--foreground) 22%, transparent);
+  background: var(--background);
+}
+.map-gate[data-state="ok"] .map-gate-shape {
+  color: var(--success);
+}
+.map-gate[data-state="warn"] {
+  border-color: color-mix(in oklab, var(--warning) 70%, transparent);
+  color: var(--warning);
+}
+.map-gate[data-state="stop"] {
+  border-color: var(--destructive);
+  color: var(--destructive);
+}
+.map-gate[data-alert] {
+  outline: 2px solid var(--destructive);
+  outline-offset: 1px;
+}
+.map-gate-words {
+  font-family: var(--type-ui);
+}
+.map-gate-tick {
+  stroke: color-mix(in oklab, var(--foreground) 45%, transparent);
+}
+.map-gate-tick[data-state="ok"] {
+  stroke: var(--success);
+}
+.map-gate-tick[data-state="warn"] {
+  stroke: var(--warning);
+}
+.map-gate-tick[data-state="stop"] {
+  stroke: var(--destructive);
+}
+
+/* A room's own door with a fault: a badge straddling the block's bottom-right corner. */
+.map-door {
+  position: absolute;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 18px;
+  padding: 0 5px;
+  transform: translate(-100%, -50%);
+  white-space: nowrap;
+  font-size: var(--text-11);
+  line-height: 1;
+  border: 1px solid currentColor;
+  background: var(--background);
+  pointer-events: none;
+}
+.map-door[data-state="warn"] {
+  color: var(--warning);
+}
+.map-door[data-state="stop"] {
+  color: var(--destructive);
+}
+
+.map-legend-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 10px;
+  border: 1px solid color-mix(in oklab, var(--foreground) 30%, transparent);
+  background: color-mix(in oklab, var(--foreground) 5%, var(--background));
+}
+.map-legend-swatch[data-level="warn"] {
+  border-color: color-mix(in oklab, var(--warning) 60%, transparent);
+  background: color-mix(in oklab, var(--warning) 9%, var(--background));
+}
+.map-legend-swatch[data-level="block"] {
+  border-color: color-mix(in oklab, var(--destructive) 70%, transparent);
+  background: color-mix(in oklab, var(--destructive) 11%, var(--background));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-room {
+    transition: none;
+  }
+}

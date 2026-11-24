@@ -27,8 +27,9 @@
  *   - signIn(): the mock takes no arguments; here `signIn({ email, password })`, or a stored session.
  *   - MFA_REQUIRED: the mock never asks. Here the client calls the `auth.onStepUp` handler and retries.
  *   - Errors: ApiFailure (code = message, `fields` like MockApiError's), not MockApiError.
- *   - ★ OperatorContext.name: GET /me/operator has no display name; the email stands in.
- *   - OperatorContext.shift: null on the server without a current assignment; "Signed in" + session times stand in.
+ *   - OperatorContext.name ← display_name, else the email; shift.label ← shift_label. With no current
+ *     shift nothing is invented: label and times are empty, and the menu shows none.
+ *   - Capabilities: GET /me/operator `capabilities` narrow the role's map (access/capabilities.ts), never widen it.
  *   - OperatorContext.event_ids ← desk_event_ids (desk clerks), else null.
  * Live
  *   - events(): admins/organisers read GET /admin/events; ★ supervisors and desk clerks may not, so
@@ -38,16 +39,18 @@
  *   - summary(): the server's `series` is per-minute throughput; the KPI series is `kpi_series` → `series`.
  *   - ack()/resolveAlert(): the server answers 409 for an alert no longer open / already resolved;
  *     the alert is read back and returned, as the mock does.
- *   - scans(): ★ one checkpoint and no text search on GET /scans — several checkpoints and `q` are
- *     filtered here (up to 2,500 scans); ★ `total` and `oldest_at` are not served; ★ `tier` and
- *     `latency_ms` are not on ScanRecord (null); `corrected_at` = occurred_at + clock_offset_ms;
- *     newest first by received time (mock: corrected time); the mock's `corrected_at|id` cursor is accepted.
- *   - ★ gateActivity(): composed (GET /gates/health + 15 minutes of GET /scans).
- *   - ★ gateDetail(): composed from an hour of GET /scans; `link_history` is empty.
- *   - ★ testRead(): no endpoint; fails NOT_IMPLEMENTED.
- *   - ★ alertContext(): composed (alert from GET /breach-alerts, scans, credentials, registrations, staff).
- *   - Streams: ★ `gate.health` is not published on /stream/alerts — polled from GET /gates/health and
- *     emitted as frames; alerts are re-read when /stream/alerts reconnects without replay.
+ *   - scans(): server-filtered (`checkpoint_ids` comma-separated, `result`, `q` = one pass by credential
+ *     or band, admins and organisers only, audited); `total` + `total_exact` (passed through: the access
+ *     log says "at least" only when not exact) and `oldest_at` served; ★ `tier` and `latency_ms` still
+ *     null; newest first by received time (mock: corrected time); the mock's `corrected_at|id` cursor is accepted.
+ *   - gateActivity(): GET /gates/health + GET /checkpoints/:id/activity (15 min) per gate.
+ *   - gateDetail(): GET /checkpoints/:id/activity (60 min, summed into 5-minute buckets; `by_result`) +
+ *     the gate's last 50 scans; ★ `link_history` is empty.
+ *   - ★ testRead(): no endpoint; fails NOT_IMPLEMENTED (the gate page says "not available yet").
+ *   - alertContext(): GET /alerts/:id (scans, credential, ack history); the name from GET /registrations/:id;
+ *     `nearby` (alerts naming no scans) from one page of GET /scans at the gate.
+ *   - Streams: `gate.health` arrives on /stream/alerts; GET /gates/health is read once at start (and after a
+ *     reconnect without replay) so every gate is known; alerts are re-read then too.
  * Configure
  *   - setupStatus(): the server adds `venues` (a count). Same otherwise.
  *   - venues(): counts nest under `counts`; flattened.
@@ -62,16 +65,15 @@
  *   - eventRows(): updated_by OperatorRef → name.
  *   - createDraft(): ★ the server needs a title and slug (the mock accepts neither): "Untitled event",
  *     slug from the title with -2, -3 … while taken, time zone from the organisation; rules → PUT access-rules.
- *   - updateEvent(): `rules` go to PUT access-rules (expected = current version); ★ venue_id null cannot
- *     be sent (not nullable on the server) and is left out.
+ *   - updateEvent(): `rules` go to PUT access-rules (expected = current version); venue_id null clears it.
  *   - readiness(): `{ items }` unwrapped; three more keys (doors, gate, sessions).
  *   - publishEvent(): unmet checklist is 409 on the server → re-coded VALIDATION_FAILED.
  *   - attendees(): ★ `last_scan_at` not served (null); `q` matches name/email only; up to 2,000 rows.
- *   - credentialOverview(): ★ `recent` not served (empty); every state filled in.
- *   - ★ deskAttendee(): no GET /registrations/:id — found in the event's registrations; carrier from
- *     GET /credentials; ★ pass_sent_at not served (null), band_changed_at = the band's bound_at.
+ *   - credentialOverview(): `recent` from the inventory (binds and replacements; ★ no attendee name: a dash).
+ *   - deskAttendee(): GET /registrations/:id (carrier_id, pass_sent_at); band_changed_at = the band's bound_at.
  *   - replaceBand()/resendPass(): MFA (step-up); reviewCredential(): MFA for a supervisor.
- *   - ★ deskStock(): `today` not served (zeros).
+ *   - deskStock(): `today` from the event's inventory (zeros without a shift).
+ *   - The desk (desk/desk-real.ts) calls the contract endpoints directly, desk codes included.
  *   - staff(): display_name → name (email when none).
  *   - assignments(): labels optional on the server ("Unknown" when absent).
  *   - createAssignment(): shift_start/shift_end issues and a bare overlap 409 are also put under `shift`.
@@ -87,6 +89,7 @@ import { openLiveStream, type LiveStream } from "./stream";
 export { ApiFailure, failureCopy, isApiFailure, type FailureCopy, type Issue } from "./failure";
 export { STEP_UP_ATTEMPTS, type StepUpAnswer, type StepUpHandler, type StepUpOutcome, type StepUpRequest } from "./client";
 export type { OperatorSession } from "./session";
+export type { ApiClient } from "./client";
 
 export interface RealBackendOptions {
   /** Default: localStorage (in-memory when blocked). `null`: memory only. */

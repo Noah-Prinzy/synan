@@ -9,6 +9,7 @@
  * do next. A refused number is selected, so the next scan replaces it.
  */
 import { useRef, useState } from "react";
+import { BAND_ERROR_COPY } from "@synan/contracts/copy";
 import { Button, cn } from "@synan/ui/components";
 import type { DeskRegistration } from "@synan/mock/command";
 import { Notice } from "../kit";
@@ -125,7 +126,7 @@ function ScanStep({
     } catch (failure) {
       const message = fieldMessage(failure, "identifier");
       if (message) setError(message);
-      else if (deskErrorCode(failure) === "CONFLICT") setError("This band is already in use. Keep it aside and take a fresh band from the box.");
+      else if (deskErrorCode(failure) === "CONFLICT") setError(BAND_ERROR_COPY.band_in_use.message);
       else setNotice(deskFailure(failure, "The band was not bound"));
       field.current?.focus(true);
     } finally {

@@ -44,12 +44,12 @@ export function RailSection({
   id: string;
 }) {
   return (
-    <section aria-labelledby={id} className={`flex min-h-0 flex-col ${className}`}>
-      <header className="flex h-8 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
-        <h2 id={id} className="text-12 font-medium">
+    <section aria-labelledby={id} className={`flex min-h-0 flex-col border-t border-border first:border-t-0 ${className}`}>
+      <header className="flex min-h-10 shrink-0 items-center justify-between gap-3 border-b border-border px-4 sm:px-5">
+        <h2 id={id} className="text-13 font-medium">
           {title}
         </h2>
-        {meta ? <span className="truncate text-11 text-muted-foreground">{meta}</span> : null}
+        {meta ? <span className="truncate text-12 text-muted-foreground">{meta}</span> : null}
       </header>
       {children}
     </section>
@@ -89,7 +89,7 @@ export function GateHealthRow({ gate, label, now }: { gate: GateLive; label: str
     status = <span className="text-muted-foreground">{gate.scans_last_minute}/min</span>;
   }
   return (
-    <li className="grid h-7 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4">
+    <li className="grid min-h-8 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 sm:px-5">
       <StatusDot state={state} label={words} />
       <span className="truncate text-13">{label}</span>
       <span className="font-mono text-12 tabular-nums">
@@ -119,7 +119,7 @@ export function GatesSection({ layout }: { layout: VenueLayout }) {
         {faults.map((gate) => (
           <GateHealthRow key={gate.checkpoint_id} gate={gate} label={byId.get(gate.checkpoint_id)?.label ?? gate.label} now={now} />
         ))}
-        <li className="grid h-7 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 text-13 text-muted-foreground">
+        <li className="grid min-h-8 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 text-13 text-muted-foreground sm:px-5">
           <StatusDot state="ok" label="Online" />
           <span>
             {faults.length === 0 ? `All ${all.length} gates online` : `${all.length - faults.length} other gates online`}
@@ -266,14 +266,14 @@ const RoomRow = memo(function RoomRow({
         onPointerEnter={() => highlight.set(room.id)}
         onFocus={() => highlight.set(room.id)}
         onBlur={() => highlight.set(null)}
-        className="relative grid h-8 w-full contain-content grid-cols-[auto_minmax(0,1fr)_minmax(3rem,5rem)_5.5rem] items-center gap-3 px-4 text-left transition-colors duration-120 ease-standard before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 hover:bg-card/60 aria-current:bg-card/60 aria-current:before:bg-foreground motion-reduce:transition-none"
+        className="relative grid h-9 w-full contain-content grid-cols-[auto_minmax(0,1fr)_minmax(3rem,5rem)_5.5rem] items-center gap-3 px-4 text-left pointer-coarse:h-11 sm:px-5 transition-colors duration-120 ease-standard before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 hover:bg-card/60 aria-current:bg-card/60 aria-current:before:bg-brand motion-reduce:transition-none"
       >
         <StatusDot state={levelState(level)} label={levelWords(level, room.warn_at_pct, room.block_at_pct)} />
         <span className="truncate text-13">{room.name}</span>
         <OccupancyBar ratio={0} level={level} fillRef={fill} className="h-1" />
-        <span className="text-right font-mono text-12 tabular-nums">
+        <span className="text-right font-mono text-13 tabular-nums">
           <span ref={count} className={tone} />
-          <span className="text-muted-foreground">/{formatNumber(room.capacity)}</span>
+          <span className="text-12 text-muted-foreground">/{formatNumber(room.capacity)}</span>
         </span>
       </button>
     </li>
@@ -413,7 +413,7 @@ export function LiveFeed({ layout, timeZone }: { layout: VenueLayout; timeZone: 
       type="button"
       aria-pressed={mode === value}
       onClick={() => setMode(value)}
-      className="px-1.5 text-11 text-muted-foreground aria-pressed:text-foreground aria-pressed:underline aria-pressed:decoration-foreground/40 aria-pressed:underline-offset-4 hover:text-foreground"
+      className="px-1.5 text-12 text-muted-foreground aria-pressed:text-foreground aria-pressed:underline aria-pressed:decoration-foreground/40 aria-pressed:underline-offset-4 hover:text-foreground"
     >
       {text}
     </button>
@@ -430,15 +430,15 @@ export function LiveFeed({ layout, timeZone }: { layout: VenueLayout; timeZone: 
       }
       className="shrink-0"
     >
-      <ol aria-label={mode === "notable" ? "Recent notable events" : "Last 12 events"} className="min-h-[calc(4*1.5rem+0.5rem)] max-h-[calc(12*1.5rem+0.5rem)] overflow-hidden py-1">
+      <ol aria-label={mode === "notable" ? "Recent notable events" : "Last 12 events"} className="min-h-[calc(4*1.75rem+0.5rem)] max-h-[calc(12*1.75rem+0.5rem)] overflow-hidden py-1">
         {rows.length === 0 ? (
-          <li className="px-4 py-1 text-12 text-muted-foreground">
+          <li className="px-4 py-1.5 text-13 leading-relaxed text-muted-foreground sm:px-5">
             {mode === "notable" ? "Nothing needs attention. Refusals, alerts and gate changes appear here." : "Waiting for the first scan…"}
           </li>
         ) : null}
         {rows.map((item) => (
-          <li key={item.id} className="grid h-6 grid-cols-[4.25rem_minmax(0,1fr)_auto] items-center gap-3 px-4 text-12">
-            <span className="font-mono text-11 text-muted-foreground tabular-nums">{formatClock(item.at, timeZone)}</span>
+          <li key={item.id} className="grid h-7 grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-3 px-4 text-13 sm:px-5">
+            <span className="font-mono text-12 text-muted-foreground tabular-nums">{formatClock(item.at, timeZone)}</span>
             <FeedText item={item} label={label} exits={exits} roomName={roomName} />
           </li>
         ))}

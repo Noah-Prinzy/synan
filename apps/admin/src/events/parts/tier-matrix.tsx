@@ -201,10 +201,10 @@ export function TierMatrix({
   return (
     <div className="min-w-0 border border-border">
       {caption || baseline ? (
-        <div className="flex min-h-8 items-center justify-between gap-3 border-b border-border px-4">
-          <p className="py-1.5 text-12 font-medium">{caption ?? "Access"}</p>
+        <div className="flex min-h-10 items-center justify-between gap-3 border-b border-border px-4">
+          <p className="py-2 text-13 font-medium">{caption ?? "Access"}</p>
           {baseline ? (
-            <p role="status" aria-live="polite" className={cn("flex items-center gap-1.5 text-11", changeCount ? "text-foreground" : "text-muted-foreground")}>
+            <p role="status" aria-live="polite" className={cn("flex items-center gap-1.5 text-12", changeCount ? "text-foreground" : "text-muted-foreground")}>
               {changeCount ? <span aria-hidden="true" className="size-1.5 bg-brand" /> : null}
               {changeCount === 0 ? (
                 "No changes"
@@ -223,9 +223,9 @@ export function TierMatrix({
             <tr>
               <th
                 scope="col"
-                className="sticky top-0 left-0 z-3 h-8 border-b border-border bg-background px-4 text-left align-bottom text-11 font-normal text-muted-foreground"
+                className="sticky top-0 left-0 z-3 h-9 border-b border-border bg-background px-4 text-left align-bottom text-12 font-normal text-muted-foreground"
               >
-                <span className="block pb-2">Room</span>
+                <span className="block pb-2.5">Room</span>
               </th>
               {TIER_ORDER.map((tier) => {
                 const permitted = rooms.filter((room) => effectOf(rules, tier, room.id) === "permit").length;
@@ -233,14 +233,16 @@ export function TierMatrix({
                   <th
                     key={tier}
                     scope="col"
-                    className="sticky top-0 z-2 w-32 border-b border-l border-border bg-background px-3 pt-2 pb-1.5 text-left align-bottom font-normal"
+                    className="sticky top-0 z-2 w-36 border-b border-l border-border bg-background px-3 pt-2.5 pb-2 text-left align-bottom font-normal"
                   >
-                    <span className="block text-12 font-medium text-foreground">{TIER_LABEL[tier]}</span>
-                    <span className="block text-11 text-muted-foreground">
-                      <span className="font-mono tabular-nums">{permitted}</span> of <span className="font-mono tabular-nums">{rooms.length}</span>
+                    <span className="flex items-baseline justify-between gap-2">
+                      <span className="text-13 font-medium text-foreground">{TIER_LABEL[tier]}</span>
+                      <span className="text-12 whitespace-nowrap text-muted-foreground">
+                        <span className="font-mono tabular-nums">{permitted}</span> of <span className="font-mono tabular-nums">{rooms.length}</span>
+                      </span>
                     </span>
                     {editable ? (
-                      <span className="mt-1 flex gap-2 text-11">
+                      <span className="mt-1.5 flex gap-3 text-12 whitespace-nowrap">
                         <button
                           type="button"
                           onClick={() => setColumn(tier, "permit")}
@@ -272,7 +274,7 @@ export function TierMatrix({
                     <th
                       scope="colgroup"
                       colSpan={TIER_ORDER.length + 1}
-                      className="h-7 border-b border-border bg-foreground/2.5 px-4 text-left text-11 font-normal text-muted-foreground"
+                      className="h-9 border-b border-border bg-foreground/2.5 px-4 text-left text-12 font-normal text-muted-foreground"
                     >
                       {group.zone ?? "Other rooms"}
                     </th>
@@ -284,11 +286,11 @@ export function TierMatrix({
                     <tr key={room.id}>
                       <th
                         scope="row"
-                        className="sticky left-0 z-1 h-8 border-b border-border bg-background px-4 text-left font-normal"
+                        className="sticky left-0 z-1 h-10 border-b border-border bg-background px-4 text-left font-normal"
                       >
                         <span className="flex items-baseline justify-between gap-3">
                           <span className="truncate">{room.name}</span>
-                          <span className="shrink-0 font-mono text-11 text-muted-foreground tabular-nums">{formatNumber(room.capacity)}</span>
+                          <span className="shrink-0 font-mono text-12 text-muted-foreground tabular-nums">{formatNumber(room.capacity)}</span>
                         </span>
                       </th>
                       {TIER_ORDER.map((tier, c) => {
@@ -307,7 +309,7 @@ export function TierMatrix({
                           </>
                         );
                         const cellClass = cn(
-                          "relative flex h-8 w-full items-center gap-1.5 px-3 text-left text-12",
+                          "relative flex h-10 w-full items-center gap-1.5 px-3 text-left text-13",
                           effect === "permit" ? "bg-foreground/4 text-foreground" : "text-muted-foreground",
                         );
                         return (

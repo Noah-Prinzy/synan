@@ -113,7 +113,7 @@ export function NavRail({ groups, expanded, onToggle, renderLink, label = "Main"
         {groups.map((group, index) => (
           <li key={group.label} className={cn(index > 0 && "mt-2 border-t border-border pt-2")}>
             {expanded ? (
-              <p className="px-4 pt-1 pb-1 text-11 text-muted-foreground">{group.label}</p>
+              <p className="px-4 pt-1.5 pb-1 text-12 text-muted-foreground">{group.label}</p>
             ) : (
               <p className="sr-only">{group.label}</p>
             )}

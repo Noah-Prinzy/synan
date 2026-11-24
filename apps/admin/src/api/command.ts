@@ -47,7 +47,6 @@ export interface RealCommandApi extends CommandApi {
 
 export function createCommandApi(client: ApiClient, cache: SharedCache, hooks: { onSignOut?: () => void } = {}): RealCommandApi {
   const now = () => Date.now() + client.offsetMs();
-  void cache.checkpoints; // the gate labels cache stays shared with the configure side
 
   const venueIdOf = async (eventId: string): Promise<string> => {
     const known = cache.venueOfEvent.get(eventId);
@@ -92,7 +91,7 @@ export function createCommandApi(client: ApiClient, cache: SharedCache, hooks: {
 
     async operator() {
       const profile = await client.call("myOperator");
-      return toOperatorContext(profile, client.session.read(), now());
+      return toOperatorContext(profile);
     },
 
     async signOut() {

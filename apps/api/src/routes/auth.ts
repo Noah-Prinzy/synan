@@ -93,11 +93,12 @@ export function authRoutes(x: Express, app: AppContext) {
     };
   });
 
-  // The QR leeway is published so an offline scanner verifies codes with the same tolerance (A6).
-  mount(x, app, endpoints.signingKeys, async () => ({ keys: app.keys.publicKeys(), qr_leeway_s: app.config.qrLeewayS }));
+  // The QR leeway is published so an offline scanner verifies codes with the same tolerance (A6), and
+  // the undo window so its Undo button lasts exactly as long as the server accepts an undo.
+  mount(x, app, endpoints.signingKeys, async () => ({ keys: app.keys.publicKeys(), qr_leeway_s: app.config.qrLeewayS, undo_window_s: app.config.scanUndoWindowS }));
 
   mount(x, app, endpoints.time, async () => {
     const now = app.clock.now();
-    return { server_time: new Date(now).toISOString(), epoch_ms: now, qr_leeway_s: app.config.qrLeewayS };
+    return { server_time: new Date(now).toISOString(), epoch_ms: now, qr_leeway_s: app.config.qrLeewayS, undo_window_s: app.config.scanUndoWindowS };
   });
 }

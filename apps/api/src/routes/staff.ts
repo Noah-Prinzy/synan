@@ -99,8 +99,31 @@ export function staffRoutes(x: Express, app: AppContext) {
     return rows.map((a) => ({ ...assignmentDto(a), checkpoint_label: labels.get(a.checkpoint_id)!, staff_name: names.get(a.user_id)! }));
   };
 
-  mount(x, app, endpoints.listAssignments, async ({ query }) => {
+  mount(x, app, endpoints.listAssignments, async ({ query, ctx }) => {
     const offset = offsetCursor(query.cursor);
+    if (ctx!.role === "supervisor") {
+      // Who is on (or coming on) shift at a gate or for an event: gate, times and display name only.
+      if (!query.checkpoint_id && !query.event_id) throw invalid("query.checkpoint_id", "name a checkpoint or an event");
+      if (query.user_id) throw invalid("query.user_id", "not available to supervisors");
+      const now = app.clock.now();
+      const rows = (await app.repos.staff.list({ checkpointId: query.checkpoint_id, eventId: query.checkpoint_id ? undefined : query.event_id, offset: 0, limit: 5000 }))
+        .filter((a) => a.shift_end.getTime() > now && !a.handed_over_at)
+        // At a gate for an event: shifts tied to it, and the gate's shifts tied to none (they work whatever runs).
+        .filter((a) => !query.checkpoint_id || !query.event_id || !a.event_id || a.event_id === query.event_id)
+        .sort((a, b) => a.shift_start.getTime() - b.shift_start.getTime() || a.id.localeCompare(b.id));
+      const page = rows.slice(offset, offset + query.limit);
+      const labels = new Map<string, string>();
+      const items = [];
+      for (const a of page) {
+        if (!labels.has(a.checkpoint_id)) labels.set(a.checkpoint_id, (await app.repos.venues.checkpoint(a.checkpoint_id))?.label ?? "");
+        const name = (await app.repos.users.byId(a.user_id))?.display_name?.trim();
+        items.push({
+          id: a.id, user_id: a.user_id, checkpoint_id: a.checkpoint_id, shift_start: a.shift_start.toISOString(), shift_end: a.shift_end.toISOString(),
+          event_id: a.event_id ?? null, checkpoint_label: labels.get(a.checkpoint_id)!, ...(name ? { staff_name: name } : {}),
+        });
+      }
+      return { items, next_cursor: rows.length > offset + query.limit ? String(offset + query.limit) : null };
+    }
     const rows = await app.repos.staff.list({ checkpointId: query.checkpoint_id, userId: query.user_id, eventId: query.event_id, offset, limit: query.limit + 1 });
     const page = rows.slice(0, query.limit);
     return { items: await labelled(page), next_cursor: rows.length > query.limit ? String(offset + query.limit) : null };
@@ -166,6 +189,18 @@ export function staffRoutes(x: Express, app: AppContext) {
     const mine = (await app.repos.staff.assignmentsFor(ctx!.sub)).filter((a) => a.shift_end.getTime() > now && !a.handed_over_at);
     mine.sort((a, b) => a.shift_start.getTime() - b.shift_start.getTime());
     const items = [];
+    // The event's rooms by name (the scanner's "rooms this pass opens" chips), once per event; names
+    // only — no capacity or occupancy — so an unlisted event needs no public event read.
+    const roomNames = new Map<string, { room_id: string; name: string }[]>();
+    const roomsOf = async (eventId: string) => {
+      let r = roomNames.get(eventId);
+      if (!r) {
+        const ids = (await app.repos.events.rooms(eventId)).map((x) => x.room_id);
+        r = (await app.repos.venues.roomsByIds(ids)).map((x) => ({ room_id: x.id, name: x.name })).sort((p, q) => p.name.localeCompare(q.name) || (p.room_id < q.room_id ? -1 : 1));
+        roomNames.set(eventId, r);
+      }
+      return r;
+    };
     for (const a of mine) {
       const cp = await app.repos.venues.checkpoint(a.checkpoint_id);
       if (!cp) continue;
@@ -179,7 +214,7 @@ export function staffRoutes(x: Express, app: AppContext) {
           id: cp.id, label: cp.label, perimeter: cp.perimeter_bool, direction: cp.direction,
           zone_id: cp.zone_id, zone_name: zone?.name ?? "", room_id: cp.room_id, room_name: room?.name ?? null,
         },
-        event: event ? { id: event.id, title: event.title } : null,
+        event: event ? { id: event.id, title: event.title, slug: event.slug, rooms: await roomsOf(event.id) } : null,
       });
     }
     return { items };
@@ -199,8 +234,9 @@ export function staffRoutes(x: Express, app: AppContext) {
     return {
       assignment_id: a.id, checkpoint_id: a.checkpoint_id, shift_start: a.shift_start.toISOString(), shift_end: a.shift_end.toISOString(),
       handed_over_at: at.toISOString(),
-      // Contract names (01 §3) ← @synan/db summary: admitted ← let_through, queued ← offline.
-      admitted: s.let_through, refused: s.refused, queued: s.offline, by_result: s.by_result,
+      // Contract names (01 §3) ← @synan/db summary: admitted ← let_through, queued ← offline. Undone
+      // admissions are in neither let_through nor by_result; they are counted on their own (0034).
+      admitted: s.let_through, refused: s.refused, queued: s.offline, by_result: s.by_result, undone: s.undone,
       scans: s.scans, let_through: s.let_through, duplicates: s.duplicates, offline: s.offline, late_synced: s.late_synced,
       period_end: s.period_end.toISOString(), first_scan_at: s.first_scan_at?.toISOString() ?? null, last_scan_at: s.last_scan_at?.toISOString() ?? null,
     };

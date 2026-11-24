@@ -143,7 +143,7 @@ export const ScanQuery = PageQuery.extend({
   /**
    * Additive (admins and organisers; FORBIDDEN for others): one pass's scans, found by its credential
    * id, credential reference (22 characters), the band's UID, or the band hint's last four characters
-   * (`••1A2B` or `1A2B`). Never by name. Records still carry no per-person id. Every search that finds
+   * (the UID's last four in hex: `••••81BF` or `81BF`). Never by name. Records still carry no per-person id. Every search that finds
    * a pass is written to the audit log as an access-history lookup (03 §5, §7); one that finds none
    * answers an empty page.
    */

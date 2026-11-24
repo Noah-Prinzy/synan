@@ -171,7 +171,7 @@ export async function seedDev(app: AppContext): Promise<SeedResult> {
     const cred = await app.credentials.issueForRegistration(registrationId);
     const bandUid = uid();
     await app.repos.carriers.insert({
-      id: randomUUID(), credential_id: cred.id, kind: "nfc", identifier: nfcIdentifier(bandUid),
+      id: randomUUID(), credential_id: cred.id, kind: "nfc", identifier: nfcIdentifier(bandUid), identifier_hint: bandUid.slice(-4),
       chip_profile: tier === "VIP" || tier === "PRIVATE_INVITE" ? "ntag424_dna" : "ntag_uid",
       state: "bound", bound_at: new Date(now), redeemed_at: null,
     });
@@ -192,7 +192,7 @@ export async function seedDev(app: AppContext): Promise<SeedResult> {
 
   const stockUid = uid();
   await app.repos.carriers.insert({
-    id: randomUUID(), credential_id: null, kind: "nfc", identifier: nfcIdentifier(stockUid),
+    id: randomUUID(), credential_id: null, kind: "nfc", identifier: nfcIdentifier(stockUid), identifier_hint: stockUid.slice(-4),
     chip_profile: "ntag_uid", state: "stock", bound_at: null, redeemed_at: null,
   });
 

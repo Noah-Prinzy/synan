@@ -69,6 +69,12 @@ export const carriers = pgTable(
     credential_id: uuid("credential_id").references(() => credentials.id),
     kind: carrierKind("kind").notNull(),
     identifier: text("identifier"),
+    /**
+     * NFC: the UID's last four characters in upper-case hex (0035), what the band shows people
+     * ("••••81BF"). Written when the UID is presented (import, bind, a desk or gate read); the UID
+     * itself is never stored. Null until then, and for other kinds.
+     */
+    identifier_hint: text("identifier_hint"),
     chip_profile: chipProfile("chip_profile"),
     state: carrierState("state").notNull(),
     bound_at: tstz("bound_at"),
@@ -94,6 +100,7 @@ export const carriers = pgTable(
     check("carriers_identifier_required", sql`${t.kind} = 'qr_portal' OR ${t.identifier} IS NOT NULL`),
     check("carriers_chip_profile_nfc_only", sql`${t.chip_profile} IS NULL OR ${t.kind} = 'nfc'`),
     check("carriers_redeemed_email_only", sql`${t.redeemed_at} IS NULL OR ${t.kind} = 'qr_email'`),
+    check("carriers_identifier_hint_shape", sql`${t.identifier_hint} IS NULL OR (${t.kind} = 'nfc' AND ${t.identifier_hint} ~ '^[0-9A-F]{4}$')`),
   ],
 );
 

@@ -46,11 +46,13 @@ export const SYNC_BATCH = 100;
  */
 export const DEFAULT_QR_LEEWAY_S = 5;
 /**
- * Undo of an admission (06 S3): the server allows it for its own window after the scan (60 s by
- * default, SCAN_UNDO_WINDOW_S; not published). The button leaves UNDO_MARGIN_MS early when the
+ * Undo of an admission (06 S3): the server allows it for its own window after the scan
+ * (SCAN_UNDO_WINDOW_S, published as `undo_window_s` on GET /time and GET /auth/signing-keys and kept
+ * on the device); 60 s until the server has said. The button leaves UNDO_MARGIN_MS early when the
  * server has to agree, so it is never offered when the request would arrive too late.
  */
-export const UNDO_WINDOW_MS = 60_000;
+export const DEFAULT_UNDO_WINDOW_S = 60;
+export const UNDO_WINDOW_MS = DEFAULT_UNDO_WINDOW_S * 1000;
 export const UNDO_MARGIN_MS = 3000;
 /** Retired signing keys keep verifying this long on the server (apps/api domain/keys.ts). */
 export const RETIRED_KEY_GRACE_MS = 24 * 3600_000;

@@ -15,11 +15,15 @@ import { useCan } from "../access/session";
 import { useCommand } from "../live/context";
 import { useSlice, useSliceValue } from "../live/slice";
 import type { VenueLayout } from "../live/transport";
-import { WIDE_QUERY, useMediaQuery } from "../shell/admin-shell";
+import { useMediaQuery } from "../shell/admin-shell";
 import { KpiStrip } from "./kpi-strip";
 import { GatesSection, LiveFeed, RoomDetail, RoomsList } from "./rail";
 import { RecountDialog } from "./recount-dialog";
-import { ZoneMap } from "./zone-map";
+import { MapLegend, ZoneMap } from "./zone-map";
+
+/** From 640 up the map is the room view; below it, a list with the map one tap away. */
+const ROOMY_QUERY = "(min-width: 40rem)";
+type MapView = "list" | "map";
 
 export default function CommandCenter() {
   const { store, event } = useCommand();
@@ -30,6 +34,8 @@ export default function CommandCenter() {
   const selectedId = search.get("room");
   const [recountId, setRecountId] = useState<string | null>(null);
   const timeZone = event?.timezone ?? "Africa/Kampala";
+  const roomy = useMediaQuery(ROOMY_QUERY);
+  const [view, setView] = useState<MapView>("list");
 
   const select = useCallback(
     (roomId: string | null) => {
@@ -66,30 +72,58 @@ export default function CommandCenter() {
 
   const ready = load.status === "ready" && layout !== null;
   const stale = ready && linkStatus !== "live";
+  // On a phone the rooms are a list first (the map is a tap away): a 24-room plan at 390px
+  // cannot carry names and counts at a readable size.
+  const showList = !roomy && view === "list";
 
   return (
-    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+    // From 1024 up the page is one screen: strip, then map beside the rail. Below it the
+    // sections stack and the page scrolls, so nothing is hidden behind a tab.
+    <div className="flex min-h-full flex-col lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)]">
       {title}
       <KpiStrip loading={!ready} />
-      <div className="relative grid min-h-0 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:grid-cols-[minmax(0,1fr)_26rem]">
+      <div className="relative flex flex-col lg:grid lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_20rem] xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:grid-cols-[minmax(0,1fr)_26rem]">
         <section aria-label="Venue map" className="relative flex min-h-0 flex-col">
-          <MapHeader layout={ready ? layout : null} selectedId={selectedId} onClear={() => select(null)} stale={stale} />
-          <div className="relative min-h-0 flex-1">
-            {ready ? (
-              <ZoneMap
-                layout={layout}
-                selectedId={selectedId}
-                onSelect={onMapSelect}
-                onRecount={setRecountId}
-                stale={stale}
-                timeZone={timeZone}
-              />
-            ) : load.status === "error" ? (
-              <LoadError message={load.message} onRetry={() => store.retry()} />
+          <MapHeader
+            layout={ready ? layout : null}
+            selectedId={selectedId}
+            onClear={() => select(null)}
+            stale={stale}
+            view={roomy ? null : view}
+            onView={setView}
+          />
+          {showList && ready ? (
+            selectedId ? (
+              <RoomDetail layout={layout} roomId={selectedId} onBack={() => select(null)} onRecount={() => setRecountId(selectedId)} />
             ) : (
-              <MapLoading />
-            )}
-          </div>
+              <RoomsList layout={layout} selectedId={selectedId} onSelect={select} />
+            )
+          ) : (
+            <>
+              <div
+                className="relative min-h-64 lg:aspect-auto! lg:min-h-0 lg:flex-1"
+                // Below 1024 the map panel takes the venue's own proportions, so it is never a band
+                // of empty space above and below the plan.
+                style={{ aspectRatio: ready ? `${layout.grid.w} / ${layout.grid.h}` : "16 / 10" }}
+              >
+                {ready ? (
+                  <ZoneMap
+                    layout={layout}
+                    selectedId={selectedId}
+                    onSelect={onMapSelect}
+                    onRecount={setRecountId}
+                    stale={stale}
+                    timeZone={timeZone}
+                  />
+                ) : load.status === "error" ? (
+                  <LoadError message={load.message} onRetry={() => store.retry()} />
+                ) : (
+                  <MapLoading />
+                )}
+              </div>
+              {ready ? <MapLegend className="shrink-0 border-t border-border px-4 py-2 sm:px-5" /> : null}
+            </>
+          )}
         </section>
         <Rail
           layout={ready ? layout : null}
@@ -97,6 +131,7 @@ export default function CommandCenter() {
           onSelect={select}
           onRecount={setRecountId}
           timeZone={timeZone}
+          rooms={roomy}
         />
       </div>
       <RecountDialog roomId={recountId} onClose={() => setRecountId(null)} />
@@ -111,48 +146,60 @@ function MapHeader({
   selectedId,
   onClear,
   stale,
+  view,
+  onView,
 }: {
   layout: VenueLayout | null;
   selectedId: string | null;
   onClear: () => void;
   stale: boolean;
+  /** The list/map switch, on a phone only; null hides it. */
+  view: MapView | null;
+  onView: (view: MapView) => void;
 }) {
   const selected = layout?.rooms.find((r) => r.id === selectedId);
+  const option = (value: MapView, text: string) => (
+    <button
+      type="button"
+      aria-pressed={view === value}
+      onClick={() => onView(value)}
+      className="pressable relative flex h-11 items-center px-3 text-13 text-muted-foreground transition-colors duration-120 ease-standard after:absolute after:inset-x-3 after:-bottom-px after:h-0.5 aria-pressed:text-foreground aria-pressed:after:bg-brand motion-reduce:transition-none"
+    >
+      {text}
+    </button>
+  );
   return (
-    <header className="flex h-8 shrink-0 items-center gap-4 overflow-hidden border-b border-border px-4 text-12 whitespace-nowrap">
-      <h2 className="font-medium">{layout ? layout.venue.name : "Venue"}</h2>
+    <header className="flex min-h-10 shrink-0 items-center gap-x-4 overflow-hidden border-b border-border pl-4 text-13 whitespace-nowrap sm:pl-5">
+      <h2 className="truncate font-medium">{layout ? layout.venue.name : "Venue"}</h2>
       {layout ? (
-        <span className="sr-only">
-          {layout.rooms.length} rooms in {layout.zones.length} zones
+        <span className="hidden text-12 text-muted-foreground md:inline">
+          <span className="font-mono tabular-nums">{layout.zones.length}</span> zones ·{" "}
+          <span className="font-mono tabular-nums">{layout.rooms.length}</span> rooms
         </span>
       ) : null}
       {stale ? (
-        <span className="flex items-center gap-1.5 text-warning">
+        <span className="flex items-center gap-1.5 text-12 text-warning">
           <SignalShape state="warn" /> Last known state
         </span>
       ) : null}
       {selected ? (
-        <button type="button" onClick={onClear} className="text-muted-foreground hover:text-foreground">
-          Show all rooms
+        <button
+          type="button"
+          onClick={onClear}
+          className="flex h-10 items-center text-12 text-muted-foreground transition-colors duration-120 hover:text-foreground"
+        >
+          {selected.name} <span aria-hidden="true">&nbsp;·&nbsp;</span>Show all rooms
         </button>
       ) : null}
-      <Legend />
+      {view ? (
+        <div role="group" aria-label="Show rooms as" className="ml-auto flex">
+          {option("list", "List")}
+          {option("map", "Map")}
+        </div>
+      ) : (
+        <span className="pr-4" />
+      )}
     </header>
-  );
-}
-
-function Legend() {
-  return (
-    <ul aria-label="Legend" className="ml-auto hidden items-center gap-4 text-11 text-muted-foreground lg:flex">
-      <li className="flex items-center gap-1.5">
-        <SignalShape state="warn" className="text-warning" />
-        warn
-      </li>
-      <li className="flex items-center gap-1.5">
-        <SignalShape state="stop" className="text-destructive" />
-        at capacity
-      </li>
-    </ul>
   );
 }
 
@@ -164,85 +211,41 @@ function Rail({
   onSelect,
   onRecount,
   timeZone,
+  rooms,
 }: {
   layout: VenueLayout | null;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onRecount: (id: string) => void;
   timeZone: string;
+  /** Whether the rooms (list or one room) live here; on a phone they sit with the map instead. */
+  rooms: boolean;
 }) {
-  const wide = useMediaQuery(WIDE_QUERY);
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    if (wide) setOpen(false);
-  }, [wide]);
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
-
-  const content = layout ? (
-    <>
-      <GatesSection layout={layout} />
-      {selectedId ? (
-        <RoomDetail
-          layout={layout}
-          roomId={selectedId}
-          onBack={() => onSelect(null)}
-          onRecount={() => onRecount(selectedId)}
-        />
-      ) : (
-        <RoomsList layout={layout} selectedId={selectedId} onSelect={onSelect} />
-      )}
-      <LiveFeed layout={layout} timeZone={timeZone} />
-    </>
-  ) : (
-    <RailLoading />
-  );
-
-  if (wide) {
-    return (
-      <aside aria-label="Rooms, gates and live feed" className="flex min-h-0 flex-col overflow-y-auto border-l border-border">
-        {content}
-      </aside>
-    );
-  }
-
-  // Below 1280: the rail is a tab on the map's right edge.
+  // Beside the map from 1024 up (its own scroll); below the map otherwise, in the page's scroll.
   return (
-    <>
-      {!open ? (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          aria-expanded={false}
-          className="absolute top-1/2 right-0 z-20 -translate-y-1/2 border border-r-0 border-border bg-background px-1.5 py-3 text-12 [writing-mode:vertical-rl] hover:text-foreground"
-        >
-          Rooms · Gates · Feed
-        </button>
-      ) : null}
-      {open ? (
-        <aside
-          aria-label="Rooms, gates and live feed"
-          className="absolute inset-y-0 right-0 z-30 flex w-96 max-w-full flex-col overflow-y-auto border-l border-border bg-background"
-        >
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            aria-expanded={true}
-            className="flex h-8 shrink-0 items-center justify-between border-b border-border px-4 text-12 text-muted-foreground hover:text-foreground"
-          >
-            Close panel <span aria-hidden="true">→</span>
-          </button>
-          {content}
-        </aside>
-      ) : null}
-    </>
+    <aside
+      aria-label={rooms ? "Rooms, gates and live feed" : "Gates and live feed"}
+      className="flex flex-col border-t border-border lg:min-h-0 lg:overflow-y-auto lg:border-t-0 lg:border-l"
+    >
+      {layout ? (
+        <>
+          <GatesSection layout={layout} />
+          {!rooms ? null : selectedId ? (
+            <RoomDetail
+              layout={layout}
+              roomId={selectedId}
+              onBack={() => onSelect(null)}
+              onRecount={() => onRecount(selectedId)}
+            />
+          ) : (
+            <RoomsList layout={layout} selectedId={selectedId} onSelect={onSelect} />
+          )}
+          <LiveFeed layout={layout} timeZone={timeZone} />
+        </>
+      ) : (
+        <RailLoading />
+      )}
+    </aside>
   );
 }
 

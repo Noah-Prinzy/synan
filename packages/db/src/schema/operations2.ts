@@ -127,6 +127,11 @@ export const devices = pgTable(
     app_version: text("app_version"),
     /** `issued_at` of the signed allowlist the device reported holding at its last heartbeat (0028). */
     allowlist_issued_at: tstz("allowlist_issued_at"),
+    /**
+     * A staff phone (kind `scanner`, no token): the user signed in on it at its last heartbeat (0033).
+     * One install is one row whoever uses it; a handover changes this (audited `scanner.user_change`).
+     */
+    last_user_id: uuid("last_user_id").references(() => users.id, { onDelete: "set null" }),
     created_at: tstz("created_at").notNull().defaultNow(),
     retired_at: tstz("retired_at"),
   },

@@ -5,18 +5,29 @@
  *
  *   mock (VITE_API_URL unset)  the demo rules are on: named demo bands, the mock second factor,
  *                              mock desk codes, the offline switch.
- *   real API                   calls pass straight through to the API client, which asks for
- *                              the second factor itself. Desk codes are not wired yet there.
+ *   real API                   desk-real.ts: the contract endpoints directly (desk codes included);
+ *                              the console's own prompt asks for the second factor.
  *
- * Replacing this with a direct fetch client means re-implementing `DeskApi`; nothing else in
- * this folder changes.
+ * Each is loaded by a dynamic import behind a build-time condition, so neither build carries the
+ * other. Nothing else in this folder knows which one it got.
  */
 import { ERROR_COPY } from "@synan/contracts/copy";
-import { createDeskMock } from "@synan/mock/command";
+import type { DeskApi } from "@synan/mock/command";
 import { errorCode, fieldErrors, noAnswer, type ErrorCode } from "../kit/errors";
-import { clock, configure, devParams, mode } from "../live/backend";
+import { apiClient, auth, clock, configure, devParams, mode } from "../live/backend";
 
-export const desk = createDeskMock({ configure, clock, latencyMs: devParams.slow ? 2500 : 300, demo: mode === "mock" });
+async function loadDesk(): Promise<DeskApi> {
+  // Decided by VITE_API_URL alone (a build-time constant), so the build drops the other branch.
+  if (import.meta.env.VITE_API_URL) {
+    if (!apiClient || !auth) throw new Error("The real API client did not load.");
+    const { createRealDesk } = await import("./desk-real");
+    return createRealDesk(apiClient, auth);
+  }
+  const { createDeskMock } = await import("@synan/mock/command");
+  return createDeskMock({ configure, clock, latencyMs: devParams.slow ? 2500 : 300, demo: mode === "mock" });
+}
+
+export const desk: DeskApi = await loadDesk();
 
 /** True while the desk runs on the mock: its development panel and second-factor mock show. */
 export const deskIsMock = mode === "mock";

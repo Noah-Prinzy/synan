@@ -3,9 +3,8 @@ import { ContractError } from "@synan/contracts/errors";
 import { endpoints, type BreachAlert } from "@synan/contracts/rest";
 import type { AppContext } from "../app.js";
 import { toAlertDto } from "../domain/alerts.js";
-import { hint } from "../domain/credential-service.js";
+import { credentialsNamed, hint } from "../domain/credential-service.js";
 import type { AuthContext } from "../domain/principal.js";
-import { nfcIdentifier } from "../domain/scan-service.js";
 import { mount } from "../http/route.js";
 import type { BreachAlertRow, ScanRow } from "../repo/types.js";
 
@@ -30,36 +29,8 @@ const scanDto = (s: ScanRow, withPerson = false) => ({
 /** GET /scans counts matching scans up to this many; beyond it `total` is a lower bound. */
 const LOG_COUNT_CAP = 10_000;
 
-/**
- * The event's credentials a log search names (GET /scans `q`): a credential id, a credential
- * reference (22 characters), a band's UID (hex), or a band hint's last four characters. Never a name.
- */
-async function credentialsMatching(app: AppContext, eventId: string, raw: string): Promise<string[]> {
-  const q = raw.replace(/^band\s*/i, "").replace(/[•\s]/g, "");
-  const regs = new Set((await app.repos.registrations.forEvent(eventId)).map((r) => r.id));
-  const ofEvent = (c: { registration_id: string | null } | null) => !!c && c.registration_id !== null && regs.has(c.registration_id);
-  const out = new Set<string>();
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(q)) {
-    const c = await app.repos.credentials.byId(q.toLowerCase());
-    if (c && ofEvent(c)) out.add(c.id);
-  }
-  if (/^[A-Za-z0-9_-]{22}$/.test(q)) {
-    const c = await app.repos.credentials.byTokenHash(q);
-    if (c && ofEvent(c)) out.add(c.id);
-  }
-  if (/^[0-9A-Fa-f]{8,32}$/.test(q)) {
-    const band = await app.repos.carriers.byIdentifier("nfc", nfcIdentifier(q));
-    const c = band?.credential_id ? await app.repos.credentials.byId(band.credential_id) : null;
-    if (c && ofEvent(c)) out.add(c.id);
-  }
-  if (/^[A-Za-z0-9_-]{4}$/.test(q)) {
-    const creds = await app.repos.credentials.forRegistrations([...regs]);
-    for (const band of await app.repos.carriers.forCredentials(creds.map((c) => c.id))) {
-      if (band.kind === "nfc" && band.credential_id && band.identifier?.endsWith(q)) out.add(band.credential_id);
-    }
-  }
-  return [...out];
-}
+/** The event's credentials a log search names (GET /scans `q`); see credentialsNamed. Never a name. */
+const credentialsMatching = (app: AppContext, eventId: string, raw: string) => credentialsNamed(app.repos, eventId, raw);
 
 /**
  * Checkpoints a non-operator may see alerts for: the ones they are assigned to right now (03 §4, §8.2

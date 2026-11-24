@@ -30,7 +30,8 @@ export function bandView(row: DeskRegistration): { label: string; signal: StateS
     const state = row.checked_in_at ? CARRIER_STATE_COPY.active : CARRIER_STATE_COPY.bound;
     return { label: state.label, signal: state.signal, hint: row.band_hint };
   }
-  if (row.band_lost) return { label: CARRIER_STATE_COPY.lost.label, signal: "stop", hint: null };
+  // Lost and not yet replaced: reported by its holder, or marked lost at a desk. Gates refuse it.
+  if (row.band_lost) return { label: `${CARRIER_STATE_COPY.lost.label}, not yet replaced`, signal: "stop", hint: null };
   return { label: "No band yet", signal: "idle", hint: null };
 }
 
