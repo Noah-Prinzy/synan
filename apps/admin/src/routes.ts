@@ -355,12 +355,6 @@ export function mayOpen(pathname: string, can: (capability: Capability) => boole
 }
 
 /**
- * The navigation a role sees: the entries it may open; a group with nothing left is dropped.
- * `Attendees` opens the selected event's attendee table for a role with the event workspace,
- * because the event is the context of every screen (docs/06 §2.2); a role without it (the
- * supervisor) gets the attendee lookup at `/attendees`.
- */
-/**
  * Which navigation entry is active for a path: exactly one at a time. An entry is active on its
  * own path and the paths under it (Gate health on a gate's detail, Venues in the venue editor,
  * Alerts with an alert open). Inside an event workspace (`/events/:id/…`, its tabs and summary)
@@ -375,6 +369,12 @@ export function navItemActive(item: { to: string; end?: boolean }, pathname: str
   return pathname === to || pathname.startsWith(`${to}/`);
 }
 
+/**
+ * The navigation a role sees: the entries it may open; a group with nothing left is dropped.
+ * `Attendees` opens the selected event's attendee table for a role with the event workspace,
+ * because the event is the context of every screen (docs/06 §2.2); a role without it (the
+ * supervisor) gets the attendee lookup at `/attendees`.
+ */
 export function navFor(can: (capability: Capability) => boolean, eventId: string | null): NavSection[] {
   return NAV_GROUPS.map((group) => ({
     label: group.label,
