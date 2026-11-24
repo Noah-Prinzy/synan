@@ -27,6 +27,7 @@ import { useSlice } from "../live/slice";
 import type { FeedItem, GateLive, RoomLive } from "../live/store";
 import type { VenueLayout } from "../live/transport";
 import { minuteChange } from "./room-card";
+import { sortRooms } from "./rooms-order";
 import { highlight, levelState, levelWords } from "./ui-state";
 
 /* ----------------------------------------------------------------- shared */
@@ -142,15 +143,6 @@ export function GatesSection({ layout }: { layout: VenueLayout }) {
 
 /* ------------------------------------------------------------------ rooms */
 
-function utilisation(room: Room, live: RoomLive | undefined): number {
-  return live && room.capacity > 0 ? live.occupancy / room.capacity : 0;
-}
-
-function sortRooms(rooms: readonly Room[], live: ReadonlyMap<string, RoomLive>): string[] {
-  return [...rooms]
-    .sort((a, b) => utilisation(b, live.get(b.id)) - utilisation(a, live.get(a.id)) || a.name.localeCompare(b.name))
-    .map((room) => room.id);
-}
 
 const RESORT_MS = 2_000;
 

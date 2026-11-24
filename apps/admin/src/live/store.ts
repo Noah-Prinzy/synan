@@ -90,6 +90,8 @@ const PING_MS = 5_000;
 const HISTORY_SAMPLE_MS = 5_000;
 const HISTORY_LENGTH = 36; // 3 minutes
 const ANNOUNCE_MS = 1_500;
+/** How far along an alert is; it never moves back. */
+const ALERT_STEP: Record<BreachAlert["state"], number> = { open: 0, acked: 1, resolved: 2 };
 
 export class CommandStore {
   readonly interp = new Interpolator();
@@ -205,13 +207,12 @@ export class CommandStore {
 
   /** Acknowledge: optimistic, one click (docs/06 §2.3 D1). */
   async ack(alertId: string): Promise<void> {
-    const before = this.alerts.get();
-    this.alerts.set(before.map((a) => (a.id === alertId && a.state === "open" ? { ...a, state: "acked" } : a)));
+    const undo = this.optimistic(alertId, (a) => (a.state === "open" ? { ...a, state: "acked" } : null));
     try {
       const acked = await this.api.ack(alertId);
       this.replaceAlert(acked);
     } catch {
-      this.alerts.set(before);
+      undo();
       this.say("Could not acknowledge the alert. Try again.", false);
     }
   }
@@ -221,23 +222,31 @@ export class CommandStore {
    * open list, so a failure puts it back and rethrows for the form to say so.
    */
   async resolve(alertId: string, note: string): Promise<BreachAlert> {
-    const before = this.alerts.get();
     const now = new Date(this.now()).toISOString();
-    this.alerts.set(
-      before.map((a) =>
-        a.id === alertId && a.state !== "resolved"
-          ? { ...a, state: "resolved", resolution_note: note.trim(), acked_at: a.acked_at ?? now }
-          : a,
-      ),
+    const undo = this.optimistic(alertId, (a) =>
+      a.state !== "resolved" ? { ...a, state: "resolved", resolution_note: note.trim(), acked_at: a.acked_at ?? now } : null,
     );
     try {
       const resolved = await this.api.resolveAlert(alertId, { note: note.trim() });
       this.replaceAlert(resolved);
       return resolved;
     } catch (error) {
-      this.alerts.set(before);
+      undo();
       throw error;
     }
+  }
+
+  /**
+   * Show one alert changed at once. The returned undo puts back that alert only, and only while
+   * the optimistic copy is still the one shown: an alert raised, or a server update that arrived,
+   * while the request was out is kept.
+   */
+  private optimistic(alertId: string, change: (alert: BreachAlert) => BreachAlert | null): () => void {
+    const previous = this.alerts.get().find((a) => a.id === alertId);
+    const next = previous ? change(previous) : null;
+    if (!previous || !next) return () => undefined;
+    this.alerts.set(this.alerts.get().map((a) => (a === previous ? next : a)));
+    return () => this.alerts.update((list) => list.map((a) => (a === next ? previous : a)));
   }
 
   /**
@@ -345,7 +354,7 @@ export class CommandStore {
   private onAlerts(message: ChannelMessage<"/stream/alerts">): void {
     if (message.type === "alert.raised") {
       const alert = message.data;
-      this.replaceAlert(alert);
+      if (!this.replaceAlert(alert)) return;
       this.pushFeed({ kind: "alert", id: `alert:${message.id}`, at: Date.parse(alert.occurred_at), alert, change: "raised" });
       if (alert.state === "open") this.queueAnnounce(alert);
       if (alert.severity === "critical" && alert.state === "open") {
@@ -360,7 +369,7 @@ export class CommandStore {
     } else if (message.type === "alert.updated") {
       const alert = message.data;
       const previous = this.alerts.get().find((a) => a.id === alert.id);
-      this.replaceAlert(alert);
+      if (!this.replaceAlert(alert)) return;
       if (previous?.state !== alert.state && (alert.state === "acked" || alert.state === "resolved")) {
         this.pushFeed({ kind: "alert", id: `alert:${message.id}`, at: this.now(), alert, change: alert.state });
       }
@@ -398,9 +407,17 @@ export class CommandStore {
     return { ...health, offlineSince, perimeter, roomId };
   }
 
-  private replaceAlert(alert: BreachAlert): void {
+  /**
+   * Put the server's copy of an alert in the list. An alert only moves forward (open → acked →
+   * resolved; the API never reopens one), so a copy behind the one shown is stale — a late frame,
+   * or an answer overtaken by another operator's — and is ignored. Returns whether it was applied.
+   */
+  private replaceAlert(alert: BreachAlert): boolean {
+    const shown = this.alerts.get().find((a) => a.id === alert.id);
+    if (shown && ALERT_STEP[shown.state] > ALERT_STEP[alert.state]) return false;
     const rest = this.alerts.get().filter((a) => a.id !== alert.id);
     this.alerts.set([alert, ...rest].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at)));
+    return true;
   }
 
   private applySummary(summary: LiveSummary): void {

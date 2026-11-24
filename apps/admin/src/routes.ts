@@ -348,7 +348,11 @@ export function mayOpen(pathname: string, can: (capability: Capability) => boole
   if (pathname === "/" || pathname === "") return true; // Home sends every role to its own start
   for (const screen of Object.values(SCREENS) as ScreenSpec[]) {
     if (screen.path === "/" || screen.path === SCREENS.signIn.path) continue;
-    if (matchPath({ path: screen.path, end: true }, pathname)) return !screen.need || can(screen.need);
+    if (matchPath({ path: screen.path, end: true }, pathname)) {
+      // A workspace tab opens inside the event workspace, whose own route needs events.view (App.tsx).
+      const inWorkspace = screen.path.startsWith("/events/:id/") && screen.path !== SCREENS.eventSummary.path;
+      return (!screen.need || can(screen.need)) && (!inWorkspace || can("events.view"));
+    }
   }
   if (matchPath({ path: "/events/:id", end: true }, pathname)) return can("events.view");
   return false;

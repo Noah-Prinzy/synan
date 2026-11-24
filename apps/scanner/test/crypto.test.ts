@@ -146,4 +146,26 @@ describe("signed allowlist", () => {
     const bad2 = { ...withExtras, entries: [{ ...withExtras.entries[0], qr_email_hashes: [1] }] };
     await rejects(async () => verifyAllowlistJws(await signJws(k, bad2), k.published.kid, keys, Date.now()), "payload.entries[].qr_email_hashes");
   });
+
+  // DEFECT (left failing on purpose): the list is "scoped to one event and shift" and a scanner works
+  // "only inside the shift window" (docs/03 §4), but verifyAllowlistJws never compares `nowMs` with
+  // the payload's window_start / window_end: a correctly signed list for a shift that has ended is
+  // trusted, on refresh and when re-verified from storage, indefinitely. Not fixed here: the runtime
+  // deliberately keeps a previous shift's list offline (runtime.ts signIn: "still trusted offline"),
+  // and rejecting it would leave an offline gate with no list, refusing everyone. Whether an expired
+  // window should fail closed, or fail open with a warning like a stale list (O-05), is a decision for
+  // the owner of the scanner's trust rules. The existing helper `payload()` also signs window_end =
+  // "now", so a fix will need it to issue a window that has not ended.
+  it.fails("refuses a list whose validity window has ended", async () => {
+    const k = await makeKey("allowlist");
+    const keys = await importKeys([k.published]);
+    const now = Date.now();
+    const shift = payload([entry({ credential_hash: ref16(1) })], {
+      window_start: new Date(now - 8 * 3600_000).toISOString(),
+      window_end: new Date(now - 60_000).toISOString(),
+      shift_end: new Date(now - 60_000).toISOString(),
+      issued_at: new Date(now - 8 * 3600_000).toISOString(),
+    });
+    await rejects(async () => verifyAllowlistJws(await signJws(k, shift), k.published.kid, keys, now), "window");
+  });
 });
