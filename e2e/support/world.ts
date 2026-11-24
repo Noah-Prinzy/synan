@@ -174,3 +174,29 @@ export async function invite(w: Pick<World, "eventId" | "admin">, email: string)
   const mail = await waitForMail({ to: email, tag: "invitation", after: mark });
   return decodeURIComponent(new URL(linkIn(mail)).hash.match(/token=([^&]+)/)![1]!);
 }
+
+/** A wristband number as printed inside a band: 14 hex digits (a 7-byte NFC UID). */
+export const newBandUid = () => randomUUID().replace(/-/g, "").slice(0, 14).toUpperCase();
+
+/** Put new bands into stock, as a box arriving at the desk would be (POST /carriers/import). */
+export async function stockBands(admin: Caller, n = 1): Promise<string[]> {
+  const uids = Array.from({ length: n }, newBandUid);
+  await admin.call("POST", "/carriers/import", { chip_profile: "ntag_uid", identifiers: uids });
+  return uids;
+}
+
+/** Bind a new band from stock to the guest's pass through the desk endpoint (POST /carriers/bind), as the admin. */
+export async function bindBand(w: Pick<World, "admin">, guest: Guest): Promise<string> {
+  const [uid] = await stockBands(w.admin, 1);
+  await w.admin.call("POST", "/carriers/bind", { identifier: uid, registration_id: guest.registrationId });
+  return uid!;
+}
+
+/** The portal code valid now on the guest's pass (GET /me/credential/codes): what the phone shows. */
+export async function currentPassCode(guest: Guest, eventId: string): Promise<string> {
+  const batch = await guest.me.call<{ codes: { code: string; not_before: string; expires_at: string }[] }>("GET", `/me/credential/codes?event_id=${eventId}`);
+  const { now } = await ctl.clock();
+  const c = batch.codes.find((x) => Date.parse(x.not_before) <= now && Date.parse(x.expires_at) > now);
+  if (!c) throw new Error("no code valid now");
+  return c.code;
+}

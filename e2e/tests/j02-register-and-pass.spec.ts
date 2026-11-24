@@ -63,7 +63,7 @@ test("J2: register on one device, open the link on another, see the pass and its
   const qr = pass.getByRole("img", { name: `Arrival code for ${name}` });
   await expect(qr).toBeVisible();
 
-  const batch = (await (await codes).json()) as { codes: { code: string; valid_from: string; expires_at: string }[]; rotate_every_s: number };
+  const batch = (await (await codes).json()) as { codes: { code: string; not_before: string; expires_at: string }[]; rotate_every_s: number };
   expect(batch.codes.length).toBeGreaterThan(1);
   expect(new Set(batch.codes.map((c) => c.code)).size).toBe(batch.codes.length);
 
@@ -80,8 +80,9 @@ test("J2: register on one device, open the link on another, see the pass and its
     expect(mine, JSON.stringify(regs.items)).toBeTruthy();
     expect(mine!.state).toBe("confirmed");
     const now = Date.now();
-    const current = batch.codes.find((c) => Date.parse(c.valid_from) <= now && Date.parse(c.expires_at) > now) ?? batch.codes[0]!;
-    const outcome = await scanAt(w.gates.entrance, w.eventId, { medium: "qr", data: current.code });
+    const current = batch.codes.find((c) => Date.parse(c.not_before) <= now && Date.parse(c.expires_at) > now);
+    expect(current, "a code valid now").toBeTruthy();
+    const outcome = await scanAt(w.gates.entrance, w.eventId, { medium: "qr", data: current!.code });
     expect(["admitted", "wristband_required"]).toContain(outcome.result);
     expect(outcome.tier).toBe("ORDINARY");
   });
