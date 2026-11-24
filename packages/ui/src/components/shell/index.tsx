@@ -17,10 +17,16 @@ export interface AppShellProps {
   children: ReactNode;
 }
 
-/** Full-viewport frame. The page never scrolls; regions scroll inside themselves. */
+/**
+ * Full-viewport frame. The page never scrolls; regions scroll inside themselves.
+ * The frame and the main region are positioned, so absolutely placed descendants (visually
+ * hidden live regions, popover anchors) stay inside them: an unpositioned main let those
+ * reach past the viewport, which made the document itself scrollable and shifted the whole
+ * frame up when a field was focused.
+ */
 export function AppShell({ top, strip, nav, status, children }: AppShellProps) {
   return (
-    <div className="grid h-dvh grid-cols-[auto_minmax(0,1fr)] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden bg-background text-13 text-foreground">
+    <div className="relative grid h-dvh grid-cols-[auto_minmax(0,1fr)] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden bg-background text-13 text-foreground">
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:border focus:border-border focus:bg-background focus:px-3 focus:py-2"
@@ -30,7 +36,7 @@ export function AppShell({ top, strip, nav, status, children }: AppShellProps) {
       <div className="col-span-2">{top}</div>
       <div className="col-span-2">{strip}</div>
       <div className="row-start-3 min-h-0">{nav}</div>
-      <main id="main" tabIndex={-1} className="row-start-3 min-h-0 min-w-0 overflow-auto outline-none">
+      <main id="main" tabIndex={-1} className="relative row-start-3 min-h-0 min-w-0 overflow-auto outline-none [scrollbar-gutter:stable]">
         {children}
       </main>
       <div className="col-span-2">{status}</div>

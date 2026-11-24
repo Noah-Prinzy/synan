@@ -9,8 +9,14 @@
 /* The palette lives in packages/ui/src/styles/theme.css. Admin is an instrument:
    no ambient wash, no decoration (docs/05 §2). */
 
-/* Scrollbars as hairline furniture, not chrome. */
+/* Scrollbars as hairline furniture, not chrome. The document itself never scrolls: the shell's
+   regions do (packages/ui shell), so focusing a field can never shift the whole frame. */
 @layer base {
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+  }
   * {
     scrollbar-width: thin;
     scrollbar-color: var(--muted) transparent;

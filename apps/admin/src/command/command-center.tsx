@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ERROR_COPY } from "@synan/contracts/copy";
+import { surfaceName } from "@synan/ui/brand";
 import { SignalShape, formatNumber } from "@synan/ui/data";
 import { useCommand } from "../live/context";
 import { useSlice, useSliceValue } from "../live/slice";
@@ -47,7 +48,7 @@ export default function CommandCenter() {
   const onMapSelect = useCallback((id: string) => select(id === selectedId ? null : id), [select, selectedId]);
 
   useEffect(() => {
-    document.title = event ? `Command · ${event.title}` : "Command";
+    document.title = event ? `Command Center · ${event.title} · ${surfaceName("admin")}` : `Command Center · ${surfaceName("admin")}`;
   }, [event]);
 
   const title = <h1 className="sr-only">Command Center{event ? ` — ${event.title}` : ""}</h1>;
@@ -313,16 +314,16 @@ function NotLive() {
   });
   return (
     <div className="h-full">
-      <div className="grid grid-cols-5 gap-px border-b border-border bg-border" aria-hidden="true">
-        {["Registered", "Checked in", "On site now", "Capacity risk", "Open alerts"].map((label) => (
-          <div key={label} className="bg-background px-4 pt-3 pb-3">
+      <div className="grid grid-cols-2 gap-px border-b border-border bg-border md:grid-cols-5" aria-hidden="true">
+        {["Registered", "Checked in", "On site now", "Capacity risk", "Open alerts"].map((label, index) => (
+          <div key={label} className={`bg-background px-4 pt-3 pb-3 ${index === 4 ? "col-span-2 md:col-span-1" : ""}`}>
             <p className="text-12 text-muted-foreground">{label}</p>
             <p className="mt-2 font-mono text-40 leading-none text-muted-foreground/40">—</p>
             <p className="mt-2 h-5" />
           </div>
         ))}
       </div>
-      <div className="max-w-160 px-6 py-8">
+      <div className="max-w-160 px-4 py-8 sm:px-6">
         <p className="flex items-center gap-2 text-12 text-muted-foreground">
           <SignalShape state="idle" /> No live event
         </p>

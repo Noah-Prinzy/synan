@@ -46,7 +46,7 @@ export default function EventWizard() {
   const previousDraft = useRef<string | null>(draftId);
   const venues = useRef(new Map<string, Promise<VenueDetail>>());
 
-  useDocumentTitle(record?.title ? `${record.title} · Draft` : "New event");
+  useDocumentTitle(record?.title ? (record.state === "draft" ? `${record.title} · Draft` : record.title) : "New event");
 
   // Load the draft named in the URL. A draft just created here is already in hand.
   useEffect(() => {
@@ -87,7 +87,15 @@ export default function EventWizard() {
   // A new step starts at the top of the page (the shell's scroll area keeps its position otherwise).
   const top = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    top.current?.scrollIntoView({ block: "start" });
+    let el = top.current?.parentElement ?? null;
+    while (el) {
+      const { overflowY } = window.getComputedStyle(el);
+      if ((overflowY === "auto" || overflowY === "scroll") && el.scrollHeight > el.clientHeight) {
+        if (el.scrollTop > 0) el.scrollTop = 0;
+        return;
+      }
+      el = el.parentElement;
+    }
   }, [stepParam]);
 
   const saved = useCallback((next: EventRecord) => {

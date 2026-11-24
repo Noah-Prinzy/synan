@@ -237,7 +237,7 @@ it does not contain a fully compromised server holding all three logins.
 other token or identifier hash is base64url SHA-256, 43 characters; a wristband's UID is stored only
 as such a hash. The email index is 64 hex characters.
 
-The API uses all three on the SQL backend. Status and what remains unverified are in [07 §1.5](07-roadmap.md).
+The API uses all three on the SQL backend. Status and what remains unverified are in [07 §1.4](07-roadmap.md).
 
 ---
 

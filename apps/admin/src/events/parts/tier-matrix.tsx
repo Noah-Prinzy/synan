@@ -192,14 +192,14 @@ export function TierMatrix({
 
   if (rooms.length === 0) {
     return (
-      <div className="max-w-240 border border-border px-4 py-6 text-13 text-muted-foreground">
+      <div className="border border-border px-4 py-6 text-13 text-muted-foreground">
         No rooms to set access for yet. Pick the event's rooms first.
       </div>
     );
   }
 
   return (
-    <div className="max-w-240 min-w-0 border border-border">
+    <div className="min-w-0 border border-border">
       {caption || baseline ? (
         <div className="flex min-h-8 items-center justify-between gap-3 border-b border-border px-4">
           <p className="py-1.5 text-12 font-medium">{caption ?? "Access"}</p>

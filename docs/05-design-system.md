@@ -179,6 +179,12 @@ columns, with gutters of 24 (attendee) and 16 (admin).
   low-opacity blue luminance behind the content, tied to the frame and grid. It is atmosphere, not a
   coloured surface: never strong enough to affect text contrast, and tuned from the same theme
   token as the ambient animation.
+- **A disabled button is a hairline with muted text**, never a grey filled block.
+- **Haptics follow a tap.** A device vibrates only in response to something the person just did.
+- **Dropdown lists always have an opaque dark ground.** A select with a transparent background makes
+  the browser draw its list on white, which hides our light text. The Admin Command uses the shared
+  `Select` and no native select. The Attendee Portal keeps native selects on purpose, so phones show
+  the system picker, with the ground and option colours stated.
 
 ---
 
@@ -216,6 +222,9 @@ Four tiers. Tier 1 and 2 live in `packages/ui`; tier 3 lives in each app; tier 4
 composition with no reusable shell.
 
 **Tier 1 — primitives (behaviour from Radix, styled with our tokens)**
+
+`Select`, `Dialog`, `Field`, `TextInput`, `TextArea`, and `Checkbox` are written by hand to the same
+accessibility patterns, without Radix. Moving them onto Radix is optional and changes no screen.
 
 `Button` (primary / quiet / destructive / ghost), `IconButton`, `Input`, `Textarea`, `Select`,
 `Combobox`, `Checkbox`, `RadioGroup`, `Switch`, `SegmentedControl`, `Tabs`, `Stepper`, `Dialog`,

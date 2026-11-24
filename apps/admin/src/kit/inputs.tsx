@@ -35,7 +35,9 @@ export function DateTimeInput({
       type="datetime-local"
       value={toLocalInput(value, timeZone)}
       min={min ? toLocalInput(min, timeZone) : undefined}
-      max={max ? toLocalInput(max, timeZone) : undefined}
+      // A four-digit year cap: without a max, Chrome lets the year take six digits and never
+      // moves on to the time, so typing "25112026 1000" straight through would not work.
+      max={max ? toLocalInput(max, timeZone) : "9999-12-31T23:59"}
       disabled={disabled}
       invalid={invalid}
       onChange={(event) => onChange(event.target.value ? fromLocalInput(event.target.value, timeZone) : null)}

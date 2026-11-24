@@ -117,6 +117,7 @@ export default function WorkspaceOverview() {
               <ReadinessChecklist
                 items={readiness.data}
                 title={event.state === "draft" ? "Ready to publish?" : "Readiness"}
+                published={event.state !== "draft"}
                 onFix={event.state === "draft" ? (step) => navigate(`/events/new/${step}?draft=${event.id}`) : undefined}
               />
               {event.state !== "draft" ? <PublishedFixes items={readiness.data} eventId={event.id} /> : null}

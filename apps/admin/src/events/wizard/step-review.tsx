@@ -209,9 +209,7 @@ export function ReviewStep({ record, goto, close, onPublished }: StepContext & {
         </Panel>
       </div>
 
-      <div className="flex min-w-0 flex-col gap-6 xl:sticky xl:top-4 xl:self-start">
-        <ReadinessChecklist items={readiness} onFix={goto} title="Before publishing" />
-
+      <div className="flex min-w-0 flex-col gap-6">
         <section aria-label="Publish" className="border border-border px-4 py-4">
           <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
             <ActionButton
@@ -257,6 +255,8 @@ export function ReviewStep({ record, goto, close, onPublished }: StepContext & {
             </Notice>
           ) : null}
         </section>
+
+        <ReadinessChecklist items={readiness} onFix={goto} title="Before publishing" />
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
           <Button variant="quiet" size="compact" className="-ml-3 text-destructive/80 hover:text-destructive" onClick={() => setConfirmDelete(true)}>

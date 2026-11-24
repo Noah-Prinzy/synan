@@ -16,7 +16,6 @@ import {
   ErrorState,
   LoadingState,
   Notice,
-  SectionHead,
   TimeZoneSelect,
   errorCopy,
   fieldErrors,
@@ -51,7 +50,7 @@ export default function WorkspaceSettings() {
           <Capacity event={event} readOnly={readOnly} onSaved={replace} />
           <Retention event={event} readOnly={readOnly} onSaved={replace} />
           <section aria-labelledby="settings-danger" className="flex flex-col gap-3">
-            <SectionHead id="settings-danger" title="Danger zone" className="px-0" />
+            <FormHead id="settings-danger" title="Danger zone" />
             <DangerZone event={event} onChanged={replace} />
           </section>
         </div>
@@ -87,6 +86,18 @@ function SaveRow({ dirty, children, note }: { dirty: boolean; children: ReactNod
       </span>
       {children}
     </div>
+  );
+}
+
+/** A section's heading inside the form column: a ruled label, flush with the fields below. */
+function FormHead({ id, title, meta }: { id: string; title: string; meta?: ReactNode }) {
+  return (
+    <header className="flex items-baseline justify-between gap-3 border-b border-border pb-1.5">
+      <h2 id={id} className="text-12 font-medium">
+        {title}
+      </h2>
+      {meta ? <span className="text-11 text-muted-foreground">{meta}</span> : null}
+    </header>
   );
 }
 
@@ -150,7 +161,7 @@ function Basics({ event, readOnly, onSaved }: { event: EventRecord; readOnly: bo
 
   return (
     <section aria-labelledby="settings-basics" className="flex scroll-mt-4 flex-col gap-4">
-      <SectionHead id="settings-basics" title="Basics" className="px-0" />
+      <FormHead id="settings-basics" title="Basics" />
       <Field label="Name" error={errors.title} hint="Shown on passes, in discovery and in the event selector.">
         <TextInput
           value={title}
@@ -249,10 +260,9 @@ function Capacity({ event, readOnly, onSaved }: { event: EventRecord; readOnly: 
 
   return (
     <section aria-labelledby="settings-capacity" className="flex scroll-mt-4 flex-col gap-3">
-      <SectionHead
+      <FormHead
         id="settings-capacity"
         title="Capacity overrides"
-        className="px-0"
         meta={rooms.length > 0 ? <><span className="font-mono tabular-nums">{formatNumber(total)}</span> places in all</> : undefined}
       />
       <p className="text-12 text-muted-foreground">
@@ -362,7 +372,7 @@ function Retention({ event, readOnly, onSaved }: { event: EventRecord; readOnly:
 
   return (
     <section aria-labelledby="settings-retention" className="flex scroll-mt-4 flex-col gap-4">
-      <SectionHead id="settings-retention" title="Retention" className="px-0" />
+      <FormHead id="settings-retention" title="Retention" />
       <Field label="Grace period before deletion" error={error} className="max-w-60">
         <TextInput
           inputMode="numeric"

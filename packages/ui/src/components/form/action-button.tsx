@@ -15,10 +15,17 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 
-/** A light tick where the Vibration API exists (most Android phones). Silent elsewhere. */
+/**
+ * A light tick where the Vibration API exists (most Android phones). Silent elsewhere, and
+ * silent until the person has tapped the page: browsers refuse (and log) a vibration that no
+ * user gesture led to, e.g. a reward moment that mounts on page load.
+ */
 export function haptic(pattern: number | number[] = 12): void {
   try {
-    if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate(pattern);
+    if (typeof navigator === "undefined" || !("vibrate" in navigator)) return;
+    const activation = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation;
+    if (activation && !activation.hasBeenActive) return;
+    navigator.vibrate(pattern);
   } catch {
     /* not available */
   }
@@ -76,10 +83,12 @@ export interface ActionButtonProps {
   "aria-label"?: string;
 }
 
+// Disabled matches Button: the primary fill drops to a hairline and muted text (never a grey block).
 const variants = {
-  primary: "bg-action text-action-foreground border border-transparent hover:opacity-90",
-  quiet: "border border-border hover:border-foreground/50",
-  plain: "border border-transparent",
+  primary:
+    "bg-action text-action-foreground border border-transparent hover:opacity-90 disabled:border-border disabled:bg-transparent disabled:text-muted-foreground disabled:hover:opacity-100",
+  quiet: "border border-border hover:border-foreground/50 disabled:text-muted-foreground disabled:hover:border-border",
+  plain: "border border-transparent disabled:opacity-50",
 } as const;
 
 export function ActionButton({
@@ -133,7 +142,7 @@ export function ActionButton({
       aria-busy={phase === "working" || undefined}
       aria-label={rest["aria-label"]}
       className={cn(
-        "pressable relative inline-grid place-items-center overflow-visible px-3 font-medium whitespace-nowrap transition-colors duration-120 ease-standard disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none",
+        "pressable relative inline-grid place-items-center overflow-visible px-3 font-medium whitespace-nowrap transition-colors duration-120 ease-standard disabled:cursor-not-allowed motion-reduce:transition-none",
         size === "compact" ? "h-8 text-13 pointer-coarse:h-11 pointer-coarse:px-4" : "text-12",
         variants[variant],
         className,

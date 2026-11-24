@@ -67,7 +67,7 @@ export function Menu({
   };
 
   return (
-    <div ref={root} className="relative flex h-full items-stretch">
+    <div ref={root} className="relative flex h-full min-w-0 flex-1 items-stretch">
       <button
         ref={trigger}
         type="button"
@@ -96,7 +96,7 @@ export function Menu({
           id={id}
           role="menu"
           onKeyDown={onKey}
-          className={`absolute top-full z-40 mt-px min-w-64 border border-border bg-popover py-1 text-13 ${
+          className={`absolute top-full z-40 mt-px max-h-[calc(100dvh-4rem)] w-max max-w-[min(26rem,calc(100vw-1rem))] min-w-64 overflow-y-auto overscroll-contain border border-border bg-popover py-1 text-13 max-sm:fixed max-sm:inset-x-2 max-sm:top-12 max-sm:w-auto max-sm:max-w-none max-sm:min-w-0 ${
             align === "end" ? "right-0" : "left-0"
           }`}
         >

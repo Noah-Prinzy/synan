@@ -214,6 +214,10 @@ A second, thinner strip carries **only** alert banners — the highest open seve
 `Acknowledge` and `Open`. Status bar at the bottom: WS latency, last snapshot age, queue depth across
 gates.
 
+Below 640 px the navigation rail becomes a `Menu` button that opens a sheet from the left, the top
+bar drops the clock and shortens the live pill, and the alert strip stacks into two rows with a
+full-width `Acknowledge`.
+
 ### 2.3 Screens
 
 **D0 · First run `/admin/setup`**

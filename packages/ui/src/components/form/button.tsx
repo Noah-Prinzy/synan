@@ -14,13 +14,16 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 // Labels are the UI sans in sentence case; mono is for data only. Both sizes meet the
 // 44px touch target. The primary fill is the `--action` token (neutral by rule).
 const base =
-  "pressable relative inline-flex items-center justify-center gap-2 border font-sans font-medium transition-[color,background-color,border-color] duration-120 ease-standard focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none";
+  "pressable relative inline-flex items-center justify-center gap-2 border font-sans font-medium transition-[color,background-color,border-color] duration-120 ease-standard focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed motion-reduce:transition-none";
 
+// Disabled is quiet on every variant: the fill (or colour) drops away to a hairline and muted
+// text, so an action that is not available yet never reads as a heavy grey block.
 const variants: Record<ButtonVariant, string> = {
-  primary: "border-action bg-action text-action-foreground hover:bg-transparent hover:text-foreground",
-  secondary: "border-border text-foreground hover:border-foreground",
-  quiet: "border-transparent text-muted-foreground hover:text-foreground",
-  danger: "border-destructive/60 text-destructive hover:border-destructive",
+  primary:
+    "border-action bg-action text-action-foreground hover:bg-transparent hover:text-foreground disabled:border-border disabled:bg-transparent disabled:text-muted-foreground",
+  secondary: "border-border text-foreground hover:border-foreground disabled:text-muted-foreground disabled:hover:border-border",
+  quiet: "border-transparent text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:hover:text-muted-foreground",
+  danger: "border-destructive/60 text-destructive hover:border-destructive disabled:opacity-50 disabled:hover:border-destructive/60",
 };
 
 const sizes: Record<ButtonSize, string> = {

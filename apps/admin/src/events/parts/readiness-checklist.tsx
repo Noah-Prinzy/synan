@@ -18,24 +18,34 @@ function stateOf(item: ReadinessItem): SignalState {
 
 const WORD: Record<"ok" | "stop" | "warn", string> = { ok: "Done", stop: "Required", warn: "Suggested" };
 
-/** "Ready to publish" or "2 things to do before publishing". */
-export function readinessSummary(items: ReadinessItem[]): { ready: boolean; text: string; suggestions: number } {
+/**
+ * A draft: "Ready to publish" or "2 things to do before publishing". An event already published
+ * (or live): "Everything is in place" or "2 things need attention".
+ */
+export function readinessSummary(
+  items: ReadinessItem[],
+  published = false,
+): { ready: boolean; text: string; suggestions: number } {
   const blocking = items.filter((item) => item.blocking && !item.met).length;
   const suggestions = items.filter((item) => !item.blocking && !item.met).length;
-  if (blocking === 0) return { ready: true, text: "Ready to publish", suggestions };
-  return { ready: false, text: `${blocking} ${blocking === 1 ? "thing" : "things"} to do before publishing`, suggestions };
+  const things = `${blocking} ${blocking === 1 ? "thing" : "things"}`;
+  if (blocking === 0) return { ready: true, text: published ? "Everything is in place" : "Ready to publish", suggestions };
+  return { ready: false, text: published ? `${things} ${blocking === 1 ? "needs" : "need"} attention` : `${things} to do before publishing`, suggestions };
 }
 
 export function ReadinessChecklist({
   items,
   onFix,
   title = "Readiness",
+  published = false,
 }: {
   items: ReadinessItem[];
   onFix?: (step: WizardStep) => void;
   title?: string;
+  /** The event is already published or live: word the summary as upkeep, not as a publish gate. */
+  published?: boolean;
 }): JSX.Element {
-  const summary = readinessSummary(items);
+  const summary = readinessSummary(items, published);
   return (
     <section aria-label={title} className="min-w-0 border border-border">
       <header className="flex min-h-8 flex-wrap items-center justify-between gap-x-3 border-b border-border px-4">

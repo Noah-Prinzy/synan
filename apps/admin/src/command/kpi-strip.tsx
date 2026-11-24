@@ -52,7 +52,7 @@ export function KpiStrip({ loading }: { loading?: boolean }) {
   const dash = <span className="text-muted-foreground">—</span>;
 
   return (
-    <dl className="grid shrink-0 grid-cols-5 gap-px border-b border-border bg-border" aria-busy={!ready}>
+    <dl className="grid shrink-0 grid-cols-2 gap-px border-b border-border bg-border md:grid-cols-5" aria-busy={!ready}>
       <KpiCell
         label="Registered"
         value={ready ? <LiveNumber k="kpi:registered" /> : dash}
@@ -83,6 +83,7 @@ export function KpiStrip({ loading }: { loading?: boolean }) {
         }
       />
       <KpiCell
+        className="col-span-2 md:col-span-1"
         label="Open alerts"
         value={ready ? formatNumber(open.length) : dash}
         valueClassName={ready && worst ? SEVERITY_VIEW[worst.severity].text : undefined}

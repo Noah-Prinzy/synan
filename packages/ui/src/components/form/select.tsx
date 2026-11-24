@@ -80,6 +80,18 @@ interface Placement {
   above: boolean;
 }
 
+/**
+ * Type-ahead match: the label starts with what was typed, or any word in it does — so "nai"
+ * finds "Africa/Nairobi" and "lounge" finds "VIP Lounge", as people expect.
+ */
+function startsAtWord(label: string, needle: string): boolean {
+  if (label.startsWith(needle)) return true;
+  for (let i = 1; i < label.length; i++) {
+    if (/[\s/_\-(·,]/.test(label[i - 1] as string) && label.startsWith(needle, i)) return true;
+  }
+  return false;
+}
+
 const supportsPopover = typeof HTMLElement !== "undefined" && "showPopover" in HTMLElement.prototype;
 
 export function Select<V extends string = string>({
@@ -172,7 +184,7 @@ export function Select<V extends string = string>({
     for (let n = 0; n < options.length; n++) {
       const i = (start + n) % options.length;
       const option = options[i];
-      if (option && !option.disabled && option.label.toLowerCase().startsWith(needle)) return i;
+      if (option && !option.disabled && startsAtWord(option.label.toLowerCase(), needle)) return i;
     }
     return -1;
   };

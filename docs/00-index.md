@@ -142,7 +142,7 @@ Tracked here so they are not scattered. None blocks frontend work unless marked.
 | O-12 | Edge inference hardware per venue | Undecided. Sized in Phase 6. |
 | O-15 | Bundle budget for the attendee pass screen. 90 KB cannot be met: React and the router alone are 81 KB | 110 KB, provisional. The alternative is a lighter framework for the Attendee Portal. Owner to decide. |
 | O-16 | Should a repeat read of a spent emailed QR at the same gate be ignored as a duplicate, rather than shown as `pass_spent`? | No: the specified order stands for now. |
-| O-17 | How fixed readers authenticate, since they have no signed-in user | Undecided. Needed before fixed readers are used. |
+| O-17 | How fixed readers authenticate, since they have no signed-in user | Settled: each device holds a device token and exchanges it at `POST /auth/device-token` for a short-lived access token. |
 | O-18 | Should a revoked or suspended credential be refused at an exit gate? | Yes, as built. Confirm with operations: it may be better to let the person leave and raise an alert. |
 | O-19 | Should event pages show live occupancy to visitors who are not signed in? | Not today: the live channel needs a signed-in user. |
 | O-20 | Will events have photographs, and who supplies them? | Unknown. Screens are built to look intentional with or without an image. |

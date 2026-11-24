@@ -7,19 +7,20 @@ something is built, update §1 here; do not write a separate report.
 
 ## 1. Where we are
 
-Last updated: 2026-11-23. Checked on this date by running them: all 8 workspace packages typecheck;
-all three apps build; 485 automated tests pass (database 181, contracts 16, API 288 on each of its two
-storage backends).
+Last updated: 2026-11-23 (evening). Checked on this date by running them: all 8 workspace packages
+typecheck; all three apps build; 891 automated test runs pass (database 205, with 8 more skipped
+because they need a real PostgreSQL server; contracts 16; API 335 on each of its two storage
+backends).
 
 | Phase | Status | Detail |
 | --- | --- | --- |
 | Checkpoint 0 — look | **Done** | Identity chosen and applied (D-20). Mock-up files deleted |
 | 0 — Foundations | **Done, with gaps** | See §1.1 |
-| 1 — Attendee Portal | **In progress** | A1–A9 run on the mock layer; Direction A redesign under way. A10, A11 not started. See §1.2 |
+| 1 — Attendee Portal | **Built on the mock layer** | A1–A9 built, balanced, and checked at phone and desktop widths. A10, A11 not started. See §1.2 |
 | 1B — Backend skeleton | **Done** | See §1.3 |
-| 2 — Admin Command | **Started** | D1 only, and not yet to the specified structure |
-| 3 — Gate Scanner | **Scaffolded** | Five routes; one working verdict screen on mock data, four placeholders |
-| 4 — Backend completion | **Mostly done** | All 103 endpoints and all four live channels are implemented; none answers "not implemented". Open: PDF summary, scheduled reports, email through the job queue; the job runner on real PostgreSQL has never run |
+| 2 — Admin Command | **Built on the mock layer** | D0–D6 and the post-event summary exist. Not yet connected to the real API. See §1.2 |
+| 3 — Gate Scanner | **Built on the mock layer** | S1–S5 work as an installable phone app. Real scan submission, the offline queue, and allowlist signature checks are not built |
+| 4 — Backend completion | **Done, unverified on real PostgreSQL** | All 111 endpoints and all four live channels are implemented. The job runner on real PostgreSQL has never run |
 | 5 — Hardening | Not started | |
 | 6 — Edge AI | Not started | |
 
@@ -30,72 +31,95 @@ storage backends).
 | pnpm monorepo, Vite + React + TypeScript, Tailwind v4 | Done |
 | `apps/attendee`, `apps/admin`, `apps/scanner` | All exist, build, and share one theme from `packages/ui` |
 | `apps/api` | Exists (see §1.3) |
-| `packages/ui` | Tokens, one shared theme file, motion, 10 components, the brand module |
-| `packages/contracts` | Done: every enum, all 72 REST endpoints, all four WebSocket channels, error and scan-result copy |
-| `packages/db` | Done: the full schema, migrations, rules, purge, seed (see §1.4) |
-| `packages/mock` | Seeded fixtures, controllable clock, `MockRealtime`, all nine scenarios. **MSW request handlers not built**: apps read an in-process store that returns the contract shapes |
+| `packages/ui` | Tokens, one shared theme file, the brand module, reward-on-click primitives, shared form controls (Select, Field, TextInput, TextArea, Checkbox, Dialog), and a mobile kit (install, offline, wake lock) |
+| `packages/contracts` | Done: every enum, all 111 REST endpoints, all four WebSocket channels, error and scan-result copy |
+| `packages/db` | Done: the full schema, migrations 0000–0022, rules, purge, pruning, seed (see §1.4) |
+| `packages/mock` | Seeded fixtures, controllable clock, `MockRealtime`, all nine scenarios, and a mock of the admin's configure calls. **MSW request handlers not built**: apps read an in-process store that returns the contract shapes |
 
-### 1.2 Attendee Portal — what exists
+### 1.2 Screens — what exists
+
+All screens run on the mock layer. None is connected to the real API yet.
 
 | Screen | State |
 | --- | --- |
-| A1 Discover | Built; Direction A rebuild under way |
-| A2 Event detail | Built; Direction A rebuild under way. Agenda links to sessions do not land yet |
-| A3 Registration | Built, three steps. Not yet viewed in a browser in review |
-| A4 My pass | Built: rotating QR with countdown, all five states live, arrival-purpose line, band-first once bound, offline behaviour |
+| A1 Discover, A2 Event detail | Built. No sideways scroll at 360 px |
+| A3 Registration | Built, three steps, inline validation. The success step says the pass link was emailed |
+| A4 My pass | Built: rotating QR, all five states, whole QR visible on a phone in portrait and landscape, `Email me a copy`, `Keep screen on`, opens offline |
 | A5 Bind wristband | Built, with real Web NFC reading |
-| A6 Agenda | Built |
-| A7 Notifications | Built |
-| A8 Account | Built |
-| A9 Auth | Built |
+| A6 Agenda, A7 Notifications, A8 Account, A9 Auth | Built |
 | A10 Invitation | Not started |
 | A11 Kiosk | Not designed (O-10) |
+| D0 First-run setup | Built |
+| D1 Command Center | Built, including a phone layout |
+| D2 Venues, D3 Venue editor | Built: drawing on the grid, draft, diff, publish |
+| D4 Events list, D5 Event wizard | Built: five resumable steps and a guarded publish |
+| D6 Event workspace | Built: all eight tabs |
+| D13c Post-event summary | Built |
+| S1–S5 Gate Scanner | Built as an installable phone app on mock data |
 
-Measured production bundles, gzip: attendee pass route about 106 KB (budget under review, O-15);
-admin 113 KB (budget 180 KB, met); scanner scaffold 117 KB.
+Measured production bundles, gzip: attendee pass route 114.8 KB (over the provisional 110 KB, O-15;
+about 8.5 KB of it is the mock layer, which leaves when the real API is connected); admin main chunk
+144 KB (budget 180 KB, met); scanner 109 KB.
+
+**The admin needs these from the backend before it can leave the mock layer:** the current
+organisation; venue list counts; whole-layout publish with a layout version; venue floors and default
+capacity; an event draft's wizard step; a readiness endpoint; a published time on the access-rule
+set; a series per headline figure on the event summary; report rows without a kind for the workbook
+and PDF; and state words for credentials, carriers, roles, and registrations in the contracts' copy.
 
 ### 1.3 Backend — what exists
 
-- **Implemented and tested (26 endpoints):** operator sign-in and refresh, attendee email-link
-  sign-in, MFA step-up, WebSocket tickets, signing keys, server time; event list, detail, and
-  sessions; own credential, own registration, and signed QR codes; credential revoke, clear-review, and resend; scan
-  ingest with the full decision order and occupancy rules; scan list; alerts list, acknowledge, and
-  resolve; room recount; gate health.
-- **Live channel:** `/stream/telemetry`. The other three channels have contracts only.
-- **Runs on two storage backends** behind one interface: in-memory, and SQL through `packages/db`.
+- **All 111 endpoints and all four live channels** are implemented and tested on both storage
+  backends: in-memory, and SQL through `packages/db`.
+- **Delivery:** email goes through an encrypted outbox and the job queue, with retry after a crash;
+  reports export as an Excel workbook, CSV, and PDF, on demand or on a schedule; exported files are
+  registered, encrypted, and deleted after 7 days; attendee notifications are stored.
+- **Operations:** gate health comes from registered devices, including staff phones; shift handover
+  returns a summary; audit entries and alerts older than 12 months are pruned daily.
+- **Not built:** attendee notifications when a session's time changes, because no endpoint edits a
+  session yet.
 
 ### 1.4 Verified, and not verified
 
 There is no PostgreSQL server on the development machine. Database and API tests run against an
 in-process PostgreSQL (PGlite). That leaves these **unverified**:
 
-- Behaviour under concurrent load: the audit chain lock, constraint races, partition create and drop.
-- Row-level security from the API's side (the in-process engine connects as a superuser).
+- Behaviour under concurrent load: the audit chain lock, constraint races, partition create and drop,
+  and two workers claiming the same email.
+- Row-level security and grants under the real role split (the in-process engine uses `SET ROLE`).
+- The job runner (pg-boss) on a real server: it typechecks and has never run.
 - Index use and speed at real volumes. None of the targets in [02 §9](02-architecture.md) is measured.
 - Anything on a real or managed PostgreSQL: extension and policy privileges.
 
+Also unverified in the apps:
+
+- Anything on a physical phone. Android: QR reading in low light, torch, NFC, vibration, wake lock
+  over a whole shift, install, a USB reader. iPhone: Add to Home Screen, wake lock, the pass opening
+  offline.
+- The dropdown fix as a rendered popup (checked by computed colours only), and in Firefox.
+- Admin screens at 1920 px beyond the Command Center, workspace overview, Rooms and rules, Venues,
+  and the venue editor; and the admin's error states in a development build.
+- Command Center frame rate against the 55 FPS target.
+
 ### 1.5 Known gaps against the specification
 
-1. **Identity.** Done: the Fit logo and custom "[S]ynan" wordmark are applied in all three apps. Not yet seen: the browser-tab icon in a real tab, and the pass at phone width after the last change.
-2. **Secrets are now encrypted by the API** on the SQL backend: attendee identity, MFA secrets, and
-   signing keys, verified by a raw dump of stored rows. Still open: the database rule that rejects
-   plaintext is switched on, and now covers operator email too (migrations 0008–0010); the in-memory
-   backend used for development does not encrypt.
-3. **Sign-in sessions, email links, and WebSocket tickets now live in the database** and survive a
-   restart. Rate-limit counters and the MFA replay guard remain in memory. The three-role
-   database split is wired in but has never run against a real PostgreSQL server.
-4. **The backend security review's 18 confirmed findings are fixed**, each with a test, on both storage
-   backends. One residual: an offline scanner can still back-date a scan within its own shift
-   until the sync grace period ends.
-5. **Not built in the backend:** the signed offline allowlist, wristband binding, invitations,
-   registration, venue and staff management, reports, webhooks, background jobs (purge, export,
-   email), session-end occupancy reset, scanner heartbeats, real email delivery.
-6. **Fixed readers cannot authenticate** — no mechanism is specified (O-17).
+1. **The apps are not connected to the API.** Every screen reads the mock layer. Connecting them is
+   the next large piece of work, and the admin needs the backend additions listed in §1.2 first.
+2. **Rate limits and alert de-duplication are counted per API instance.** Running more than one
+   instance needs a shared counter in PostgreSQL ([03 §3](03-security-privacy.md)).
+3. **A duplicate email is possible in one case:** a worker hands a message to the provider and then
+   stalls past its 120-second claim. Whether the recipient sees two copies depends on the provider
+   honouring the idempotency key (O-13).
+4. **The in-memory backend used for development does not encrypt.** Production requires the SQL
+   backend.
+5. **An offline scanner can still back-date a scan** within its own shift until the sync grace
+   period ends.
+6. **Gate Scanner:** real scan submission, the IndexedDB queue, and allowlist signature checks are
+   not built.
 7. **Pass bundle over budget** (O-15).
-8. **Attendee screens** still lack loading, error, and offline states on most screens, and the
-   phone bottom bar, footer, and error boundary. Being addressed in the Direction A rebuild.
-9. **Admin D1** does not match its specification: no map, rooms rail, live indicator, or alert strip.
-10. **Operator login lockout** (5 failures in 15 minutes) can be used to lock a named operator out.
+8. **Admin:** the leave-without-saving guard does not catch the browser's Back button.
+9. **Operator login lockout** (5 failures in 15 minutes) can be used to lock a named operator out.
+10. **MSW request handlers** are not built in `packages/mock`.
 
 ---
 

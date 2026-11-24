@@ -6,6 +6,7 @@ import { NAV_GROUPS } from "../routes";
 import { AlertStrip } from "./alert-strip";
 import { ScreenBoundary } from "./screen-boundary";
 import { AdminStatusBar } from "./status-bar";
+import { PhoneNav } from "./phone-nav";
 import { AdminTopBar } from "./top-bar";
 
 /** Development only: the scenario switcher and frame sampler, floating apart from the product. */
@@ -44,9 +45,11 @@ export function AdminShell() {
 
   return (
     <AppShell
-      top={<AdminTopBar />}
+      top={<AdminTopBar menu={<PhoneNav />} />}
       strip={<AlertStrip />}
       nav={
+        // Below 640px the rail gives way to the Menu cell in the top bar (PhoneNav).
+        <div className="hidden h-full sm:block">
         <NavRail
           label="Admin"
           groups={NAV_GROUPS}
@@ -75,6 +78,7 @@ export function AdminShell() {
             </NavLink>
           )}
         />
+        </div>
       }
       status={<AdminStatusBar />}
     >

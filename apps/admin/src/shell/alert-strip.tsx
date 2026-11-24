@@ -47,7 +47,7 @@ export function AlertStrip() {
   return (
     <section
       aria-label="Alerts"
-      className={`relative flex h-8 items-stretch overflow-hidden border-b border-border text-13 ${
+      className={`relative flex flex-wrap items-stretch overflow-hidden border-b border-border text-13 sm:h-8 sm:flex-nowrap ${
         critical ? "bg-destructive/10" : ""
       }`}
     >
@@ -56,20 +56,21 @@ export function AlertStrip() {
       ) : null}
       {top ? (
         <>
-          <span className={`relative flex shrink-0 items-center gap-2 border-r border-border px-4 ${SEVERITY_VIEW[top.severity].text}`}>
+          <span className={`relative order-1 flex min-h-8 shrink-0 items-center gap-2 border-r border-border px-4 ${SEVERITY_VIEW[top.severity].text}`}>
             <SignalShape state={SEVERITY_VIEW[top.severity].state} />
             <span className="font-medium">{SEVERITY_VIEW[top.severity].label}</span>
           </span>
-          <span className="relative flex min-w-0 flex-1 items-center gap-3 px-4">
+          <span className="relative order-2 flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-0.5 px-4 py-1.5 sm:flex-nowrap sm:py-0">
             <span className="shrink-0 font-medium">{ALERT_KIND_LABEL[top.kind]}</span>
-            <span className="min-w-0 truncate text-muted-foreground">{top.detail}</span>
+            {/* On a phone the detail takes its own line under the kind and age. */}
+            <span className="order-last min-w-0 basis-full truncate text-muted-foreground sm:order-none sm:basis-auto">{top.detail}</span>
             {where ? <span className="hidden shrink-0 text-muted-foreground xl:inline">· {where}</span> : null}
             <AlertAge at={top.occurred_at} />
           </span>
           {open > 1 ? (
             <Link
               to="/alerts"
-              className="relative flex shrink-0 items-center border-l border-border px-4 text-12 text-muted-foreground hover:text-foreground"
+              className="relative order-3 hidden shrink-0 items-center border-l border-border px-4 text-12 text-muted-foreground hover:text-foreground sm:flex"
             >
               <span className="font-mono tabular-nums">+{open - 1}</span>&nbsp;more open
             </Link>
@@ -88,19 +89,19 @@ export function AlertStrip() {
                 window.setTimeout(() => setHeld(null), 1400);
               }
             }}
-            className="relative shrink-0 border-l-border px-4 hover:bg-foreground/5"
+            className="relative order-5 h-11 shrink-0 basis-full border-t-border px-4 text-13 hover:bg-foreground/5 sm:order-4 sm:h-auto sm:basis-auto sm:border-t-transparent sm:border-l-border"
           >
             Acknowledge
           </ActionButton>
           <Link
             to={`/alerts?alert=${encodeURIComponent(top.id)}`}
-            className="relative flex shrink-0 items-center border-l border-border px-4 text-12 text-muted-foreground transition-colors duration-120 ease-standard hover:text-foreground motion-reduce:transition-none"
+            className="relative order-3 flex shrink-0 items-center border-l border-border px-4 text-12 text-muted-foreground transition-colors sm:order-5 duration-120 ease-standard hover:text-foreground motion-reduce:transition-none"
           >
             Open
           </Link>
         </>
       ) : (
-        <span className="flex items-center gap-2 px-4 text-12 text-muted-foreground">
+        <span className="flex min-h-8 items-center gap-2 px-4 text-12 text-muted-foreground">
           <SignalShape state="idle" />
           {load.status === "ready" ? "No open alerts" : load.status === "not-live" ? "No live event" : "Alerts load with the event"}
           {acked > 0 ? (

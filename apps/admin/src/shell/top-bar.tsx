@@ -2,7 +2,7 @@
  * The persistent top bar (docs/06 §2.2): lockup, event selector, live pill,
  * venue-local clock, shift label, operator menu. Ruled cells, no fills.
  */
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
 import { Wordmark, surfaceName } from "@synan/ui/brand";
@@ -16,23 +16,24 @@ import { useSliceValue } from "../live/slice";
 import type { CommandEvent } from "../live/transport";
 import { Menu, MenuItem, MenuNote } from "./menu";
 
-export function AdminTopBar() {
+export function AdminTopBar({ menu }: { menu?: ReactNode }) {
   return (
     <TopBar>
-      <TopBarCell className="pr-5">
+      {menu}
+      <TopBarCell className="px-3 sm:px-4 sm:pr-5">
         <Link to="/" aria-label={`${surfaceName("admin")}, Command Center`} className="flex items-baseline gap-2.5">
           <Wordmark small className="text-17" />
-          <span className="text-12 text-muted-foreground">Command</span>
+          <span className="hidden text-12 text-muted-foreground md:inline">Command</span>
         </Link>
       </TopBarCell>
       <EventSelector />
-      <TopBarCell grow className="border-r-0">
+      <TopBarCell grow className="hidden border-r-0 sm:flex">
         <span />
       </TopBarCell>
-      <TopBarCell className="border-l border-border">
+      <TopBarCell className="px-2.5 sm:border-l sm:border-border sm:px-4">
         <LiveIndicator />
       </TopBarCell>
-      <TopBarCell>
+      <TopBarCell className="hidden sm:flex">
         <VenueClock />
       </TopBarCell>
       <OperatorMenu />
@@ -54,13 +55,13 @@ function EventSelector() {
   const { events, event, selectEvent } = useCommand();
   const [org, setOrg] = useState<DashboardData | null>(null);
   return (
-    <div className="flex items-stretch border-r border-border">
+    <div className="flex min-w-0 flex-1 items-stretch border-r border-border sm:flex-none">
       <Menu
         onOpen={() => {
           api.dashboard().then(setOrg, () => setOrg(null));
         }}
         buttonLabel={event ? `Event: ${event.title}. Change event` : "Choose an event"}
-        buttonClassName="flex h-full min-w-0 items-center gap-3 px-4 text-left transition-colors duration-120 ease-standard hover:bg-card/60 motion-reduce:transition-none"
+        buttonClassName="flex h-full w-full min-w-0 items-center gap-3 px-3 text-left sm:px-4 transition-colors duration-120 ease-standard hover:bg-card/60 motion-reduce:transition-none"
         button={
           event ? (
             <>
@@ -69,11 +70,11 @@ function EventSelector() {
                 <span className="block truncate text-11 text-muted-foreground">{event.venue_name}</span>
               </span>
               {event.state !== "live" ? (
-                <span className={`font-mono text-11 tracking-[0.12em] ${stateView[event.state].tone}`}>
+                <span className={`hidden font-mono text-11 tracking-[0.12em] sm:inline ${stateView[event.state].tone}`}>
                   {stateView[event.state].text}
                 </span>
               ) : null}
-              <ChevronDown aria-hidden="true" size={14} strokeWidth={1.5} className="text-muted-foreground" />
+              <ChevronDown aria-hidden="true" size={14} strokeWidth={1.5} className="ml-auto shrink-0 text-muted-foreground" />
             </>
           ) : (
             <span className="text-muted-foreground">Loading events…</span>
@@ -136,7 +137,18 @@ export function useLiveState(): LiveState {
 }
 
 function LiveIndicator() {
-  return <LivePill state={useLiveState()} />;
+  const state = useLiveState();
+  return (
+    <>
+      <span className="hidden sm:contents">
+        <LivePill state={state} />
+      </span>
+      {/* A phone keeps the shape and the word; the rate is a detail for the wall display. */}
+      <span className="contents sm:hidden">
+        <LivePill state={state} rate="" className="px-1.5 tracking-normal" />
+      </span>
+    </>
+  );
 }
 
 /* -------------------------------------------------------------------- clock */
@@ -192,7 +204,7 @@ function OperatorMenu() {
       <Menu
         align="end"
         buttonLabel={operator ? `${operator.name}, ${roleLabel[operator.role]}. Account menu` : "Account menu"}
-        buttonClassName="flex h-full items-center gap-3 px-4 transition-colors duration-120 ease-standard hover:bg-card/60 motion-reduce:transition-none"
+        buttonClassName="flex h-full items-center gap-3 px-3 sm:px-4 transition-colors duration-120 ease-standard hover:bg-card/60 motion-reduce:transition-none"
         button={
           <>
             <span className="hidden">

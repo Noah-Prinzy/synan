@@ -53,10 +53,10 @@ function shiftState(row: AssignmentRow, now: number): ShiftState {
   return "ended";
 }
 
-/** "Sun 22 Nov, 08:00–14:00", or both dates when a shift crosses midnight. */
+/** "22 Nov, 08:00–14:00", or both dates when a shift crosses midnight. */
 function shiftWindow(row: AssignmentRow, timeZone: string): string {
   const sameDay = toLocalInput(row.shift_start, timeZone).slice(0, 10) === toLocalInput(row.shift_end, timeZone).slice(0, 10);
-  const day = formatDate(row.shift_start, timeZone, { weekday: true, year: false });
+  const day = formatDate(row.shift_start, timeZone, { year: false });
   return sameDay
     ? `${day}, ${formatTime(row.shift_start, timeZone)}–${formatTime(row.shift_end, timeZone)}`
     : `${formatStamp(row.shift_start, timeZone)} – ${formatStamp(row.shift_end, timeZone)}`;
@@ -149,9 +149,11 @@ export default function WorkspaceStaff() {
                       <Td className="max-w-56 truncate">{row.staff_name}</Td>
                       <Td className="whitespace-nowrap text-muted-foreground">{role ? ROLE_LABEL[role] : "—"}</Td>
                       <Td className="max-w-56 truncate">{row.checkpoint_label}</Td>
-                      <Td className="font-mono text-12 whitespace-nowrap tabular-nums">
+                      <Td
+                        className="font-mono text-12 whitespace-nowrap tabular-nums"
+                        title={formatDuration(Date.parse(row.shift_end) - Date.parse(row.shift_start))}
+                      >
                         {shiftWindow(row, tz)}
-                        <span className="ml-2 text-muted-foreground">{formatDuration(Date.parse(row.shift_end) - Date.parse(row.shift_start))}</span>
                       </Td>
                       <Td className="whitespace-nowrap">
                         <span className={cn("inline-flex items-center gap-1.5 text-12", view.tone)}>
@@ -188,9 +190,11 @@ export default function WorkspaceStaff() {
               {gates.map((gate) => {
                 const own = assignments.filter((a) => a.checkpoint_id === gate.id);
                 const covered = own.some((a) => shiftState(a, now) === "on");
+                // An unstaffed perimeter gate is a gap; an interior door may be band-only and unattended.
+                const gap = !covered && own.length === 0 && gate.perimeter;
                 return (
                   <li key={gate.id} className="grid h-8 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 text-13">
-                    <SignalShape state={covered ? "ok" : own.length > 0 ? "idle" : "warn"} className={covered ? "text-success" : own.length > 0 ? "text-muted-foreground" : "text-warning"} />
+                    <SignalShape state={covered ? "ok" : gap ? "warn" : "idle"} className={covered ? "text-success" : gap ? "text-warning" : "text-muted-foreground"} />
                     <span className="truncate">
                       {gate.label}
                       <span className="sr-only">: {covered ? "staffed now" : own.length > 0 ? "not staffed now" : "no shifts"}</span>
