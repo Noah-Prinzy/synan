@@ -12,7 +12,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ActionButton, Button, Dialog, buttonClass } from "@synan/ui/components";
+import { ActionButton, Button, Dialog, buttonClass, cn } from "@synan/ui/components";
 import { formatNumber } from "@synan/ui/data";
 import type { AccessRule } from "@synan/contracts/rest";
 import type { RuleInput } from "@synan/mock/command";
@@ -22,10 +22,9 @@ import {
   ErrorState,
   LoadingState,
   Notice,
+  SPLIT,
   SectionHead,
-  Table,
-  Td,
-  Th,
+  TYPE,
   errorCopy,
   formatStamp,
   linkClass,
@@ -37,6 +36,10 @@ import { clock, configure } from "../live/backend";
 import { useLeaveGuard } from "../venues/editor/use-leave-guard";
 import { ReadOnlyNote, eventRooms, useWorkspaceEvent } from "./parts/context";
 import { plural } from "./parts/copy";
+import { HEAD_BLEED, RAIL_ROW, RAIL_X, RailNote } from "./parts/layout";
+
+/** Each rail row is its own grid, so the columns are fixed widths to stay aligned row to row. */
+const ROOM_COLUMNS = "grid-cols-[minmax(0,1fr)_6.5rem_4.5rem]";
 
 const strip = (rules: AccessRule[]): RuleInput[] => rules.map(({ id: _id, event_id: _event, ...rule }) => rule);
 
@@ -157,14 +160,15 @@ export default function WorkspaceRoomsRules() {
   return (
     <div className="flex min-h-full flex-col">
       {readOnly ? <ReadOnlyNote event={event} what="its access rules" /> : null}
-      <div className="flex-1 xl:grid xl:grid-cols-12">
-        <section aria-labelledby="rules-matrix" className="min-w-0 xl:col-span-8">
+      <div className={cn(SPLIT, "flex-1")}>
+        <section aria-labelledby="rules-matrix" className="min-w-0">
           <SectionHead
             id="rules-matrix"
             title="Who may enter each room"
-            meta={readOnly ? "as the event ran" : "select a cell to permit or deny · changes go live only when republished"}
+            meta={readOnly ? "as the event ran" : "select a cell to permit or deny"}
+            className={HEAD_BLEED}
           />
-          <div className="flex flex-col gap-3 px-4 py-4 sm:px-6">
+          <div className="flex flex-col gap-4 px-4 py-6 sm:px-6 2xl:px-8">
             {conflict !== null ? (
               <Notice tone="warning">
                 Someone else republished the rules (now version {conflict}) while you were editing. Their rules are loaded and your
@@ -182,78 +186,74 @@ export default function WorkspaceRoomsRules() {
               disabled={readOnly}
               caption="Tier × room"
             />
-            <p className="text-12 text-muted-foreground">
-              A pass is admitted only where its tier is permitted; no rule means refused. Speakers and crew are staff: their access is
-              granted per person, not here.
+            <p className="max-w-[68ch] text-12 leading-relaxed text-muted-foreground">
+              A pass is admitted only where its tier is permitted; no rule means refused. Changes reach the gates only when the rules
+              are {isDraft ? "saved" : "republished"}. Speakers and crew are staff: their access is granted per person, not here.
             </p>
           </div>
         </section>
 
-        <aside className="min-w-0 border-t border-border xl:col-span-4 xl:border-t-0 xl:border-l">
+        <aside className="min-w-0 border-t border-border lg:border-t-0 lg:border-l">
           <section aria-labelledby="rules-version">
             <SectionHead id="rules-version" title="Rules" meta={dirty ? `${changes.length} unsaved ${plural(changes.length, "change")}` : "published"} />
-            <p className="px-4 py-3 text-13">
+            <div className={cn("py-4 text-13", RAIL_X)}>
               {version === 0 ? (
-                <span className="text-muted-foreground">Not published yet. The rules go out with the event when it is published.</span>
+                <p className="text-muted-foreground">Not published yet. The rules go out with the event when it is published.</p>
               ) : (
                 <>
-                  Rules <span className="font-mono tabular-nums">v{version}</span>
-                  {publishedAt ? (
-                    <span className="text-muted-foreground">
-                      , republished <span className="font-mono tabular-nums">{formatStamp(publishedAt, event.timezone)}</span>
-                    </span>
-                  ) : null}
-                  <span className="block text-12 text-muted-foreground">
+                  <p>
+                    Version <span className={TYPE.value}>{version}</span>
+                    {publishedAt ? (
+                      <span className="text-muted-foreground">
+                        , republished <span className="font-mono tabular-nums">{formatStamp(publishedAt, event.timezone)}</span>
+                      </span>
+                    ) : null}
+                  </p>
+                  <p className="mt-1 text-12 leading-relaxed text-muted-foreground">
                     <span className="font-mono tabular-nums">{formatNumber(permitted)}</span> of{" "}
                     <span className="font-mono tabular-nums">{formatNumber(matrixRooms.length * 4)}</span> cells permit entry. Gates compare
                     this version with their offline allowlist.
-                  </span>
+                  </p>
                 </>
               )}
-            </p>
+            </div>
             {dirty ? (
-              <div className="border-t border-border px-4 pt-2 pb-3">
-                <h3 className="pb-1.5 text-12 font-medium">What changes at the door</h3>
+              <div className={cn("border-t border-border pt-3 pb-4", RAIL_X)}>
+                <h3 className="pb-2 text-12 font-medium">What changes at the door</h3>
                 <RuleDiff changes={changes} limit={12} />
               </div>
             ) : null}
           </section>
           <section aria-labelledby="rules-rooms" className="border-t border-border">
-            <SectionHead
-              id="rules-rooms"
-              title="Rooms"
-              meta={
-                <>
-                  <span className="font-mono tabular-nums">{formatNumber(rooms.length)}</span> · capacity for this event
-                </>
-              }
-            />
-            <Table label="Rooms and capacity">
-              <thead>
-                <tr>
-                  <Th>Room</Th>
-                  <Th>Zone</Th>
-                  <Th numeric>Capacity</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {rooms.map((room) => (
-                  <tr key={room.id}>
-                    <Td className="max-w-40 truncate">{room.name}</Td>
-                    <Td className="max-w-28 truncate text-muted-foreground">{zoneName.get(room.zone_id) ?? "—"}</Td>
-                    <Td numeric className="whitespace-nowrap">
-                      {formatNumber(room.capacity)}
-                      {room.capacity_override !== null ? (
-                        <span className="ml-1 text-muted-foreground" title={`Venue capacity ${room.venue_capacity}`}>
-                          (venue {formatNumber(room.venue_capacity)})
-                        </span>
-                      ) : null}
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-            <p className="px-4 py-3 text-12 text-muted-foreground">
+            <SectionHead id="rules-rooms" title="Rooms" meta="capacity for this event" />
+            <div role="table" aria-label="Rooms and capacity">
+              <div role="row" className={cn("grid min-h-9 items-center gap-3 border-b border-border text-12 text-muted-foreground", RAIL_X, ROOM_COLUMNS)}>
+                <span role="columnheader">Room</span>
+                <span role="columnheader">Zone</span>
+                <span role="columnheader" className="text-right">
+                  Capacity
+                </span>
+              </div>
+              {rooms.map((room) => (
+                <div key={room.id} role="row" className={cn(RAIL_ROW, ROOM_COLUMNS, "border-b border-border last:border-b-0")}>
+                  <span role="cell" className="truncate">
+                    {room.name}
+                  </span>
+                  <span role="cell" className="truncate text-muted-foreground">
+                    {zoneName.get(room.zone_id) ?? "—"}
+                  </span>
+                  <span role="cell" className="text-right whitespace-nowrap">
+                    <span className={TYPE.value}>{formatNumber(room.capacity)}</span>
+                    {room.capacity_override !== null ? (
+                      <span className="block text-12 text-muted-foreground" title={`Venue capacity ${room.venue_capacity}`}>
+                        venue <span className="font-mono tabular-nums">{formatNumber(room.venue_capacity)}</span>
+                      </span>
+                    ) : null}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <RailNote>
               {overrides > 0 ? `${overrides} ${plural(overrides, "room")} overridden for this event. ` : ""}
               Change capacity for this event in{" "}
               <Link to={`/events/${event.id}/settings`} className={linkClass}>
@@ -268,14 +268,14 @@ export default function WorkspaceRoomsRules() {
                 "venue editor"
               )}
               .
-            </p>
+            </RailNote>
           </section>
         </aside>
       </div>
 
       {!readOnly && (dirty || problem || justPublished) ? (
         <div role="region" aria-label="Unsaved rule changes" className="sticky bottom-0 z-10 border-t border-border bg-background">
-          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
+          <div className="flex min-h-14 flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 2xl:px-8">
             <p className="flex items-center gap-2 text-13">
               <span aria-hidden="true" className="size-1.5 bg-brand" />
               {dirty ? (

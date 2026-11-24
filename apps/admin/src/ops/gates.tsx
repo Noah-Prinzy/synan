@@ -6,17 +6,21 @@
  * display across the room. Below 1024 each gate is a stacked block, so a phone never scrolls
  * sideways. Every gate links to D12b.
  *
+ * An overview, so it says how a gate is in words and keeps one figure per gate (scans in the
+ * last 15 minutes): heartbeat, queue and clock read "in sync" until one of them is off, and only
+ * then show their figure. Exact heartbeat ages, offsets and the last scan stay on D12b.
+ *
  * Live state (link, queue, clock) comes from the CommandStore — the same gate.health stream
  * the Command Center rail reads. Heartbeat, last scan and the 15-minute series are polled every
  * five seconds (NOT IN CONTRACTS as one call: `gateActivity`). Link down → "last known".
  */
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import type { Checkpoint } from "@synan/contracts/rest";
 import { cn } from "@synan/ui/components";
 import { SignalShape, Sparkline, StatusDot, formatAge, formatNumber, formatOffset } from "@synan/ui/data";
 import type { GateActivity } from "@synan/mock/command";
-import { FilterChips, PageHeader, Table, Td, Th, linkClass, rowClass, useDocumentTitle } from "../kit";
+import { FilterChips, GUTTER_X, PROSE, PageHeader, Table, Td, Th, linkClass, rowClass, useDocumentTitle } from "../kit";
 import { api } from "../live/backend";
 import { useCommand } from "../live/context";
 import { useNow } from "../live/hooks";
@@ -24,7 +28,7 @@ import { useSlice } from "../live/slice";
 import type { GateLive } from "../live/store";
 import { WIDE_QUERY, useMediaQuery } from "../shell/admin-shell";
 import { maintenance } from "./maintenance";
-import { DIRECTION_LABEL, LINK_VIEW, LastKnown, LiveStates, Num, clockWrong, faultRank, gateSignal, isFault, useLiveReady } from "./shared";
+import { DIRECTION_LABEL, LastKnown, LiveStates, Num, clockWrong, faultRank, gateSignal, isFault, roughAge, useLiveReady } from "./shared";
 
 const POLL_MS = 5_000;
 /** Devices heartbeat every 15 s; two missed beats is worth a look before the 60 s offline rule. */
@@ -124,12 +128,19 @@ function GateBoard() {
         title="Gate health"
         meta={
           <>
-            <Num value={rows.length} /> checkpoints ·{" "}
             {faults === 0 ? (
-              "all online"
+              <>
+                All <Num value={rows.length} /> gates online
+              </>
             ) : (
               <span className="text-warning">
-                <Num value={faults} /> need attention{offline > 0 ? <> · <Num value={offline} /> offline</> : null}
+                <Num value={faults} /> of <Num value={rows.length} /> gates need attention
+                {offline > 0 ? (
+                  <>
+                    {" "}
+                    · <Num value={offline} /> offline
+                  </>
+                ) : null}
               </span>
             )}
             {recent !== null ? (
@@ -166,17 +177,17 @@ function GateBoard() {
       />
       <LastKnown />
       {failed ? (
-        <p role="status" className="flex items-center gap-2 border-b border-border px-4 py-2 text-12 text-muted-foreground sm:px-6">
-          <SignalShape state="warn" className="text-warning" />
+        <p role="status" className={cn("flex min-h-10 items-center gap-2 border-b border-border py-2 text-12 text-muted-foreground", GUTTER_X)}>
+          <SignalShape state="warn" className="shrink-0 text-warning" />
           Heartbeats and throughput could not be refreshed; showing the last values read. Retrying every five seconds.
         </p>
       ) : null}
       <div className={cn(stale && "opacity-70")}>
         {wall ? <Wall rows={rows} now={now} /> : <Rows rows={rows} now={now} loading={byId === null} />}
       </div>
-      <p className="px-4 pt-4 text-12 text-muted-foreground sm:px-6">
+      <p className={cn("pt-5 text-12 leading-relaxed text-muted-foreground", GUTTER_X, PROSE)}>
         A gate is offline after 60 seconds without a heartbeat; it keeps scanning on its allowlist and queues scans until it reconnects. A clock more than two minutes out is flagged
-        and its scans are ordered by corrected time.
+        and its scans are ordered by corrected time. Open a gate for its exact heartbeat, clock offset and last scans.
       </p>
     </>
   );
@@ -184,42 +195,60 @@ function GateBoard() {
 
 /* ------------------------------------------------------------------ cells */
 
-function heartbeatText(row: GateRow, now: number): { text: string; tone: string } {
+type Tone = "muted" | "warn" | "stop";
+const TONE_TEXT: Record<Tone, string> = { muted: "text-muted-foreground", warn: "text-warning", stop: "text-destructive" };
+
+/**
+ * What is off with a gate, in words, worst first: the lost link, a late heartbeat, scans queued,
+ * a wrong clock. A gate with nothing off reads "In sync".
+ */
+function gateChecks(row: GateRow, now: number): { text: string; tone: Tone }[] {
   const gate = row.gate;
-  if (gate?.link_state === "offline") {
-    return gate.offlineSince ? { text: `lost ${formatAge(now - gate.offlineSince)}`, tone: "text-destructive" } : { text: "never heard", tone: "text-destructive" };
+  if (!gate) return [{ text: "No report yet", tone: "muted" }];
+  const checks: { text: string; tone: Tone }[] = [];
+  if (gate.link_state === "offline") {
+    checks.push({ text: gate.offlineSince ? `Link lost ${roughAge(now - gate.offlineSince)}` : "Never heard from", tone: "stop" });
+  } else {
+    const at = row.activity?.heartbeat_at ?? gate.last_heartbeat_at ?? null;
+    const age = at ? now - Date.parse(at) : null;
+    if (age !== null && age > HEARTBEAT_LATE_MS) checks.push({ text: `Heartbeat ${formatAge(age)} ago`, tone: "warn" });
   }
-  const at = row.activity?.heartbeat_at ?? gate?.last_heartbeat_at ?? null;
-  if (!at) return { text: "—", tone: "text-muted-foreground" };
-  const age = now - Date.parse(at);
-  return { text: `${formatAge(age)} ago`, tone: age > HEARTBEAT_LATE_MS ? "text-warning" : "" };
+  if (gate.queue_depth > 0) checks.push({ text: `${formatNumber(gate.queue_depth)} queued`, tone: "warn" });
+  if (clockWrong(gate)) checks.push({ text: `Clock ${gate.clock_offset_ms !== null ? formatOffset(gate.clock_offset_ms) : "wrong"}`, tone: "warn" });
+  return checks.length > 0 ? checks : [{ text: "In sync", tone: "muted" }];
 }
 
-function clockText(gate: GateLive | undefined): { text: string; tone: string } {
-  if (!gate || gate.clock_offset_ms === null) return { text: "—", tone: "text-muted-foreground" };
-  if (clockWrong(gate)) return { text: `${formatOffset(gate.clock_offset_ms)} · wrong`, tone: "text-warning" };
-  return { text: gate.clock_offset_ms === 0 ? "in sync" : formatOffset(gate.clock_offset_ms), tone: "text-muted-foreground" };
+function Checks({ row, now, className, queueShown = false }: { row: GateRow; now: number; className?: string; queueShown?: boolean }) {
+  // The wall already shows an offline gate's queue as its big figure.
+  const checks = gateChecks(row, now).filter((check) => !(queueShown && check.text.endsWith("queued")));
+  return (
+    <span className={cn("min-w-0", className)}>
+      {checks.map((check, i) => (
+        <Fragment key={check.text}>
+          {i > 0 ? <span className="text-muted-foreground"> · </span> : null}
+          <span className={TONE_TEXT[check.tone]}>{check.text}</span>
+        </Fragment>
+      ))}
+    </span>
+  );
 }
 
-function lastScanText(row: GateRow, now: number): string {
-  const at = row.activity?.last_scan_at;
-  return at ? `${formatAge(now - Date.parse(at))} ago` : "—";
-}
-
-function LinkWord({ gate }: { gate: GateLive | undefined }) {
-  if (!gate) return <StatusDot state="idle" label="Unknown" showLabel className="text-12" />;
+function LinkWord({ gate, className }: { gate: GateLive | undefined; className?: string }) {
+  if (!gate) return <StatusDot state="idle" label="Unknown" showLabel className={cn("whitespace-nowrap", className)} />;
   const { state, words } = gateSignal(gate);
-  const link = LINK_VIEW[gate.link_state];
-  // The link word, then what else is wrong (a queue draining, a clock) as the rail says it.
-  return <StatusDot state={state} label={words === link.label ? link.label : `${link.label} · ${words.toLowerCase()}`} showLabel className="text-12 whitespace-nowrap" />;
+  return <StatusDot state={state} label={words} showLabel className={cn("whitespace-nowrap", className)} />;
+}
+
+function kindOf(checkpoint: Checkpoint): string {
+  return `${DIRECTION_LABEL[checkpoint.direction]} · ${checkpoint.perimeter ? "Perimeter" : "Interior"}`;
 }
 
 function Throughput({ row, className }: { row: GateRow; className?: string }) {
   const values = row.activity?.per_minute ?? [];
   return (
-    <span className={cn("grid grid-cols-[minmax(3rem,1fr)_auto] items-center gap-2", className)}>
+    <span className={cn("grid grid-cols-[minmax(4rem,1fr)_2.5rem] items-center gap-3", className)}>
       <Sparkline values={values} label={`${row.checkpoint.label}, scans per minute, last 15 minutes`} toneClassName="text-muted-foreground" />
-      <span className="w-9 text-right font-mono text-12 tabular-nums">{row.activity ? formatNumber(row.activity.scans_last_15m) : "—"}</span>
+      <span className="text-right font-mono text-13 tabular-nums">{row.activity ? formatNumber(row.activity.scans_last_15m) : "—"}</span>
     </span>
   );
 }
@@ -227,8 +256,8 @@ function Throughput({ row, className }: { row: GateRow; className?: string }) {
 function Maintenance({ since }: { since: number | undefined }) {
   if (since === undefined) return null;
   return (
-    <span className="ml-2 inline-flex items-center gap-1 text-11 text-muted-foreground" title="Marked on this page only (mock)">
-      <SignalShape state="idle" /> maintenance
+    <span className="ml-2 inline-flex shrink-0 items-center gap-1.5 text-12 text-muted-foreground" title="Marked on this page only (mock)">
+      <SignalShape state="idle" /> Maintenance
     </span>
   );
 }
@@ -243,109 +272,75 @@ function Rows({ rows, now, loading }: { rows: GateRow[]; now: number; loading: b
         <Table label="Gates, faults first">
           <thead>
             <tr>
-              <Th>Gate</Th>
-              <Th>Direction</Th>
-              <Th>Position</Th>
-              <Th>Hardware ID</Th>
-              <Th>Link</Th>
-              <Th numeric>Heartbeat</Th>
-              <Th numeric>Queue</Th>
-              <Th numeric>Clock</Th>
-              <Th numeric>Last scan</Th>
-              <Th className="w-44">Last 15 min{loading ? " …" : ""}</Th>
+              {/* The gate keeps a reading width; spare room on a wide screen goes to Checks. */}
+              <Th className="w-80">Gate</Th>
+              <Th fit>Kind</Th>
+              <Th fit>Hardware ID</Th>
+              <Th fit>State</Th>
+              <Th>Checks</Th>
+              <Th className="w-56">Scans, last 15 min{loading ? " …" : ""}</Th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => {
-              const beat = heartbeatText(row, now);
-              const clock = clockText(row.gate);
-              const queue = row.gate?.queue_depth ?? 0;
-              return (
-                <tr key={row.checkpoint.id} className={cn(rowClass, "cursor-pointer")} onClick={() => navigate(`/gates/${row.checkpoint.id}`)}>
-                  <Td className="max-w-64">
-                    <span className="flex min-w-0 items-center">
-                      <Link to={`/gates/${row.checkpoint.id}`} onClick={(e) => e.stopPropagation()} className={cn(linkClass, "truncate")}>
-                        {row.checkpoint.label}
-                      </Link>
-                      <Maintenance since={row.maintenanceSince} />
-                    </span>
-                  </Td>
-                  <Td className="whitespace-nowrap text-muted-foreground">{DIRECTION_LABEL[row.checkpoint.direction]}</Td>
-                  <Td className="whitespace-nowrap text-muted-foreground">{row.checkpoint.perimeter ? "Perimeter" : "Interior"}</Td>
-                  <Td className="font-mono text-12 whitespace-nowrap text-muted-foreground">{row.checkpoint.hardware_id ?? "—"}</Td>
-                  <Td>
-                    <LinkWord gate={row.gate} />
-                  </Td>
-                  <Td numeric className={cn("whitespace-nowrap", beat.tone)}>
-                    {beat.text}
-                  </Td>
-                  <Td numeric className={queue > 0 ? "text-warning" : "text-muted-foreground"}>
-                    {formatNumber(queue)}
-                  </Td>
-                  <Td numeric className={cn("whitespace-nowrap", clock.tone)}>
-                    {clock.text}
-                  </Td>
-                  <Td numeric className="whitespace-nowrap text-muted-foreground">
-                    {lastScanText(row, now)}
-                  </Td>
-                  <Td>
-                    <Throughput row={row} />
-                  </Td>
-                </tr>
-              );
-            })}
+            {rows.map((row) => (
+              <tr key={row.checkpoint.id} className={cn(rowClass, "cursor-pointer")} onClick={() => navigate(`/gates/${row.checkpoint.id}`)}>
+                <Td>
+                  <span className="flex min-w-0 items-center">
+                    <Link to={`/gates/${row.checkpoint.id}`} onClick={(e) => e.stopPropagation()} className={cn(linkClass, "truncate")}>
+                      {row.checkpoint.label}
+                    </Link>
+                    <Maintenance since={row.maintenanceSince} />
+                  </span>
+                </Td>
+                <Td fit className="text-muted-foreground">
+                  {kindOf(row.checkpoint)}
+                </Td>
+                <Td fit className="font-mono text-muted-foreground tabular-nums">
+                  {row.checkpoint.hardware_id ?? "—"}
+                </Td>
+                <Td fit>
+                  <LinkWord gate={row.gate} />
+                </Td>
+                <Td>
+                  <Checks row={row} now={now} className="block truncate" />
+                </Td>
+                <Td>
+                  <Throughput row={row} />
+                </Td>
+              </tr>
+            ))}
           </tbody>
         </Table>
       </div>
 
       {/* Below 1024: one stacked block per gate, nothing wider than the screen. */}
       <ul aria-label="Gates, faults first" className="lg:hidden">
-        {rows.map((row) => {
-          const beat = heartbeatText(row, now);
-          const clock = clockText(row.gate);
-          const queue = row.gate?.queue_depth ?? 0;
-          return (
-            <li key={row.checkpoint.id} className="relative border-b border-border px-4 py-3 sm:px-6">
-              <div className="flex items-center justify-between gap-3">
-                <Link
-                  to={`/gates/${row.checkpoint.id}`}
-                  className="min-w-0 truncate text-13 font-medium outline-none after:absolute after:inset-0 hover:underline focus-visible:after:outline focus-visible:after:-outline-offset-1 focus-visible:after:outline-brand"
-                >
-                  {row.checkpoint.label}
-                </Link>
-                <LinkWord gate={row.gate} />
-              </div>
-              <p className="mt-0.5 truncate text-12 text-muted-foreground">
-                {DIRECTION_LABEL[row.checkpoint.direction]} · {row.checkpoint.perimeter ? "Perimeter" : "Interior"}
+        {rows.map((row) => (
+          <li key={row.checkpoint.id} className={cn("relative border-b border-border py-3.5 transition-colors duration-120 ease-standard hover:bg-foreground/3 motion-reduce:transition-none", GUTTER_X)}>
+            <div className="flex items-center justify-between gap-3">
+              <Link
+                to={`/gates/${row.checkpoint.id}`}
+                className="min-w-0 truncate text-13 font-medium outline-none after:absolute after:inset-0 hover:underline focus-visible:after:outline focus-visible:after:-outline-offset-1 focus-visible:after:outline-brand"
+              >
+                {row.checkpoint.label}
+              </Link>
+              <LinkWord gate={row.gate} className="text-13" />
+            </div>
+            <p className="mt-0.5 flex min-w-0 items-center text-12 text-muted-foreground">
+              <span className="truncate">
+                {kindOf(row.checkpoint)}
                 {row.checkpoint.hardware_id ? <span className="font-mono"> · {row.checkpoint.hardware_id}</span> : null}
-                <Maintenance since={row.maintenanceSince} />
-              </p>
-              <dl className="mt-2 grid grid-cols-3 gap-x-3 gap-y-1.5 text-12">
-                <Fact label="Heartbeat" value={beat.text} tone={beat.tone} />
-                <Fact label="Queue" value={formatNumber(queue)} tone={queue > 0 ? "text-warning" : ""} />
-                <Fact label="Clock" value={clock.text} tone={clock.tone} />
-                <Fact label="Last scan" value={lastScanText(row, now)} />
-                <div className="col-span-2 min-w-0">
-                  <dt className="text-11 text-muted-foreground">Last 15 min</dt>
-                  <dd>
-                    <Throughput row={row} />
-                  </dd>
-                </div>
-              </dl>
-            </li>
-          );
-        })}
+              </span>
+              <Maintenance since={row.maintenanceSince} />
+            </p>
+            <div className="mt-2.5 grid grid-cols-[minmax(0,1fr)_minmax(8rem,11rem)] items-center gap-4">
+              <Checks row={row} now={now} className="truncate text-12" />
+              <Throughput row={row} />
+            </div>
+          </li>
+        ))}
       </ul>
     </>
-  );
-}
-
-function Fact({ label, value, tone = "" }: { label: string; value: string; tone?: string }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-11 text-muted-foreground">{label}</dt>
-      <dd className={cn("truncate font-mono tabular-nums", tone)}>{value}</dd>
-    </div>
   );
 }
 
@@ -357,8 +352,6 @@ function Wall({ rows, now }: { rows: GateRow[]; now: number }) {
     <ul aria-label="Gates, faults first" className="grid grid-cols-3 gap-px border-b border-border bg-border 2xl:grid-cols-4">
       {rows.map((row) => {
         const gate = row.gate;
-        const beat = heartbeatText(row, now);
-        const clock = clockText(gate);
         const signal = gate ? gateSignal(gate) : null;
         const perMinute = row.activity?.per_minute ?? [];
         const lastFull = perMinute.length > 1 ? (perMinute[perMinute.length - 2] ?? 0) : null;
@@ -369,47 +362,31 @@ function Wall({ rows, now }: { rows: GateRow[]; now: number }) {
             ) : null}
             <Link
               to={`/gates/${row.checkpoint.id}`}
-              className="block px-4 pt-3 pb-3 outline-none transition-colors duration-120 ease-standard hover:bg-foreground/3 focus-visible:outline focus-visible:-outline-offset-1 focus-visible:outline-brand motion-reduce:transition-none"
+              className="flex h-full flex-col px-5 pt-4 pb-4 outline-none transition-colors duration-120 ease-standard hover:bg-foreground/3 focus-visible:outline focus-visible:-outline-offset-1 focus-visible:outline-brand motion-reduce:transition-none"
             >
-              <span className="flex items-center justify-between gap-3">
-                <span className="truncate text-13 font-medium">{row.checkpoint.label}</span>
-                <LinkWord gate={gate} />
+              <span className="flex items-baseline justify-between gap-3">
+                <span className="truncate text-15 font-medium">{row.checkpoint.label}</span>
+                <LinkWord gate={gate} className="text-13" />
               </span>
-              <span className="mt-0.5 block truncate text-12 text-muted-foreground">
-                {DIRECTION_LABEL[row.checkpoint.direction]} · {row.checkpoint.perimeter ? "Perimeter" : "Interior"}
-                {row.checkpoint.hardware_id ? <span className="font-mono"> · {row.checkpoint.hardware_id}</span> : null}
+              <span className="mt-1 flex min-w-0 items-center text-12 text-muted-foreground">
+                <span className="truncate">{kindOf(row.checkpoint)}</span>
                 <Maintenance since={row.maintenanceSince} />
               </span>
-              <span className="mt-3 flex items-end justify-between gap-4">
+              <span className="mt-5 flex items-end justify-between gap-6">
                 {gate?.link_state === "offline" ? (
-                  <span className="font-mono text-21 leading-none text-destructive tabular-nums">
+                  <span className="font-mono text-28 leading-none text-destructive tabular-nums">
                     {formatNumber(gate.queue_depth)}
-                    <span className="ml-1.5 font-sans text-12">queued</span>
+                    <span className="ml-2 font-sans text-12">queued</span>
                   </span>
                 ) : (
                   <span className="font-mono text-28 leading-none tabular-nums">
                     {lastFull === null ? "—" : formatNumber(lastFull)}
-                    <span className="ml-1.5 font-sans text-12 text-muted-foreground">/min</span>
+                    <span className="ml-2 font-sans text-12 text-muted-foreground">per min</span>
                   </span>
                 )}
-                <Sparkline values={perMinute} label={`${row.checkpoint.label}, scans per minute, last 15 minutes`} className="w-28" toneClassName="text-muted-foreground" />
+                <Sparkline values={perMinute} label={`${row.checkpoint.label}, scans per minute, last 15 minutes`} className="mb-1 w-32" toneClassName="text-muted-foreground" />
               </span>
-              <span className="mt-3 grid grid-cols-3 gap-3 border-t border-border pt-2 text-11 text-muted-foreground">
-                <span className="min-w-0">
-                  Heartbeat
-                  <span className={cn("block truncate font-mono text-12 tabular-nums", beat.tone || "text-foreground")}>{beat.text}</span>
-                </span>
-                <span className="min-w-0">
-                  Queue
-                  <span className={cn("block font-mono text-12 tabular-nums", (gate?.queue_depth ?? 0) > 0 ? "text-warning" : "text-foreground")}>
-                    {formatNumber(gate?.queue_depth ?? 0)}
-                  </span>
-                </span>
-                <span className="min-w-0">
-                  Clock
-                  <span className={cn("block truncate font-mono text-12 tabular-nums", clock.tone === "text-warning" ? "text-warning" : "text-foreground")}>{clock.text}</span>
-                </span>
-              </span>
+              <Checks row={row} now={now} queueShown={gate?.link_state === "offline"} className="mt-4 block truncate border-t border-border pt-3 text-13" />
             </Link>
           </li>
         );

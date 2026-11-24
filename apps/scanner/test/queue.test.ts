@@ -18,6 +18,7 @@ import {
   ScanQueue,
   syncQueue,
   undoUntil,
+  undoWindowMs,
   type QueueRecord,
   type SendResult,
   type Signer,
@@ -500,6 +501,23 @@ describe("S3 undo, queue-aware", () => {
     expect(undoUntil({ ...r, state: "rejected" }, me())).toBeNull();
     // The server's time for the scan is earlier than the device's read: the earlier one counts.
     expect(undoUntil({ ...r, state: "sent", outcome: outcome({ corrected_at: new Date(r.at - 10_000).toISOString() }) }, me())).toBe(r.at - 10_000 + 57_000);
+  });
+
+  it("follows the server's undo_window_s (GET /time, GET /auth/signing-keys), 60 s until it has said, keeping the margin", () => {
+    expect(undoWindowMs(undefined)).toBe(60_000);
+    expect(undoWindowMs(null)).toBe(60_000);
+    expect(undoWindowMs(-1)).toBe(60_000);
+    expect(undoWindowMs(Number.NaN)).toBe(60_000);
+    expect(undoWindowMs(20)).toBe(20_000);
+    expect(undoWindowMs(0)).toBe(0);
+    const r = record(1);
+    const w = undoWindowMs(20);
+    expect(undoUntil(r, me(), w)).toBe(r.at + 20_000); // never sent: the whole window
+    expect(undoUntil({ ...r, online: { ...r.offline, offline: false } }, me(), w)).toBe(r.at + 17_000);
+    expect(undoUntil({ ...r, state: "sent", outcome: outcome() }, me(), w)).toBe(r.at + 17_000);
+    expect(undoUntil({ ...r, state: "sent", outcome: outcome() }, me(), undoWindowMs(300))).toBe(r.at + 297_000);
+    // A window shorter than the margin: a scan the server must agree to is never offered in time.
+    expect(undoUntil({ ...r, state: "sent", outcome: outcome() }, me(), undoWindowMs(2))!).toBeLessThan(r.at);
   });
 
   it("an offline admission is withheld: never sent, kept on the device, not queued", async () => {

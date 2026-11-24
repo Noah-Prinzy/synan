@@ -4,7 +4,8 @@
  * counts and bars are written by the frame loop, so a re-sort or a level change is
  * the only thing that re-renders a row.
  */
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import type { Room } from "@synan/contracts/rest";
 import {
   CapacityMeter,
@@ -73,31 +74,32 @@ function isFault(gate: GateLive): boolean {
 /** One gate (P-09): `offline 4m · 182 queued` is a designed state, not an error. */
 export function GateHealthRow({ gate, label, now }: { gate: GateLive; label: string; now: number }) {
   const { state, words } = gateSignal(gate);
+  // Words first; one figure only where it explains the problem.
   let status: ReactNode;
   if (gate.link_state === "offline") {
-    const since = gate.offlineSince ? formatAge(now - gate.offlineSince) : "";
+    const since = gate.offlineSince ? ` ${formatAge(now - gate.offlineSince)}` : "";
     status = (
       <span className="text-destructive">
-        offline {since} · {formatNumber(gate.queue_depth)} queued
+        Offline{since}
+        {gate.queue_depth > 0 ? ` · ${formatNumber(gate.queue_depth)} waiting` : ""}
       </span>
     );
   } else if (gate.queue_depth > 0) {
-    status = <span className="text-warning">syncing · {formatNumber(gate.queue_depth)} queued</span>;
+    status = <span className="text-warning">Catching up · {formatNumber(gate.queue_depth)} waiting</span>;
   } else if (gate.link_state === "degraded") {
-    status = <span className="text-warning">degraded</span>;
+    status = <span className="text-warning">Weak connection</span>;
+  } else if (gate.clock_fault) {
+    status = (
+      <span className="text-warning">Clock wrong{gate.clock_offset_ms !== null ? ` by ${formatOffset(gate.clock_offset_ms)}` : ""}</span>
+    );
   } else {
-    status = <span className="text-muted-foreground">{gate.scans_last_minute}/min</span>;
+    status = <span className="text-muted-foreground">Online</span>;
   }
   return (
     <li className="grid min-h-8 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 sm:px-5">
       <StatusDot state={state} label={words} />
       <span className="truncate text-13">{label}</span>
-      <span className="font-mono text-12 tabular-nums">
-        {status}
-        {gate.clock_fault && gate.clock_offset_ms !== null ? (
-          <span className="text-warning"> · clock {formatOffset(gate.clock_offset_ms)}</span>
-        ) : null}
-      </span>
+      <span className="text-13 whitespace-nowrap">{status}</span>
     </li>
   );
 }
@@ -111,20 +113,27 @@ export function GatesSection({ layout }: { layout: VenueLayout }) {
   const faults = all
     .filter(isFault)
     .sort((a, b) => (a.link_state === "offline" ? -1 : 0) - (b.link_state === "offline" ? -1 : 0));
-  const entranceRate = all.filter((g) => g.perimeter && g.link_state !== "offline").reduce((sum, g) => sum + g.scans_last_minute, 0);
-  // At rest this is one line. Rows appear only for gates that need someone.
+  // At rest this is one line in words. Rows appear only for gates that need someone, each with the
+  // one figure that explains it; the rest is on Gate health.
   return (
-    <RailSection id="rail-gates" title="Gates" className="shrink-0">
-      <ul className="py-1">
+    <RailSection
+      id="rail-gates"
+      title="Gates"
+      meta={
+        <Link to="/gates" className="text-muted-foreground transition-colors duration-120 hover:text-foreground">
+          Gate health →
+        </Link>
+      }
+      className="shrink-0"
+    >
+      <ul className="py-1.5">
         {faults.map((gate) => (
           <GateHealthRow key={gate.checkpoint_id} gate={gate} label={byId.get(gate.checkpoint_id)?.label ?? gate.label} now={now} />
         ))}
-        <li className="grid min-h-8 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 text-13 text-muted-foreground sm:px-5">
-          <StatusDot state="ok" label="Online" />
-          <span>
-            {faults.length === 0 ? `All ${all.length} gates online` : `${all.length - faults.length} other gates online`}
-          </span>
-          <span className="font-mono text-12 tabular-nums">{entranceRate}/min in</span>
+        <li className="flex min-h-8 items-center px-4 text-13 text-muted-foreground sm:px-5">
+          {faults.length === 0
+            ? "All gates online"
+            : `${faults.length === 1 ? "1 gate needs" : `${faults.length} gates need`} attention · the others are online`}
         </li>
       </ul>
     </RailSection>
@@ -176,27 +185,35 @@ export function RoomsList({
     return () => window.clearTimeout(timer);
   }, [live, held, layout, order, store]);
 
-  const over = layout.rooms.filter((room) => live.get(room.id)?.level !== "ok").length;
+  // Rows wholly or partly hidden below the list's fold, counted from the DOM (on scroll, resize,
+  // and when the order changes) — never per frame.
+  const list = useRef<HTMLUListElement>(null);
+  const [more, setMore] = useState(0);
+  const measureMore = useCallback(() => {
+    const el = list.current;
+    if (!el) return;
+    const fold = el.getBoundingClientRect().bottom - 4;
+    let hidden = 0;
+    for (const row of el.children) if (row.getBoundingClientRect().bottom > fold) hidden++;
+    setMore((prev) => (prev === hidden ? prev : hidden));
+  }, []);
+  useLayoutEffect(() => {
+    measureMore();
+    const el = list.current;
+    if (!el) return;
+    const observer = new ResizeObserver(measureMore);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [measureMore, order]);
+
   return (
-    <RailSection
-      id="rail-rooms"
-      title="Rooms"
-      meta={
-        <>
-          <span className="font-mono tabular-nums">{layout.rooms.length}</span> by utilisation
-          {held ? " · order held" : ""}
-          {over > 0 ? (
-            <>
-              {" "}
-              · <span className="font-mono text-warning tabular-nums">{over}</span> over warn
-            </>
-          ) : null}
-        </>
-      }
-      className="min-h-56 flex-1"
-    >
+    <RailSection id="rail-rooms" title="Rooms" meta={held ? "Order held while you point" : "Fullest first"} className="min-h-56 flex-1">
       <ul
-        className="min-h-0 flex-1 overflow-y-auto py-1"
+        ref={list}
+        onScroll={measureMore}
+        // While rows are hidden below, the last visible one fades out instead of being cut by the
+        // next section; the "more" line under the list says how many and scrolls to them.
+        className={`min-h-0 flex-1 overflow-y-auto py-1 ${more > 0 ? "mask-[linear-gradient(to_bottom,black_calc(100%-2.5rem),transparent)]" : ""}`}
         onPointerEnter={() => setHeld(true)}
         onPointerLeave={() => {
           setHeld(false);
@@ -219,6 +236,15 @@ export function RoomsList({
           );
         })}
       </ul>
+      {more > 0 ? (
+        <button
+          type="button"
+          onClick={() => list.current?.scrollBy({ top: list.current.clientHeight * 0.8, behavior: "smooth" })}
+          className="flex min-h-8 shrink-0 items-center gap-1.5 px-4 text-12 text-muted-foreground transition-colors duration-120 ease-standard hover:text-foreground sm:px-5 motion-reduce:transition-none pointer-coarse:min-h-11"
+        >
+          <span className="font-mono tabular-nums">{more}</span> more below <span aria-hidden="true">↓</span>
+        </button>
+      ) : null}
     </RailSection>
   );
 }
@@ -252,6 +278,7 @@ const RoomRow = memo(function RoomRow({
   );
   const level = live?.level ?? "ok";
   const tone = level === "block" ? "text-destructive" : level === "warn" ? "text-warning" : "text-foreground";
+  // One number per row: the count. Capacity shows on hover, focus and selection.
   return (
     <li>
       <button
@@ -266,14 +293,18 @@ const RoomRow = memo(function RoomRow({
         onPointerEnter={() => highlight.set(room.id)}
         onFocus={() => highlight.set(room.id)}
         onBlur={() => highlight.set(null)}
-        className="relative grid h-9 w-full contain-content grid-cols-[auto_minmax(0,1fr)_minmax(3rem,5rem)_5.5rem] items-center gap-3 px-4 text-left pointer-coarse:h-11 sm:px-5 transition-colors duration-120 ease-standard before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 hover:bg-card/60 aria-current:bg-card/60 aria-current:before:bg-brand motion-reduce:transition-none"
+        className="group/row relative grid min-h-9 w-full contain-content grid-cols-[0.5rem_minmax(0,1fr)_minmax(2rem,4rem)_4.5rem] items-center gap-3 px-4 py-1.5 text-left pointer-coarse:min-h-11 sm:px-5 transition-colors duration-120 ease-standard before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 hover:bg-foreground/4 focus-visible:bg-foreground/4 aria-current:bg-foreground/6 aria-current:before:bg-brand motion-reduce:transition-none"
       >
-        <StatusDot state={levelState(level)} label={levelWords(level, room.warn_at_pct, room.block_at_pct)} />
-        <span className="truncate text-13">{room.name}</span>
+        {/* Calm by default: a shape only for a room that is nearly full or full. */}
+        {level === "ok" ? <span aria-hidden="true" /> : <StatusDot state={levelState(level)} label={levelWords(level, room.warn_at_pct, room.block_at_pct)} />}
+        {/* The name wraps at words onto a second line rather than being cut. */}
+        <span className="line-clamp-2 text-13 leading-tight">{room.name}</span>
         <OccupancyBar ratio={0} level={level} fillRef={fill} className="h-1" />
         <span className="text-right font-mono text-13 tabular-nums">
           <span ref={count} className={tone} />
-          <span className="text-12 text-muted-foreground">/{formatNumber(room.capacity)}</span>
+          <span className="hidden text-12 text-muted-foreground group-hover/row:inline group-focus-visible/row:inline group-aria-current/row:inline">
+            /{formatNumber(room.capacity)}
+          </span>
         </span>
       </button>
     </li>
@@ -403,42 +434,32 @@ function isRoutine(item: FeedItem): boolean {
 export function LiveFeed({ layout, timeZone }: { layout: VenueLayout; timeZone: string }) {
   const { store } = useCommand();
   const feed = useSlice(store.feed);
-  const [mode, setMode] = useState<"notable" | "all">("notable");
   const label = useMemo(() => new Map(layout.checkpoints.map((c) => [c.id, c.label])), [layout]);
   const roomName = useMemo(() => new Map(layout.rooms.map((r) => [r.id, r.name])), [layout]);
   const exits = useMemo(() => new Set(layout.checkpoints.filter((c) => c.direction === "out").map((c) => c.id)), [layout]);
-  const rows = (mode === "notable" ? feed.filter((item) => !isRoutine(item)) : feed).slice(0, 12);
-  const toggle = (value: "notable" | "all", text: string) => (
-    <button
-      type="button"
-      aria-pressed={mode === value}
-      onClick={() => setMode(value)}
-      className="px-1.5 text-12 text-muted-foreground aria-pressed:text-foreground aria-pressed:underline aria-pressed:decoration-foreground/40 aria-pressed:underline-offset-4 hover:text-foreground"
-    >
-      {text}
-    </button>
-  );
+  // Only what someone might act on: refusals, alerts, gate changes, recounts. Every scan is in
+  // the Access log; the minute is enough here, the second is on the log.
+  const rows = feed.filter((item) => !isRoutine(item)).slice(0, 6);
   return (
     <RailSection
       id="rail-feed"
-      title="Live feed"
+      title="Recent activity"
       meta={
-        <span className="flex items-center" role="group" aria-label="Show">
-          {toggle("notable", "Notable")}
-          {toggle("all", "All scans")}
-        </span>
+        <Link to="/access-log" className="text-muted-foreground transition-colors duration-120 hover:text-foreground">
+          Access log →
+        </Link>
       }
       className="shrink-0"
     >
-      <ol aria-label={mode === "notable" ? "Recent notable events" : "Last 12 events"} className="min-h-[calc(4*1.75rem+0.5rem)] max-h-[calc(12*1.75rem+0.5rem)] overflow-hidden py-1">
+      <ol aria-label="Recent refusals, alerts and gate changes" className="py-1.5">
         {rows.length === 0 ? (
           <li className="px-4 py-1.5 text-13 leading-relaxed text-muted-foreground sm:px-5">
-            {mode === "notable" ? "Nothing needs attention. Refusals, alerts and gate changes appear here." : "Waiting for the first scan…"}
+            Nothing needs attention. Refusals, alerts and gate changes appear here.
           </li>
         ) : null}
         {rows.map((item) => (
-          <li key={item.id} className="grid h-7 grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-3 px-4 text-13 sm:px-5">
-            <span className="font-mono text-12 text-muted-foreground tabular-nums">{formatClock(item.at, timeZone)}</span>
+          <li key={item.id} className="grid min-h-8 grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-3 px-4 text-13 sm:px-5">
+            <span className="font-mono text-12 text-muted-foreground tabular-nums">{formatClock(item.at, timeZone, { seconds: false })}</span>
             <FeedText item={item} label={label} exits={exits} roomName={roomName} />
           </li>
         ))}

@@ -222,13 +222,13 @@ export default function VenueNew() {
         meta="Name the building and its floors. Next you draw its zones and rooms."
       />
 
-      <div className="xl:grid xl:grid-cols-[minmax(0,40rem)_minmax(0,22rem)] xl:gap-10">
+      <div className="xl:grid xl:grid-cols-[minmax(0,40rem)_minmax(16rem,24rem)] xl:gap-6 2xl:grid-cols-[minmax(0,40rem)_26rem] 2xl:gap-8">
         <FormColumn>
           <form
             noValidate
             onSubmit={(event: FormEvent) => event.preventDefault()}
             aria-label="New venue"
-            className="flex flex-col gap-6"
+            className="flex flex-col gap-8"
           >
             {restored ? (
               <Notice>
@@ -242,7 +242,7 @@ export default function VenueNew() {
             ) : null}
 
             <section aria-labelledby="venue-building" className="flex flex-col gap-4">
-              <h2 id="venue-building" className="border-b border-border pb-1.5 text-12 font-medium">
+              <h2 id="venue-building" className="border-b border-border pb-2 text-13 font-medium">
                 The building
               </h2>
               <Field label="Name" id="venue-name" error={errors.name} hint="As attendees know it, e.g. Kololo Pavilion.">
@@ -289,7 +289,7 @@ export default function VenueNew() {
             </section>
 
             <section aria-labelledby="venue-rooms" className="flex flex-col gap-4">
-              <h2 id="venue-rooms" className="border-b border-border pb-1.5 text-12 font-medium">
+              <h2 id="venue-rooms" className="border-b border-border pb-2 text-13 font-medium">
                 Rooms
               </h2>
               <Field
@@ -329,23 +329,23 @@ export default function VenueNew() {
                 Create venue
               </ActionButton>
             </div>
-            <p className="-mt-3 text-right text-12 text-muted-foreground">
+            <p className="-mt-5 text-right text-12 text-muted-foreground">
               Cancel keeps what you typed for this session.
             </p>
           </form>
         </FormColumn>
 
-        <aside aria-label="What happens next" className="hidden px-4 py-6 xl:block xl:px-0">
-          <h2 className="border-b border-border pb-1.5 text-12 font-medium">What happens next</h2>
-          <ol className="mt-1 text-13">
+        <aside aria-label="What happens next" className="hidden py-6 xl:sticky xl:top-0 xl:block xl:self-start">
+          <h2 className="border-b border-border pb-2 text-13 font-medium">What happens next</h2>
+          <ol className="text-13">
             {[
               ["Create the venue", "Its name, city, time zone and floors."],
               ["Draw its zones", "Drag on the grid: one zone per hall, wing or garden."],
               ["Draw rooms inside them", "Each with a capacity and the points where it warns and stops entry."],
               ["Publish the layout", "Gates and the Command Center map use it from then on."],
             ].map(([title, text], index) => (
-              <li key={title} className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-x-2 border-b border-border py-2.5">
-                <span className={`font-mono text-11 tabular-nums ${index === 0 ? "text-foreground" : "text-muted-foreground"}`}>{index + 1}</span>
+              <li key={title} className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-x-2 border-b border-border py-3">
+                <span className={`font-mono text-12 tabular-nums ${index === 0 ? "text-foreground" : "text-muted-foreground"}`}>{index + 1}</span>
                 <span>
                   <span className={index === 0 ? "text-foreground" : "text-foreground/80"}>{title}</span>
                   <span className="mt-0.5 block text-12 text-muted-foreground">{text}</span>

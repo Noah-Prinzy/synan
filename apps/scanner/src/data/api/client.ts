@@ -23,7 +23,6 @@ export const PATHS = {
   signingKeys: { method: "GET", path: "/auth/signing-keys" },
   time: { method: "GET", path: "/time" },
   myAssignments: { method: "GET", path: "/me/assignments" },
-  listEvents: { method: "GET", path: "/events" },
   getEvent: { method: "GET", path: "/events/:slug" },
   allowlist: { method: "GET", path: "/events/:id/allowlist" },
   postScans: { method: "POST", path: "/scans" },

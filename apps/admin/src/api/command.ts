@@ -77,9 +77,10 @@ export function createCommandApi(client: ApiClient, cache: SharedCache, hooks: {
           if (event) rows.push(event);
         }
       } else {
-        // DIFFERENCE: supervisors and desk clerks may not call GET /admin/events (operators only);
-        // the public list has published and live, listed events only.
-        const { items } = await allPages((cursor) => client.call("listEvents", { query: { limit: 500, cursor } }));
+        // Supervisors and desk clerks may not call GET /admin/events (operators only): GET /events with
+        // scope=work lists the events they may work, unlisted ones included — published and live events
+        // for supervisors, only their desk events for desk clerks.
+        const { items } = await allPages((cursor) => client.call("listEvents", { query: { scope: "work", limit: 500, cursor } }));
         for (const row of items) {
           cache.venueOfEvent.set(row.id, row.venue.id);
           const event = toCommandEvent(row);

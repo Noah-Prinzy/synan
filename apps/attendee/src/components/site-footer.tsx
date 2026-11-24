@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { BRAND, Wordmark } from "@synan/ui/brand";
+import { ThemeSwitch } from "@synan/ui/components";
 
 const columns: { title: string; links: { to: string; label: string }[] }[] = [
   {
@@ -33,6 +34,7 @@ export default function SiteFooter() {
           <p className="mt-3 max-w-[32ch] text-15 text-muted-foreground">
             Your pass, your agenda and the venue's updates, for every event you attend.
           </p>
+          <ThemeSwitch density="compact" className="mt-6" legendClassName="text-13 font-medium text-muted-foreground" />
         </div>
         {columns.map((column) => (
           <div key={column.title} className="border-b border-border px-4 py-8 sm:px-6 md:border-b-0 md:border-l md:px-8">

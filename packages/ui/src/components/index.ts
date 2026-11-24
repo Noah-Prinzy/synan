@@ -24,3 +24,6 @@ export * from './shell';
 
 // Data display components that depend on the contracts runtime are NOT re-exported
 // here; import them from "@synan/ui/data" (see components/data/index.ts).
+
+// Theme: System / Light / Dark, remembered per device (see ../theme and styles/theme.css)
+export * from '../theme';

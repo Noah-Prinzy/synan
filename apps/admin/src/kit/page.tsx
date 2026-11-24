@@ -37,6 +37,34 @@ export const PROSE = "max-w-[68ch]";
 /** A main column with an aside on the right from 1024 up; stacked below. */
 export const SPLIT = "grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)] 2xl:grid-cols-[minmax(0,1fr)_26rem]";
 
+/**
+ * Type roles. One size and weight per role, everywhere:
+ *   title     the page title (PageHeader)            28 display
+ *   heading   a panel or section heading             13 medium
+ *   body      text, table cells, controls            13 regular
+ *   label     field labels, table heads, meta, hints 12 regular, muted
+ *   figure    a headline number                      40 mono (28 in a narrow cell)
+ *   value     a number in a row or a table           13 mono tabular, right-aligned in columns
+ */
+export const TYPE = {
+  heading: "text-13 font-medium",
+  body: "text-13",
+  label: "text-12 text-muted-foreground",
+  value: "font-mono text-13 tabular-nums",
+} as const;
+
+/**
+ * A row action repeated down a table or list (Duplicate, Handover, Open): quiet at rest — muted text,
+ * no frame — with a hairline on hover and focus. 32px tall on a mouse, 44px under a coarse pointer.
+ * Never a filled or bordered button in every row.
+ */
+export const ROW_ACTION =
+  "pressable inline-flex h-8 shrink-0 items-center gap-1.5 border border-transparent px-2.5 text-13 whitespace-nowrap text-muted-foreground transition-colors duration-120 ease-standard hover:border-border hover:text-foreground focus-visible:border-border focus-visible:text-foreground disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none pointer-coarse:h-11 [&_svg]:size-4 [&_svg]:shrink-0";
+
+/** A square icon-only control: 32px on a mouse, 44px under a coarse pointer, icon 16px at 1.5px stroke. */
+export const ICON_BUTTON =
+  "pressable inline-grid size-8 shrink-0 place-items-center border border-transparent text-muted-foreground transition-colors duration-120 ease-standard hover:border-border hover:text-foreground focus-visible:border-border disabled:pointer-events-none disabled:opacity-40 motion-reduce:transition-none pointer-coarse:size-11 [&_svg]:size-4";
+
 export function PageHeader({
   code: _code,
   title,

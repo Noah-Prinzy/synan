@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { GateHeartbeat, type StaffAssignment, type TokenPair } from "@synan/contracts/rest";
 import { ClientHeartbeat } from "@synan/contracts/ws";
 import { ApiFailure, refreshWithRetry } from "../src/data/api/client";
-import { gatesFromAssignments } from "../src/data/api/runtime";
+import { gatesFromAssignments, heartbeatAllowlistAt } from "../src/data/api/runtime";
 import { heartbeatFrame } from "../src/data/api/stream";
 
 const EVENT = "11111111-1111-4111-8111-111111111111";
@@ -46,7 +46,50 @@ describe("pairing from GET /me/assignments alone", () => {
     expect(gatesFromAssignments([later], T).gates[0]!.api!.assignmentId).toBe("later");
     expect(gatesFromAssignments([assignment(1, { shift_end: iso(T - 1) })], T).gates).toHaveLength(0);
     expect(gatesFromAssignments([assignment(1, { handed_over_at: iso(T - 1) })], T).gates).toHaveLength(0);
-    expect(gatesFromAssignments([assignment(1, { event_id: null, event: null })], T)).toEqual({ gates: [], event: null });
+    expect(gatesFromAssignments([assignment(1, { event_id: null, event: null })], T)).toEqual({ gates: [], event: null, roomNames: {}, slugsWithoutRooms: [] });
+  });
+
+  it("names the room chips from each item's event.rooms (no public event read: unlisted events too) and the gate's own room", () => {
+    const rooms = [
+      { room_id: "r-hall", name: "Hall A" },
+      { room_id: "r-box", name: "Boardroom" },
+    ];
+    const ev = { id: EVENT, title: "Private dinner", slug: "private-dinner", rooms };
+    const { roomNames, slugsWithoutRooms } = gatesFromAssignments([assignment(1, { event: ev }), assignment(2, { event: ev })], T);
+    expect(roomNames).toEqual({ "r-hall": "Hall A", "r-box": "Boardroom", room: "Main Auditorium" });
+    expect(slugsWithoutRooms).toEqual([]);
+    // An event with no rooms is named, and needs nothing more.
+    expect(gatesFromAssignments([assignment(1, { event: { ...ev, rooms: [] } })], T)).toMatchObject({ roomNames: {}, slugsWithoutRooms: [] });
+  });
+
+  it("an older server (no rooms on the item): the event's slug is handed on for GET /events/:slug, once", () => {
+    const ev = { id: EVENT, title: "Summit", slug: "summit" };
+    const out = gatesFromAssignments([assignment(1, { event: ev }), assignment(2, { event: ev })], T);
+    expect(out.slugsWithoutRooms).toEqual(["summit"]);
+    expect(out.roomNames).toEqual({ room: "Main Auditorium" });
+    // No slug either: nothing to read (the chips are left out).
+    expect(gatesFromAssignments([assignment(1)], T).slugsWithoutRooms).toEqual([]);
+  });
+});
+
+describe("the allowlist age on heartbeats after a user switch on one phone (B1)", () => {
+  const CP1 = "22222222-2222-4222-8222-000000000001";
+  const held = { checkpointId: CP1, issuedAtMs: T - 8 * 60_000, user: "user-x" };
+
+  it("the person who fetched it reports its issued_at at that gate", () => {
+    expect(heartbeatAllowlistAt(held, CP1, "user-x")).toBe(iso(T - 8 * 60_000));
+  });
+
+  it("the next person on the same phone reports null until their own list is fetched, then that list's", () => {
+    expect(heartbeatAllowlistAt(held, CP1, "user-y")).toBeNull();
+    expect(heartbeatAllowlistAt({ ...held, issuedAtMs: T - 2 * 60_000, user: "user-y" }, CP1, "user-y")).toBe(iso(T - 2 * 60_000));
+  });
+
+  it("null with no list, another gate's list, no one signed in, or a list stored before its fetcher was recorded", () => {
+    expect(heartbeatAllowlistAt(null, CP1, "user-x")).toBeNull();
+    expect(heartbeatAllowlistAt(held, "22222222-2222-4222-8222-000000000002", "user-x")).toBeNull();
+    expect(heartbeatAllowlistAt(held, CP1, null)).toBeNull();
+    expect(heartbeatAllowlistAt({ ...held, user: null }, CP1, "user-x")).toBeNull();
   });
 });
 

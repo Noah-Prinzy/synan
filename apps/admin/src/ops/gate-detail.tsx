@@ -15,7 +15,28 @@ import { ActionButton, Button, RewardMoment, buttonClass, cn } from "@synan/ui/c
 import { ResultChip, SignalShape, StatusDot, formatAge, formatClock, formatNumber, formatOffset } from "@synan/ui/data";
 import type { GateDetail, OpsScan, TestRead } from "@synan/mock/command";
 import { Can } from "../access/session";
-import { EmptyState, ErrorState, errorCode, KeyValues, LoadingState, PageHeader, SectionHead, TIER_LABEL, formatStamp, linkClass, useDocumentTitle, useResource } from "../kit";
+import {
+  BackLink,
+  EmptyState,
+  ErrorState,
+  errorCode,
+  GUTTER_X,
+  KeyValues,
+  LoadingState,
+  PageHeader,
+  SPLIT,
+  SectionHead,
+  TIER_LABEL,
+  TYPE,
+  Table,
+  Td,
+  Th,
+  formatStamp,
+  linkClass,
+  rowClass,
+  useDocumentTitle,
+  useResource,
+} from "../kit";
 import { api, configure, mode } from "../live/backend";
 import { useCommand } from "../live/context";
 import { useNow } from "../live/hooks";
@@ -35,11 +56,7 @@ export default function GateDetailScreen() {
   const checkpoint = layout?.checkpoints.find((c) => c.id === id) ?? null;
   useDocumentTitle(checkpoint ? `${checkpoint.label} · Gate health` : "Gate detail");
 
-  const back = (
-    <Link to="/gates" className="hover:text-foreground">
-      ← Gate health
-    </Link>
-  );
+  const back = <BackLink to="/gates">Gate health</BackLink>;
 
   if (!ready || !event) {
     return (
@@ -55,6 +72,7 @@ export default function GateDetailScreen() {
         <PageHeader back={back} code="D12b" title="Gate not found" />
         <EmptyState
           title="No gate with that ID at this venue"
+          className={GUTTER_X}
           action={
             <Link to="/gates" className={buttonClass("secondary", "compact")}>
               See every gate
@@ -106,7 +124,13 @@ function GateView({ checkpoint, eventId, timeZone, back }: { checkpoint: Checkpo
             <span>{checkpoint.perimeter ? "Perimeter" : `Interior${room ? ` · ${room.name}` : ""}`}</span>
             <span aria-hidden="true">·</span>
             <span>
-              Hardware <span className="font-mono text-12 text-foreground">{checkpoint.hardware_id ?? "not recorded"}</span>
+              {checkpoint.hardware_id ? (
+                <>
+                  Hardware <span className="font-mono text-foreground tabular-nums">{checkpoint.hardware_id}</span>
+                </>
+              ) : (
+                "No hardware ID recorded"
+              )}
             </span>
             {marked !== undefined ? (
               <>
@@ -177,48 +201,62 @@ function GateView({ checkpoint, eventId, timeZone, back }: { checkpoint: Checkpo
       <LastKnown />
       {test ? <TestReadLine test={test} gate={gate} /> : null}
       {marked !== undefined ? (
-        <p className="border-b border-border px-4 py-2 text-12 text-muted-foreground sm:px-6">
+        <p className={cn("border-b border-border py-2.5 text-12 text-muted-foreground", GUTTER_X)}>
           Maintenance marks are kept on this page only in this preview: other operators do not see them yet, and a reload clears them.
         </p>
       ) : null}
 
       {detail.status === "loading" ? (
-        <LoadingState label="Loading the gate's scans…" rows={6} />
+        <LoadingState label="Loading the gate's scans…" rows={6} className={GUTTER_X} />
       ) : detail.status === "error" ? (
         <ErrorState title="Could not load this gate" error={detail.error} onRetry={() => detail.reload()} />
       ) : (
-        <div className="xl:grid xl:grid-cols-12">
-          <div className="min-w-0 xl:col-span-8">
+        <div className={SPLIT}>
+          <div className="min-w-0">
             <ThroughputChart detail={detail.data} timeZone={timeZone} />
             <Results detail={detail.data} />
             <LastScans scans={detail.data.last_scans} timeZone={timeZone} perimeter={checkpoint.perimeter} />
           </div>
-          <aside aria-label="Status, link history and staff" className="min-w-0 border-t border-border xl:col-span-4 xl:border-t-0 xl:border-l">
-            <SectionHead title="Status" meta={gate ? "live" : undefined} />
+          <aside aria-label="Status, link history and staff" className="min-w-0 border-t border-border lg:border-t-0 lg:border-l">
+            <SectionHead title="Status" meta={gate ? "Live" : undefined} />
             <KeyValues
               rows={[
                 ["Link", gate ? <StatusDot state={LINK_VIEW[gate.link_state].state} label={LINK_VIEW[gate.link_state].label} showLabel /> : "—"],
                 ["Heartbeat", <Heartbeat gate={gate} at={activity?.heartbeat_at ?? null} now={now} />],
                 [
                   "Queue",
-                  <span className={cn("font-mono text-12 tabular-nums", (gate?.queue_depth ?? 0) > 0 && "text-warning")}>
-                    {formatNumber(gate?.queue_depth ?? 0)} {(gate?.queue_depth ?? 0) === 1 ? "scan" : "scans"} waiting to sync
-                  </span>,
+                  (gate?.queue_depth ?? 0) > 0 ? (
+                    <span className="text-warning">
+                      <span className={TYPE.value}>{formatNumber(gate?.queue_depth ?? 0)}</span> {(gate?.queue_depth ?? 0) === 1 ? "scan" : "scans"} waiting to sync
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">Nothing waiting to sync</span>
+                  ),
                 ],
                 [
                   "Clock",
                   gate && gate.clock_offset_ms !== null ? (
-                    <span className={cn("font-mono text-12 tabular-nums", clockWrong(gate) && "text-warning")}>
-                      {gate.clock_offset_ms === 0 ? "in sync" : formatOffset(gate.clock_offset_ms)}
-                      {clockWrong(gate) ? <span className="font-sans"> · more than two minutes out</span> : null}
-                    </span>
+                    gate.clock_offset_ms === 0 ? (
+                      "In sync"
+                    ) : (
+                      <span className={cn(clockWrong(gate) && "text-warning")}>
+                        <span className={TYPE.value}>{formatOffset(gate.clock_offset_ms)}</span>
+                        {clockWrong(gate) ? " · more than two minutes out" : null}
+                      </span>
+                    )
                   ) : (
                     "—"
                   ),
                 ],
                 [
                   "Last 15 min",
-                  <span className="font-mono text-12 tabular-nums">{activity ? `${formatNumber(activity.scans_last_15m)} scans` : "—"}</span>,
+                  activity ? (
+                    <span>
+                      <span className={TYPE.value}>{formatNumber(activity.scans_last_15m)}</span> scans
+                    </span>
+                  ) : (
+                    "—"
+                  ),
                 ],
               ]}
             />
@@ -238,16 +276,16 @@ type TestState = { result: TestRead | null; failed: boolean; unavailable?: boole
 function TestReadLine({ test, gate }: { test: TestState; gate: GateLive | undefined }) {
   if (test.unavailable) {
     return (
-      <p role="status" className="flex items-center gap-2 border-b border-border px-4 py-2 text-12 text-muted-foreground sm:px-6">
-        <SignalShape state="idle" />
+      <p role="status" className={cn("flex min-h-10 items-center gap-2 border-b border-border py-2 text-12 text-muted-foreground", GUTTER_X)}>
+        <SignalShape state="idle" className="shrink-0" />
         Test read is not available yet. To check this gate now, scan a test band or pass at it and watch it arrive in the last scans below.
       </p>
     );
   }
   if (test.failed || !test.result) {
     return (
-      <p role="alert" className="flex items-center gap-2 border-b border-border px-4 py-2 text-12 text-destructive sm:px-6">
-        <SignalShape state="stop" />
+      <p role="alert" className={cn("flex min-h-10 items-center gap-2 border-b border-border py-2 text-12 text-destructive", GUTTER_X)}>
+        <SignalShape state="stop" className="shrink-0" />
         {gate?.link_state === "offline"
           ? "The gate did not answer: it is offline. A test read needs the link; check power and network at the gate."
           : "The gate did not answer the test read. Try again, or check the device at the gate."}
@@ -256,7 +294,7 @@ function TestReadLine({ test, gate }: { test: TestState; gate: GateLive | undefi
   }
   const read = test.result;
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-border px-4 py-2 text-12 sm:px-6">
+    <div className={cn("flex min-h-10 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border py-2 text-12", GUTTER_X)}>
       <RewardMoment>
         Reader answered in <span className="font-mono tabular-nums">{read.round_trip_ms} ms</span>
       </RewardMoment>
@@ -272,13 +310,23 @@ function TestReadLine({ test, gate }: { test: TestState; gate: GateLive | undefi
 function Heartbeat({ gate, at, now }: { gate: GateLive | undefined; at: string | null; now: number }) {
   if (gate?.link_state === "offline") {
     return (
-      <span className="font-mono text-12 text-destructive tabular-nums">
-        {gate.offlineSince ? `none for ${formatAge(now - gate.offlineSince)}` : "never heard"}
+      <span className="text-destructive">
+        {gate.offlineSince ? (
+          <>
+            None for <span className={TYPE.value}>{formatAge(now - gate.offlineSince)}</span>
+          </>
+        ) : (
+          "Never heard from"
+        )}
       </span>
     );
   }
   if (!at) return <span className="text-muted-foreground">—</span>;
-  return <span className="font-mono text-12 tabular-nums">{formatAge(now - Date.parse(at))} ago</span>;
+  return (
+    <span>
+      <span className={TYPE.value}>{formatAge(now - Date.parse(at))}</span> ago
+    </span>
+  );
 }
 
 function ThroughputChart({ detail, timeZone }: { detail: GateDetail; timeZone: string }) {
@@ -292,15 +340,16 @@ function ThroughputChart({ detail, timeZone }: { detail: GateDetail; timeZone: s
       <SectionHead
         id="gate-throughput"
         title="Throughput by 5 minutes"
+        className={GUTTER_X}
         meta={
           <>
-            last hour · <span className="font-mono tabular-nums">{formatNumber(total)}</span> scans · peak{" "}
+            Last hour · <span className="font-mono tabular-nums">{formatNumber(total)}</span> scans · peak{" "}
             <span className="font-mono tabular-nums">{formatNumber(max)}</span>
           </>
         }
       />
-      <div className="px-4 pt-4 pb-3 sm:px-6">
-        <ol className="flex h-28 items-end gap-1 border-b border-border">
+      <div className={cn("pt-5 pb-4", GUTTER_X)}>
+        <ol className="flex h-32 items-end gap-1 border-b border-border">
           {counts.map((count, i) => {
             const start = from + i * bucket_ms;
             return (
@@ -318,14 +367,14 @@ function ThroughputChart({ detail, timeZone }: { detail: GateDetail; timeZone: s
             );
           })}
         </ol>
-        <div aria-hidden="true" className="mt-1 flex gap-1 font-mono text-11 text-muted-foreground tabular-nums">
+        <div aria-hidden="true" className="mt-1.5 flex gap-1 font-mono text-12 text-muted-foreground tabular-nums">
           {counts.map((_, i) => (
             <span key={i} className="min-w-0 flex-1 truncate">
               {i === last ? "now" : i % 3 === 0 ? formatClock(from + i * bucket_ms, timeZone, { seconds: false }) : ""}
             </span>
           ))}
         </div>
-        <p className="mt-2 text-11 text-muted-foreground">The last bar is the five minutes in progress. Implied exits are not counted.</p>
+        <p className="mt-3 text-12 text-muted-foreground">The last bar is the five minutes in progress. Implied exits are not counted.</p>
       </div>
     </section>
   );
@@ -336,19 +385,19 @@ function Results({ detail }: { detail: GateDetail }) {
   const max = Math.max(1, ...detail.results.map((row) => row.count));
   return (
     <section aria-labelledby="gate-results" className="border-t border-border">
-      <SectionHead id="gate-results" title="Results by code" meta="last hour" />
+      <SectionHead id="gate-results" title="Results by code" meta="Last hour" className={GUTTER_X} />
       {detail.results.length === 0 ? (
-        <p className="px-4 py-3 text-13 text-muted-foreground sm:px-6">No scans at this gate in the last hour.</p>
+        <p className={cn("py-4 text-13 text-muted-foreground", GUTTER_X)}>No scans at this gate in the last hour.</p>
       ) : (
-        <ul className="py-1">
+        <ul className="py-2">
           {detail.results.map((row) => (
-            <li key={row.result} className="grid h-8 grid-cols-[9.5rem_minmax(0,1fr)_3.5rem_3rem] items-center gap-3 px-4 sm:grid-cols-[11rem_minmax(0,1fr)_4rem_3.5rem] sm:px-6">
+            <li key={row.result} className={cn("grid h-9 grid-cols-[10rem_minmax(0,1fr)_3.5rem_3rem] items-center gap-4 sm:grid-cols-[12rem_minmax(0,1fr)_4rem_3.5rem]", GUTTER_X)}>
               <ResultChip result={row.result} className="truncate" />
               <span aria-hidden="true" className="h-1 bg-border">
                 <span className="block h-full origin-left bg-foreground/40" style={{ transform: `scaleX(${row.count / max})` }} />
               </span>
-              <span className="text-right font-mono text-12 tabular-nums">{formatNumber(row.count)}</span>
-              <span className="text-right font-mono text-11 text-muted-foreground tabular-nums">{Math.round((row.count / Math.max(1, total)) * 100)}%</span>
+              <span className={cn("text-right", TYPE.value)}>{formatNumber(row.count)}</span>
+              <span className="text-right font-mono text-12 text-muted-foreground tabular-nums">{Math.round((row.count / Math.max(1, total)) * 100)}%</span>
             </li>
           ))}
         </ul>
@@ -363,6 +412,7 @@ function LastScans({ scans, timeZone, perimeter }: { scans: OpsScan[]; timeZone:
       <SectionHead
         id="gate-scans"
         title="Last 50 scans"
+        className={GUTTER_X}
         meta={
           <Can I="scans.view">
             <Link to={`/access-log?gate=${scans[0]?.checkpoint_id ?? ""}`} className={linkClass}>
@@ -372,26 +422,42 @@ function LastScans({ scans, timeZone, perimeter }: { scans: OpsScan[]; timeZone:
         }
       />
       {scans.length === 0 ? (
-        <p className="px-4 py-3 text-13 text-muted-foreground sm:px-6">
+        <p className={cn("py-4 text-13 text-muted-foreground", GUTTER_X)}>
           No scans here yet.{perimeter ? "" : " Interior doors read wristbands only, so a quiet door is normal between sessions."}
         </p>
       ) : (
-        <ol className="max-h-[32rem] overflow-y-auto">
-          {scans.map((scan) => (
-            <li
-              key={scan.id}
-              className="grid grid-cols-[7.5rem_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-border px-4 py-1.5 text-12 sm:h-8 sm:grid-cols-[7.5rem_10rem_5rem_6.5rem_minmax(0,1fr)] sm:px-6 sm:py-0"
-            >
-              <span className="font-mono tabular-nums text-muted-foreground">{formatScanTime(scan.corrected_at, timeZone)}</span>
-              <ResultChip result={scan.result} className="min-w-0 truncate" />
-              <span className="text-right text-muted-foreground sm:order-last sm:text-left">
-                {scan.offline ? "offline · synced" : scan.latency_ms !== null ? <span className="font-mono tabular-nums">{scan.latency_ms} ms</span> : "—"}
-              </span>
-              <span className="hidden text-muted-foreground sm:block">{scan.tier ? TIER_LABEL[scan.tier] : "—"}</span>
-              <span className="hidden text-muted-foreground sm:block">{scan.carrier_kind ? CARRIER_LABEL[scan.carrier_kind] : "Unknown"}</span>
-            </li>
-          ))}
-        </ol>
+        <div className="max-h-128 overflow-y-auto">
+          <Table label="Last 50 scans at this gate, newest first">
+            <thead>
+              <tr>
+                <Th fit>Time</Th>
+                <Th fit>Result</Th>
+                <Th className="max-sm:hidden">Tier</Th>
+                <Th className="max-sm:hidden">Carrier</Th>
+                <Th fit numeric>
+                  Decided in
+                </Th>
+              </tr>
+            </thead>
+            <tbody>
+              {scans.map((scan) => (
+                <tr key={scan.id} className={rowClass}>
+                  <Td fit className="font-mono text-12 text-muted-foreground tabular-nums">
+                    {formatScanTime(scan.corrected_at, timeZone)}
+                  </Td>
+                  <Td fit>
+                    <ResultChip result={scan.result} />
+                  </Td>
+                  <Td className="text-muted-foreground max-sm:hidden">{scan.tier ? TIER_LABEL[scan.tier] : "—"}</Td>
+                  <Td className="text-muted-foreground max-sm:hidden">{scan.carrier_kind ? CARRIER_LABEL[scan.carrier_kind] : "Unknown"}</Td>
+                  <Td fit className="text-right text-muted-foreground">
+                    {scan.offline ? "Offline, synced" : scan.latency_ms !== null ? <span className={TYPE.value}>{scan.latency_ms} ms</span> : "—"}
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </div>
       )}
     </section>
   );
@@ -401,18 +467,18 @@ function LinkHistory({ detail, timeZone }: { detail: GateDetail; timeZone: strin
   const rows = [...detail.link_history].reverse();
   return (
     <section aria-labelledby="gate-links" className="border-t border-border">
-      <SectionHead id="gate-links" title="Link history" meta="this shift, newest first" />
-      <ol className="py-1">
+      <SectionHead id="gate-links" title="Link history" meta="This shift, newest first" />
+      <ol className="py-2">
         {rows.map((change, i) => {
           const view = LINK_VIEW[change.link_state];
           const next = rows[i - 1];
           const lasted = next ? Date.parse(next.at) - Date.parse(change.at) : null;
           return (
-            <li key={`${change.at}-${i}`} className="grid min-h-7 grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-3 px-4 text-12">
-              <span className="font-mono text-muted-foreground tabular-nums">{formatClock(change.at, timeZone)}</span>
+            <li key={`${change.at}-${i}`} className="grid min-h-9 grid-cols-[5rem_minmax(0,1fr)] items-center gap-3 px-4 text-13 sm:px-5">
+              <span className="font-mono text-12 text-muted-foreground tabular-nums">{formatClock(change.at, timeZone)}</span>
               <span className="flex min-w-0 items-center gap-2">
                 <StatusDot state={view.state} label={view.label} showLabel />
-                {lasted !== null ? <span className="truncate text-muted-foreground">for {formatAge(lasted)}</span> : <span className="text-muted-foreground">since</span>}
+                {lasted !== null ? <span className="truncate text-muted-foreground">for {formatAge(lasted)}</span> : <span className="text-muted-foreground">since then</span>}
               </span>
             </li>
           );
@@ -443,32 +509,29 @@ function Staff({
     <section aria-labelledby="gate-staff" className="border-t border-border">
       <SectionHead id="gate-staff" title="Assigned staff" />
       {assignments.status === "loading" ? (
-        <p className="px-4 py-3 text-12 text-muted-foreground">Loading…</p>
-      ) : assignments.status === "error" && errorCode(assignments.error) === "FORBIDDEN" ? (
-        // A supervisor may watch the gate but not read the shift plan (GET /staff-assignments is operators only).
-        <p className="px-4 py-3 text-12 text-muted-foreground">Shift assignments are kept by the organisers and admins.</p>
+        <p className="px-4 py-3 text-13 text-muted-foreground sm:px-5">Loading…</p>
       ) : assignments.status === "error" ? (
-        <p className="px-4 py-3 text-12 text-destructive">
+        <p className="px-4 py-3 text-13 text-destructive sm:px-5">
           Could not load the assignments.{" "}
           <button type="button" className={cn(linkClass, "text-foreground")} onClick={() => assignments.reload()}>
             Try again
           </button>
         </p>
       ) : mine.length === 0 ? (
-        <p className="px-4 py-3 text-12 text-muted-foreground">
+        <p className="px-4 py-3 text-13 text-muted-foreground sm:px-5">
           {perimeter ? "No one is assigned to this gate." : "No one is assigned here: interior doors read wristbands on fixed readers."}
         </p>
       ) : (
-        <ul className="py-1">
+        <ul>
           {mine.map((a) => {
             const onShift = !a.handed_over_at && Date.parse(a.shift_start) <= now && now < Date.parse(a.shift_end);
             return (
-              <li key={a.id} className="px-4 py-1.5 text-13">
+              <li key={a.id} className="border-b border-border px-4 py-3 text-13 last:border-b-0 sm:px-5">
                 <span className="flex items-center justify-between gap-3">
                   <span className="truncate">{a.staff_name}</span>
-                  <StatusDot state={onShift ? "ok" : "idle"} label={a.handed_over_at ? "Handed over" : onShift ? "On shift" : "Off shift"} showLabel className="text-12" />
+                  <StatusDot state={onShift ? "ok" : "idle"} label={a.handed_over_at ? "Handed over" : onShift ? "On shift" : "Off shift"} showLabel />
                 </span>
-                <span className="block font-mono text-11 text-muted-foreground tabular-nums">
+                <span className="mt-0.5 block font-mono text-12 text-muted-foreground tabular-nums">
                   {formatStamp(a.shift_start, timeZone)} – {formatClock(a.shift_end, timeZone, { seconds: false })}
                 </span>
               </li>

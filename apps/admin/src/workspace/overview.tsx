@@ -5,21 +5,28 @@
  * way into every other tab. A draft's unmet items open the wizard step that fixes them; a
  * published event's point at the tab that does.
  *
+ * Layout: three headline figures, large and calm, with a line of words each. Rooms and sessions
+ * are setup facts, not live figures, so they are said in words in the Facts rail. A published
+ * event whose every check passes shows readiness as one line, with the checks a click away.
+ *
  * States: loading (strip and checklist load on their own), error with retry per part,
  * not live yet ("—" with a note), closed (summary link instead of readiness).
  */
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
-import { buttonClass } from "@synan/ui/components";
-import { KpiCell, formatNumber, formatPercent } from "@synan/ui/data";
+import { buttonClass, cn } from "@synan/ui/components";
+import { KpiCell, SignalShape, formatNumber, formatPercent } from "@synan/ui/data";
 import type { ReadinessItem, ReadinessKey } from "@synan/mock/command";
-import { ReadinessChecklist } from "../events/parts/readiness-checklist";
+import { ReadinessChecklist, readinessSummary } from "../events/parts/readiness-checklist";
 import {
   ErrorState,
   KeyValues,
   LoadingState,
+  ROW_ACTION,
+  SPLIT,
   SectionHead,
+  TYPE,
   errorCode,
   formatDate,
   formatStamp,
@@ -34,6 +41,7 @@ import { useCan } from "../access/session";
 import { WORKSPACE_TAB_NEED, type WorkspaceTab } from "../routes";
 import { eventRooms, useWorkspaceEvent } from "./parts/context";
 import { plural } from "./parts/copy";
+import { Meter, RAIL_X } from "./parts/layout";
 
 /** Where a published event fixes an unmet readiness item (the wizard is for drafts). */
 const FIX_TAB: Partial<Record<ReadinessKey, { to: WorkspaceTab; label: string }>> = {
@@ -52,6 +60,9 @@ const QUICK_LINKS = [
   ["reports", "Reports", "Exports and the event summary"],
   ["settings", "Settings", "Name, capacity, retention, close"],
 ] as const;
+
+/** Panels in the main column pad 16px, the same as the readiness checklist beside them. */
+const PANEL_HEAD = "sm:px-4!";
 
 export default function WorkspaceOverview() {
   const { event, venue } = useWorkspaceEvent();
@@ -85,24 +96,16 @@ export default function WorkspaceOverview() {
   const daysWithSessions = new Set(sessionList.map((s) => formatDate(s.starts_at, tz))).size;
 
   return (
-    <div className="pb-8">
-      <Kpis
-        live={live}
-        summary={summary}
-        counts={counts}
-        rooms={venue.status === "ready" ? rooms.length : null}
-        places={places}
-        sessions={sessions.status === "ready" ? sessionList.length : null}
-        days={daysWithSessions}
-      />
+    <div className="pb-10">
+      <Kpis live={live} summary={summary} counts={counts} />
 
-      <div className="grid grid-cols-12">
-        <div className="col-span-12 flex min-w-0 flex-col gap-6 px-4 py-5 sm:px-6 xl:col-span-8">
+      <div className={SPLIT}>
+        <div className="flex min-w-0 flex-col gap-6 px-4 py-6 sm:px-6 2xl:px-8">
           {over ? (
             <section aria-labelledby="ov-over" className="border border-border">
-              <SectionHead id="ov-over" title="The event is over" />
-              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                <p className="max-w-120 text-13 text-muted-foreground">
+              <SectionHead id="ov-over" title="The event is over" className={PANEL_HEAD} />
+              <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
+                <p className="max-w-[60ch] text-13 leading-relaxed text-muted-foreground">
                   Closed {event.closed_at ? <span className="font-mono text-foreground tabular-nums">{formatStamp(event.closed_at, tz)}</span> : null}. The
                   summary shows how it went: attendance, the occupancy curve, the busiest rooms and gates, and the downloads.
                 </p>
@@ -115,16 +118,14 @@ export default function WorkspaceOverview() {
             <LoadingState label="Checking readiness…" className="border border-border px-4 sm:px-4" />
           ) : readiness.status === "error" ? (
             <ErrorState title="Could not check readiness" error={readiness.error} onRetry={() => readiness.reload()} className="m-0 sm:m-0" />
+          ) : event.state !== "draft" ? (
+            <PublishedReadiness items={readiness.data} eventId={event.id} />
           ) : (
-            <div className="flex flex-col gap-2">
-              <ReadinessChecklist
-                items={readiness.data}
-                title={event.state === "draft" ? "Ready to publish?" : "Readiness"}
-                published={event.state !== "draft"}
-                onFix={event.state === "draft" ? (step) => navigate(`/events/new/${step}?draft=${event.id}`) : undefined}
-              />
-              {event.state !== "draft" ? <PublishedFixes items={readiness.data} eventId={event.id} /> : null}
-            </div>
+            <ReadinessChecklist
+              items={readiness.data}
+              title="Ready to publish?"
+              onFix={(step) => navigate(`/events/new/${step}?draft=${event.id}`)}
+            />
           )}
 
           <section aria-labelledby="ov-next" className="border border-border">
@@ -132,8 +133,9 @@ export default function WorkspaceOverview() {
               id="ov-next"
               title={over ? "Sessions" : "Next sessions"}
               meta={`times in ${zoneLabel(tz)}`}
+              className={PANEL_HEAD}
               actions={
-                <Link to={`/events/${event.id}/schedule`} className={`${linkClass} text-11`}>
+                <Link to={`/events/${event.id}/schedule`} className={cn(linkClass, "text-12 whitespace-nowrap")}>
                   Full schedule
                 </Link>
               }
@@ -144,7 +146,7 @@ export default function WorkspaceOverview() {
             ) : null}
             {sessions.status === "ready" ? (
               upcoming.length === 0 ? (
-                <p className="px-4 py-3 text-13 text-muted-foreground">
+                <p className="max-w-[68ch] px-4 py-4 text-13 text-muted-foreground">
                   {sessionList.length === 0
                     ? "No sessions yet. Add them in the schedule: they make up the attendee agenda."
                     : over
@@ -156,16 +158,27 @@ export default function WorkspaceOverview() {
                   {upcoming.map((s) => {
                     const running = Date.parse(s.starts_at) <= now;
                     return (
-                      <li key={s.id} className="grid grid-cols-[7.5rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-4 py-2 text-13 last:border-b-0 sm:grid-cols-[10rem_minmax(0,1fr)_auto]">
-                        <span className="font-mono text-12 tabular-nums">
-                          <span className="hidden text-muted-foreground sm:inline">{formatDate(s.starts_at, tz, { weekday: true, year: false })} </span>
-                          {formatTime(s.starts_at, tz)}–{formatTime(s.ends_at, tz)}
+                      <li
+                        key={s.id}
+                        className="grid grid-cols-[6.5rem_minmax(0,1fr)_auto] items-center gap-4 border-b border-border px-4 py-2.5 last:border-b-0 sm:grid-cols-[8rem_minmax(0,1fr)_auto]"
+                      >
+                        <span className="min-w-0">
+                          <span className="block font-mono text-13 tabular-nums">
+                            {formatTime(s.starts_at, tz)}–{formatTime(s.ends_at, tz)}
+                          </span>
+                          <span className="block text-12 text-muted-foreground">{formatDate(s.starts_at, tz, { weekday: true, year: false })}</span>
                         </span>
                         <span className="min-w-0">
-                          <span className="block truncate">{s.title}</span>
+                          <span className="block truncate text-13">{s.title}</span>
                           <span className="block truncate text-12 text-muted-foreground">{roomName.get(s.room_id) ?? "—"}</span>
                         </span>
-                        <span className={running ? "text-12 text-success" : "text-12 text-muted-foreground"}>{running ? "Now" : ""}</span>
+                        {running ? (
+                          <span className="inline-flex items-center gap-1.5 text-12 text-success">
+                            <SignalShape state="ok" /> Now
+                          </span>
+                        ) : (
+                          <span />
+                        )}
                       </li>
                     );
                   })}
@@ -175,7 +188,7 @@ export default function WorkspaceOverview() {
           </section>
         </div>
 
-        <aside className="col-span-12 min-w-0 border-t border-border xl:col-span-4 xl:border-t-0 xl:border-l">
+        <aside className="min-w-0 border-t border-border lg:border-t-0 lg:border-l">
           <section aria-labelledby="ov-facts">
             <SectionHead id="ov-facts" title="Facts" />
             <KeyValues
@@ -197,6 +210,39 @@ export default function WorkspaceOverview() {
                   ),
                 ],
                 [
+                  "Rooms",
+                  venue.status === "ready" && rooms.length > 0 ? (
+                    <span key="r">
+                      <span className={TYPE.value}>{formatNumber(rooms.length)}</span> {plural(rooms.length, "room")}
+                      <span className="text-muted-foreground">
+                        , <span className={TYPE.value}>{formatNumber(places)}</span> places
+                      </span>
+                    </span>
+                  ) : venue.status === "ready" ? (
+                    <span className="text-muted-foreground">None yet</span>
+                  ) : (
+                    "…"
+                  ),
+                ],
+                [
+                  "Sessions",
+                  sessions.status === "ready" ? (
+                    sessionList.length > 0 ? (
+                      <span key="s">
+                        <span className={TYPE.value}>{formatNumber(sessionList.length)}</span> {plural(sessionList.length, "session")}
+                        <span className="text-muted-foreground">
+                          {" "}
+                          over <span className={TYPE.value}>{daysWithSessions}</span> {plural(daysWithSessions, "day")}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">None yet</span>
+                    )
+                  ) : (
+                    "…"
+                  ),
+                ],
+                [
                   "Time zone",
                   <span key="tz">
                     {tz.replace(/_/g, " ")} <span className="text-muted-foreground">· {zoneLabel(tz).split(" · ")[1]}</span>
@@ -206,7 +252,9 @@ export default function WorkspaceOverview() {
                 [
                   "Access rules",
                   event.access_rules_version > 0 ? (
-                    <span key="v" className="font-mono text-12 tabular-nums">v{event.access_rules_version}</span>
+                    <span key="v">
+                      Version <span className={TYPE.value}>{event.access_rules_version}</span>
+                    </span>
                   ) : (
                     <span className="text-muted-foreground">Not published</span>
                   ),
@@ -214,23 +262,23 @@ export default function WorkspaceOverview() {
                 [
                   "Published",
                   event.published_at ? (
-                    <span key="p" className="font-mono text-12 tabular-nums">{formatStamp(event.published_at, tz)}</span>
+                    <span key="p" className={TYPE.value}>{formatStamp(event.published_at, tz)}</span>
                   ) : (
                     <span className="text-muted-foreground">Not yet</span>
                   ),
                 ],
                 [
-                  "Grace period",
+                  "Scan records",
                   <span key="g">
-                    <span className="font-mono text-12 tabular-nums">{event.grace_buffer_hours} h</span>
-                    <span className="text-muted-foreground"> before scan records are deleted</span>
+                    Kept <span className={TYPE.value}>{event.grace_buffer_hours}</span> hours
+                    <span className="text-muted-foreground"> after closing</span>
                   </span>,
                 ],
                 [
                   "Last edited",
                   <span key="e">
-                    <span className="font-mono text-12 tabular-nums">{formatStamp(event.updated_at, tz)}</span>
-                    <span className="text-muted-foreground"> · {event.updated_by}</span>
+                    <span className={TYPE.value}>{formatStamp(event.updated_at, tz)}</span>
+                    <span className="block text-12 text-muted-foreground">{event.updated_by}</span>
                   </span>,
                 ],
               ]}
@@ -243,13 +291,16 @@ export default function WorkspaceOverview() {
                 <li key={to} className="border-b border-border last:border-b-0">
                   <Link
                     to={`/events/${event.id}/${to}`}
-                    className="group flex items-center justify-between gap-3 px-4 py-2 transition-colors duration-120 ease-standard hover:bg-foreground/[0.03] motion-reduce:transition-none"
+                    className={cn(
+                      "group flex min-h-12 items-center justify-between gap-3 py-2 transition-colors duration-120 ease-standard hover:bg-foreground/[0.03] motion-reduce:transition-none",
+                      RAIL_X,
+                    )}
                   >
                     <span className="min-w-0">
                       <span className="block text-13">{label}</span>
                       <span className="block truncate text-12 text-muted-foreground">{detail}</span>
                     </span>
-                    <ArrowRight size={14} strokeWidth={1.5} aria-hidden="true" className="shrink-0 text-muted-foreground group-hover:text-foreground" />
+                    <ArrowRight size={16} strokeWidth={1.5} aria-hidden="true" className="shrink-0 text-muted-foreground group-hover:text-foreground" />
                   </Link>
                 </li>
               ))}
@@ -261,12 +312,57 @@ export default function WorkspaceOverview() {
   );
 }
 
+/**
+ * A published event's readiness. When every check passes there is nothing to read, so it is one
+ * line with the checks a click away; otherwise the checklist, with where to fix each unmet item.
+ */
+function PublishedReadiness({ items, eventId }: { items: ReadinessItem[]; eventId: string }) {
+  const [open, setOpen] = useState(false);
+  const state = readinessSummary(items, true);
+  const allClear = state.ready && state.suggestions === 0;
+
+  if (allClear && !open) {
+    return (
+      <section aria-labelledby="ov-ready" className="border border-border">
+        <header className="flex min-h-10 flex-wrap items-center justify-between gap-x-3 border-b border-border px-4">
+          <h2 id="ov-ready" className="py-2 text-13 font-medium">
+            Readiness
+          </h2>
+          <p role="status" className="flex items-center gap-1.5 py-2 text-12 text-success">
+            <SignalShape state="ok" /> {state.text}
+          </p>
+        </header>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2 pr-2 pl-4">
+          <p className="text-13 text-muted-foreground">
+            All {items.length} checks pass. Nothing needs attention.
+          </p>
+          <button type="button" className={ROW_ACTION} aria-expanded={false} onClick={() => setOpen(true)}>
+            Show the checks
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <ReadinessChecklist items={items} title="Readiness" published />
+      <PublishedFixes items={items} eventId={eventId} />
+      {allClear ? (
+        <button type="button" className={cn(ROW_ACTION, "-mt-1 self-start")} aria-expanded onClick={() => setOpen(false)}>
+          Hide the checks
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function PublishedFixes({ items, eventId }: { items: ReadinessItem[]; eventId: string }) {
   const can = useCan();
   const unmet = items.filter((item) => !item.met);
   if (unmet.length === 0) return null;
   return (
-    <ul className="text-12 text-muted-foreground">
+    <ul className="flex flex-col gap-1 text-12 leading-relaxed text-muted-foreground">
       {unmet.map((item) => {
         const tab = FIX_TAB[item.key];
         // A fix in a tab the role cannot open is someone else's job: say whose, without a dead link.
@@ -303,22 +399,19 @@ function PublishedFixes({ items, eventId }: { items: ReadinessItem[]; eventId: s
 
 type Loaded<T> = { status: "loading" | "error" | "ready"; data: T | null; error: unknown };
 
+/** Each cell pads to the page gutter, so the first figure lines up with the title above. */
+const CELL = "sm:px-6 2xl:px-8";
+/** The strip's last cell sits over the Facts rail, so its divider continues the rail's edge (SPLIT). */
+const STRIP_COLUMNS = "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(20rem,24rem)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_26rem]";
+
 function Kpis({
   live,
   summary,
   counts,
-  rooms,
-  places,
-  sessions,
-  days,
 }: {
   live: boolean;
   summary: Loaded<Awaited<ReturnType<typeof api.summary>> | null>;
   counts: Loaded<Awaited<ReturnType<typeof configure.eventRows>>[number] | null>;
-  rooms: number | null;
-  places: number;
-  sessions: number | null;
-  days: number;
 }) {
   const dash = <span className="text-muted-foreground">—</span>;
   const liveData = summary.status === "ready" ? summary.data : null;
@@ -327,23 +420,29 @@ function Kpis({
   const row = counts.status === "ready" ? counts.data : null;
   const registered = liveData?.registered ?? row?.registrations ?? null;
   const checkedIn = liveData?.checked_in ?? row?.checked_in ?? null;
-  const share = registered && checkedIn !== null ? `${formatPercent(checkedIn / registered)} of registered` : "";
+  const share = registered && checkedIn !== null ? checkedIn / registered : null;
+  const words = (text: string) => <span className="font-sans">{text}</span>;
 
   return (
-    <dl className="grid grid-cols-2 gap-px border-b border-border bg-border lg:grid-cols-5" aria-busy={counts.status === "loading"}>
-      <KpiCell label="Registered" value={registered !== null ? formatNumber(registered) : dash} delta={liveData?.by_tier ? `${formatNumber(liveData.by_tier.VIP ?? 0)} VIP` : "all tiers"} />
-      <KpiCell label="Checked in" value={checkedIn !== null ? formatNumber(checkedIn) : dash} delta={share} />
+    <dl className={cn("grid grid-cols-2 gap-px border-b border-border bg-border sm:grid-cols-3", STRIP_COLUMNS)} aria-busy={counts.status === "loading"}>
+      <KpiCell
+        label="Registered"
+        className={CELL}
+        value={registered !== null ? formatNumber(registered) : dash}
+        delta={words(liveData?.by_tier ? `${formatNumber(liveData.by_tier.VIP ?? 0)} of them VIP` : "across all tiers")}
+      />
+      <KpiCell
+        label="Checked in"
+        className={CELL}
+        value={checkedIn !== null ? formatNumber(checkedIn) : dash}
+        delta={words(share !== null ? `${formatPercent(share)} of those registered` : "")}
+        spark={share !== null ? <Meter value={share} className="max-w-32" /> : null}
+      />
       <KpiCell
         label="On site"
+        className={cn(CELL, "max-sm:col-span-2")}
         value={liveData ? formatNumber(liveData.on_site) : dash}
-        delta={<span className="font-sans">{live && !liveMissing ? (liveData ? "now" : "") : "opens when live"}</span>}
-      />
-      <KpiCell label="Rooms" value={rooms !== null ? formatNumber(rooms) : dash} delta={rooms ? `${formatNumber(places)} places` : ""} />
-      <KpiCell
-        label="Sessions"
-        value={sessions !== null ? formatNumber(sessions) : dash}
-        delta={sessions ? `over ${days} ${plural(days, "day")}` : ""}
-        className="max-lg:col-span-2"
+        delta={words(live && !liveMissing ? (liveData ? "In the building right now" : "") : "Counted once the event is live")}
       />
     </dl>
   );

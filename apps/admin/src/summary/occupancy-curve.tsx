@@ -12,7 +12,7 @@ interface Point {
 }
 
 const H = 220;
-const PAD = { top: 16, right: 16, bottom: 28, left: 52 };
+const PAD = { top: 20, right: 24, bottom: 28, left: 52 };
 
 function niceMax(value: number): number {
   if (value <= 0) return 10;
@@ -99,6 +99,13 @@ export function OccupancyCurve({
     }
   });
 
+  // On a narrow plot, keep only labels that have room for themselves (a mono "10:00" is ~40px).
+  const spacedHours: { x: number; text: string }[] = [];
+  for (const label of hourLabels) {
+    const last = spacedHours[spacedHours.length - 1];
+    if (!last || label.x - last.x >= 52) spacedHours.push(label);
+  }
+
   return (
     <div ref={wrap} className="relative w-full">
       {width > 0 && n > 1 ? (
@@ -112,7 +119,7 @@ export function OccupancyCurve({
           {ticks.map((t) => (
             <g key={t}>
               <line x1={PAD.left} x2={width - PAD.right} y1={Math.round(y(t)) + 0.5} y2={Math.round(y(t)) + 0.5} className="stroke-border" />
-              <text x={PAD.left - 8} y={y(t) + 4} textAnchor="end" className="fill-muted-foreground font-mono text-11">
+              <text x={PAD.left - 10} y={y(t) + 4} textAnchor="end" className="fill-muted-foreground font-mono text-12">
                 {formatNumber(t)}
               </text>
             </g>
@@ -131,8 +138,8 @@ export function OccupancyCurve({
               points={segment.map((i) => `${(xs[i] as number).toFixed(1)},${y(points[i]!.on_site).toFixed(1)}`).join(" ")}
             />
           ))}
-          {hourLabels.map((label) => (
-            <text key={`${label.x}`} x={label.x} y={H - 8} textAnchor="middle" className="fill-muted-foreground font-mono text-11">
+          {spacedHours.map((label) => (
+            <text key={`${label.x}`} x={label.x} y={H - 6} textAnchor="middle" className="fill-muted-foreground font-mono text-12">
               {label.text}
             </text>
           ))}
@@ -155,13 +162,13 @@ export function OccupancyCurve({
       {width > 0 && n > 1 ? (
         <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0">
           {dayLabels.map((label) => (
-            <span key={label.x} className="absolute top-0 pl-1.5 text-11 text-muted-foreground" style={{ left: label.x }}>
+            <span key={label.x} className="absolute top-0 pl-1.5 text-12 text-muted-foreground" style={{ left: label.x }}>
               {label.text}
             </span>
           ))}
           {peak ? (
             <span
-              className={`absolute bg-background px-1.5 font-mono text-11 whitespace-nowrap tabular-nums ${
+              className={`absolute bg-background px-1.5 font-mono text-12 whitespace-nowrap tabular-nums ${
                 (xs[peakIndex] ?? 0) > width - 110 ? "-translate-x-full" : (xs[peakIndex] ?? 0) < PAD.left + 60 ? "" : "-translate-x-1/2"
               }`}
               style={{ left: xs[peakIndex], top: Math.max(0, y(peak.on_site) - 22) }}

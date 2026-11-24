@@ -22,7 +22,7 @@ import { Button, Field, Select, TextInput, cn } from "@synan/ui/components";
 import { ResultChip, SignalShape, StatusDot, formatNumber, formatOffset, resultLabel } from "@synan/ui/data";
 import { CLOSED_EVENT, scanCursor, type OpsScan, type ScanLogQuery } from "@synan/mock/command";
 import { Can, useSession } from "../access/session";
-import { EmptyState, ErrorState, LoadingState, PageHeader, TIER_LABEL, formatDate, linkClass, useDocumentTitle, zoneLabel } from "../kit";
+import { EmptyState, ErrorState, GUTTER_X, LoadingState, PageHeader, ROW_ACTION, TIER_LABEL, TYPE, formatDate, linkClass, useDocumentTitle, zoneLabel } from "../kit";
 import { api, mode } from "../live/backend";
 import { useCommand } from "../live/context";
 import { useSlice } from "../live/slice";
@@ -392,19 +392,19 @@ function AccessLog({ event }: { event: CommandEvent }) {
       />
       <LastKnown />
 
-      <div className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3 sm:px-6">
+      <div className={cn("flex flex-wrap items-end gap-3 border-b border-border pt-3 pb-4", GUTTER_X)}>
         {canSearch ? (
           <Field
             label={passSearch ? "Find a pass" : "Search"}
             aside={passSearch ? "each search is recorded" : undefined}
-            className="w-full sm:w-64"
+            className="w-full sm:w-72"
           >
             <TextInput
               type="search"
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
-              placeholder={passSearch ? "Band number, or its hint (••1A2B)" : "Gate or result"}
-              suffix={<Search size={14} strokeWidth={1.5} aria-hidden="true" />}
+              placeholder={passSearch ? "Band number, or its last four (••••81BF)" : "Gate or result"}
+              suffix={<Search size={16} strokeWidth={1.5} aria-hidden="true" />}
             />
           </Field>
         ) : null}
@@ -418,10 +418,10 @@ function AccessLog({ event }: { event: CommandEvent }) {
           <Select options={roomOptions} value={filters.room ?? ANY} onChange={(v) => update({ room: v === ANY ? null : v })} />
         </Field>
         {filtered ? (
-          <Button variant="quiet" size="compact" onClick={clearFilters}>
-            <X size={14} strokeWidth={1.5} aria-hidden="true" />
+          <button type="button" onClick={clearFilters} className={ROW_ACTION}>
+            <X size={16} strokeWidth={1.5} aria-hidden="true" />
             Clear filters
-          </Button>
+          </button>
         ) : null}
       </div>
 
@@ -429,13 +429,14 @@ function AccessLog({ event }: { event: CommandEvent }) {
 
       <div ref={sentinel} aria-hidden="true" className="h-px" />
       {load.status === "loading" ? (
-        <LoadingState label="Loading scans…" rows={10} />
+        <LoadingState label="Loading scans…" rows={10} className={GUTTER_X} />
       ) : load.status === "error" ? (
         <ErrorState title="Could not load the access log" error={load.error} onRetry={() => setAttempt((n) => n + 1)} />
       ) : rows.length === 0 ? (
         filtered ? (
           <EmptyState
             title="No scans match"
+            className={GUTTER_X}
             action={
               <Button variant="secondary" size="compact" onClick={clearFilters}>
                 Clear filters
@@ -445,12 +446,13 @@ function AccessLog({ event }: { event: CommandEvent }) {
             Nothing in the log matches {filters.q ? <>“{filters.q}”</> : "these filters"}. New scans that match appear here as they happen.
           </EmptyState>
         ) : (
-          <EmptyState title="No scans yet">The first scan at any gate appears here the moment it is read.</EmptyState>
+          <EmptyState title="No scans yet" className={GUTTER_X}>
+            The first scan at any gate appears here the moment it is read.</EmptyState>
         )
       ) : (
         <section aria-label="Scans">
           {pending.length > 0 || history ? (
-            <div className="sticky top-0 z-[2] flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border bg-background px-4 py-1.5 text-12 sm:px-6">
+            <div className={cn("sticky top-0 z-[2] flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border bg-background py-1.5 text-12", GUTTER_X)}>
               <span className="text-muted-foreground" role="status">
                 {history ? "Showing older scans; new ones are not added while you browse." : null}
                 {!history && pending.length > 0 ? (
@@ -465,16 +467,13 @@ function AccessLog({ event }: { event: CommandEvent }) {
               </Button>
             </div>
           ) : null}
-          <div
-            aria-hidden="true"
-            className="hidden h-8 grid-cols-[7.5rem_minmax(0,1.3fr)_5.5rem_6rem_minmax(8rem,1fr)_6rem] items-center gap-x-4 border-b border-border px-6 text-11 text-muted-foreground md:grid"
-          >
+          <div aria-hidden="true" className={cn("hidden h-9 items-center gap-x-4 border-b border-border md:grid", LOG_COLS, GUTTER_X, TYPE.label)}>
             <span>Time</span>
             <span>Checkpoint</span>
             <span>Tier</span>
             <span>Carrier</span>
             <span>Result</span>
-            <span className="text-right">Latency</span>
+            <span className="text-right">Decided in</span>
           </div>
           <ol>
             {rows.map((scan) => (
@@ -489,7 +488,7 @@ function AccessLog({ event }: { event: CommandEvent }) {
               />
             ))}
           </ol>
-          <footer className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-12 text-muted-foreground sm:px-6">
+          <footer className={cn("flex min-h-14 flex-wrap items-center justify-between gap-3 py-3 text-12 text-muted-foreground", GUTTER_X)}>
             <span>
               Showing <span className="font-mono tabular-nums">{formatNumber(rows.length)}</span> of{" "}
               {/* The server counts exactly up to 10,000; past that its total is a floor. */}
@@ -511,6 +510,12 @@ function AccessLog({ event }: { event: CommandEvent }) {
   );
 }
 
+/**
+ * Time · checkpoint · tier · carrier · result · decided in. Shared by the column head and every row.
+ * The checkpoint keeps a reading width; spare room on a wide screen goes before "Decided in".
+ */
+const LOG_COLS = "md:grid-cols-[7.5rem_minmax(9rem,18rem)_6rem_7rem_12rem_minmax(5rem,1fr)]";
+
 function sentence(label: string): string {
   return label.charAt(0) + label.slice(1).toLowerCase();
 }
@@ -518,7 +523,7 @@ function sentence(label: string): string {
 function Notes({ eventId }: { eventId: string }) {
   const { can } = useSession();
   return (
-    <p className="border-b border-border px-4 py-2 text-12 text-muted-foreground sm:px-6">
+    <p className={cn("border-b border-border py-2.5 text-12 leading-relaxed text-muted-foreground", GUTTER_X)}>
       Who presented a pass is not shown here.{" "}
       {can("attendees.view") ? (
         <>
@@ -561,14 +566,20 @@ function ScanRow({
   const detailId = `scan-${scan.id}`;
   return (
     <li className={cn("border-b border-border", open && "bg-foreground/4")}>
-      <div className="relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 px-4 py-1.5 transition-colors duration-120 ease-standard hover:bg-foreground/3 motion-reduce:transition-none md:h-8 md:grid-cols-[7.5rem_minmax(0,1.3fr)_5.5rem_6rem_minmax(8rem,1fr)_6rem] md:px-6 md:py-0">
+      <div
+        className={cn(
+          "relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 py-2 transition-colors duration-120 ease-standard hover:bg-foreground/3 motion-reduce:transition-none md:h-10 md:py-0",
+          LOG_COLS,
+          GUTTER_X,
+        )}
+      >
         {open ? <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.5 bg-brand" /> : null}
         <button
           type="button"
           aria-expanded={open}
           aria-controls={open ? detailId : undefined}
           onClick={onToggle}
-          className="text-left font-mono text-12 tabular-nums outline-none after:absolute after:inset-0 focus-visible:after:outline focus-visible:after:-outline-offset-1 focus-visible:after:outline-brand"
+          className="text-left font-mono text-12 tabular-nums outline-none after:absolute after:inset-0 focus-visible:after:outline focus-visible:after:-outline-offset-1 focus-visible:after:outline-brand md:text-13"
         >
           {formatScanTime(scan.corrected_at, timeZone)}
           <span className="sr-only">
@@ -576,14 +587,14 @@ function ScanRow({
           </span>
         </button>
         <ResultChip result={scan.result} className="justify-self-end md:order-5 md:justify-self-start" />
-        <span className="col-span-2 flex min-w-0 gap-x-2 text-12 text-muted-foreground md:contents">
-          <span className="truncate md:order-2 md:text-13 md:text-foreground">{label}</span>
-          <span className="shrink-0 md:order-3">{scan.tier ? TIER_LABEL[scan.tier] : "—"}</span>
-          <span className="shrink-0 md:order-4">{scan.carrier_kind ? CARRIER_LABEL[scan.carrier_kind] : "Unknown"}</span>
+        <span className="col-span-2 flex min-w-0 gap-x-2 text-12 text-muted-foreground md:contents md:text-13">
+          <span className="truncate md:order-2 md:text-foreground">{label}</span>
+          <span className="shrink-0 truncate md:order-3">{scan.tier ? TIER_LABEL[scan.tier] : "—"}</span>
+          <span className="shrink-0 truncate md:order-4">{scan.carrier_kind ? CARRIER_LABEL[scan.carrier_kind] : "Unknown"}</span>
           <span className="ml-auto shrink-0 text-right md:order-6 md:ml-0">
             {scan.offline ? (
               <span className="inline-flex items-center gap-1.5">
-                <SignalShape state="idle" /> offline
+                <SignalShape state="idle" /> Offline
               </span>
             ) : scan.latency_ms !== null ? (
               <span className="font-mono tabular-nums">{scan.latency_ms} ms</span>
@@ -594,16 +605,16 @@ function ScanRow({
         </span>
       </div>
       {open ? (
-        <dl id={detailId} className="grid grid-cols-2 gap-x-4 gap-y-2 px-4 pt-1 pb-3 text-12 sm:grid-cols-3 md:pl-[calc(7.5rem+2.5rem)] lg:grid-cols-4">
+        <dl id={detailId} className={cn("grid grid-cols-2 gap-x-6 gap-y-3 pt-1 pb-4 text-13 sm:grid-cols-3 lg:grid-cols-4", GUTTER_X, "md:pl-[calc(1.5rem+7.5rem+1rem)] 2xl:pl-[calc(2rem+7.5rem+1rem)]")}>
           <Detail label="Corrected time" value={formatScanTime(scan.corrected_at, timeZone)} mono />
           <Detail label="Device time" value={formatScanTime(scan.occurred_at, timeZone)} mono />
           <Detail label="Received" value={formatScanTime(scan.received_at, timeZone)} mono />
-          <Detail label="Clock offset" value={scan.clock_offset_ms === 0 ? "in sync" : formatOffset(scan.clock_offset_ms)} mono />
+          <Detail label="Clock offset" value={scan.clock_offset_ms === 0 ? "In sync" : formatOffset(scan.clock_offset_ms)} mono={scan.clock_offset_ms !== 0} />
           <Detail label="Decided" value={scan.offline ? "Offline, on the gate's allowlist; synced later" : "Online"} />
           <Detail label="Room" value={room ?? "Venue perimeter"} />
           <Detail label="Scan ID" value={scan.id} mono />
           <div className="min-w-0">
-            <dt className="text-11 text-muted-foreground">Gate</dt>
+            <dt className="text-12 text-muted-foreground">Gate</dt>
             <dd>
               <Link to={`/gates/${scan.checkpoint_id}`} className={linkClass}>
                 Open {label}
@@ -619,8 +630,8 @@ function ScanRow({
 function Detail({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="min-w-0">
-      <dt className="text-11 text-muted-foreground">{label}</dt>
-      <dd className={cn("truncate", mono && "font-mono tabular-nums")} title={value}>
+      <dt className="text-12 text-muted-foreground">{label}</dt>
+      <dd className={cn("mt-0.5 truncate", mono && "font-mono tabular-nums")} title={value}>
         {value}
       </dd>
     </div>

@@ -4,16 +4,16 @@
  * the honest placeholders, so a route cannot exist without saying what it is and who it is for.
  */
 import {
+  Bell,
   Building,
   CalendarDays,
+  ChartColumn,
   DoorOpen,
-  FileChartColumn,
   IdCard,
   LayoutGrid,
   Nfc,
   ScrollText,
   Settings,
-  Siren,
   Users,
 } from "lucide-react";
 import { createElement, type ReactNode } from "react";
@@ -306,44 +306,35 @@ export interface NavSection {
   items: NavEntry[];
 }
 
-/** The six top-level ideas (docs/06 §2.1): watch, configure, people, access, response, records. */
+/**
+ * Three groups, in the order an operator's day runs (docs/06 §2.1): what is happening now (Live),
+ * the event and its people (Event), and what is set up once (Setup). A role sees only what it may
+ * open (`navFor`); a group left empty is dropped.
+ */
 export const NAV_GROUPS: NavSection[] = [
   {
-    label: "Watch",
+    label: "Live",
     items: [
       { to: "/", label: "Command Center", icon: icon(LayoutGrid), end: true, need: SCREENS.command.need },
+      { to: "/alerts", label: "Alerts", icon: icon(Bell), need: SCREENS.alerts.need },
       { to: "/gates", label: "Gate health", icon: icon(DoorOpen), need: SCREENS.gates.need },
-    ],
-  },
-  {
-    label: "Configure",
-    items: [
-      { to: "/events", label: "Events", icon: icon(CalendarDays), need: SCREENS.events.need },
-      { to: "/venues", label: "Venues", icon: icon(Building), need: SCREENS.venues.need },
-    ],
-  },
-  {
-    label: "People",
-    items: [
-      { to: "/attendees", label: "Attendees", icon: icon(Users), need: SCREENS.attendees.need },
-      { to: "/staff", label: "Staff & shifts", icon: icon(IdCard), need: SCREENS.staff.need },
-    ],
-  },
-  {
-    label: "Access",
-    items: [
-      { to: "/desk", label: "Wristband desk", icon: icon(Nfc), need: SCREENS.desk.need },
       { to: "/access-log", label: "Access log", icon: icon(ScrollText), need: SCREENS.accessLog.need },
     ],
   },
   {
-    label: "Response",
-    items: [{ to: "/alerts", label: "Alerts", icon: icon(Siren), need: SCREENS.alerts.need }],
+    label: "Event",
+    items: [
+      { to: "/events", label: "Events", icon: icon(CalendarDays), need: SCREENS.events.need },
+      { to: "/attendees", label: "Attendees", icon: icon(Users), need: SCREENS.attendees.need },
+      { to: "/desk", label: "Wristband desk", icon: icon(Nfc), need: SCREENS.desk.need },
+      { to: "/reports", label: "Reports", icon: icon(ChartColumn), need: SCREENS.reports.need },
+    ],
   },
   {
-    label: "Records",
+    label: "Setup",
     items: [
-      { to: "/reports", label: "Reports", icon: icon(FileChartColumn), need: SCREENS.reports.need },
+      { to: "/venues", label: "Venues", icon: icon(Building), need: SCREENS.venues.need },
+      { to: "/staff", label: "Staff & shifts", icon: icon(IdCard), need: SCREENS.staff.need },
       { to: "/settings", label: "Settings", icon: icon(Settings), need: SCREENS.settings.need },
     ],
   },

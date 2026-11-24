@@ -18,7 +18,10 @@ import {
   ErrorState,
   LoadingState,
   Notice,
+  ROW_ACTION,
+  SPLIT,
   SectionHead,
+  TYPE,
   Table,
   Td,
   Th,
@@ -35,7 +38,8 @@ import {
 import { clock, configure } from "../live/backend";
 import { AssignmentDialog } from "./parts/assignment-dialog";
 import { ReadOnlyNote, useWorkspaceEvent } from "./parts/context";
-import { ROLE_LABEL, formatDuration } from "./parts/copy";
+import { ROLE_LABEL, formatDuration, plural } from "./parts/copy";
+import { HEAD_BLEED, RAIL_ROW, RAIL_X, RailNote, Toolbar } from "./parts/layout";
 
 type ShiftState = "on" | "upcoming" | "ended" | "handed_over";
 
@@ -86,36 +90,43 @@ export default function WorkspaceStaff() {
   const canAssign = !readOnly && gates.length > 0;
   const assignButton = (
     <Button variant={tabPrimary ? "primary" : "secondary"} size="compact" onClick={() => setAssigning(true)} disabled={!canAssign}>
-      <Plus size={14} strokeWidth={1.5} aria-hidden="true" />
+      <Plus size={16} strokeWidth={1.5} aria-hidden="true" />
       Assign staff
     </Button>
   );
 
+  const onShift = sorted.filter((row) => shiftState(row, now) === "on").length;
+  const waiting = sorted.filter((row) => shiftState(row, now) === "ended").length;
+
   return (
-    <div className="pb-8">
+    <div className="pb-10">
       {readOnly ? <ReadOnlyNote event={event} what="its staff shifts" /> : null}
       {!readOnly && gates.length === 0 ? (
-        <Notice tone="warning" className="mx-4 mt-4 sm:mx-6">
+        <Notice tone="warning" className="mx-4 mt-4 sm:mx-6 2xl:mx-8">
           This venue has no gates yet, so nobody can be assigned. Add gates in the venue editor first.
         </Notice>
       ) : null}
-      <div className="xl:grid xl:grid-cols-12">
-        <section aria-labelledby="staff-shifts" className="min-w-0 xl:col-span-8">
-          <SectionHead
-            id="staff-shifts"
-            title="Shifts"
-            meta={
-              <>
-                {assignments.length > 0 ? (
-                  <>
-                    <span className="font-mono tabular-nums">{formatNumber(assignments.length)}</span> assigned ·{" "}
-                  </>
+      <div className={SPLIT}>
+        <section aria-labelledby="staff-shifts" className="min-w-0">
+          <SectionHead id="staff-shifts" title="Shifts" meta={`times in ${zoneLabel(tz)}`} className={HEAD_BLEED} />
+          {assignments.length > 0 ? (
+            <Toolbar actions={readOnly ? undefined : assignButton}>
+              <span>
+                <span className="text-foreground">
+                  {onShift === 0 ? "No one" : <span className={TYPE.value}>{formatNumber(onShift)}</span>}{" "}
+                  {onShift === 1 ? "person" : "people"} on shift now
+                </span>
+                {" · "}
+                <span className={TYPE.value}>{formatNumber(assignments.length)}</span> {plural(assignments.length, "shift")} in all
+                {waiting > 0 ? (
+                  <span className="text-warning">
+                    {" · "}
+                    <span className={TYPE.value}>{formatNumber(waiting)}</span> ended without a handover
+                  </span>
                 ) : null}
-                times in {zoneLabel(tz)}
-              </>
-            }
-            actions={!readOnly && assignments.length > 0 ? assignButton : undefined}
-          />
+              </span>
+            </Toolbar>
+          ) : null}
           {assignments.length === 0 ? (
             <EmptyState title="No staff assigned" action={readOnly ? undefined : assignButton}>
               <p>
@@ -128,12 +139,11 @@ export default function WorkspaceStaff() {
               <thead>
                 <tr>
                   <Th>Staff</Th>
-                  <Th>Role</Th>
-                  <Th>Gate</Th>
-                  <Th>Shift</Th>
-                  <Th>State</Th>
+                  <Th fit>Gate</Th>
+                  <Th fit>Shift</Th>
+                  <Th fit>State</Th>
                   {readOnly ? null : (
-                    <Th>
+                    <Th fit>
                       <span className="sr-only">Actions</span>
                     </Th>
                   )}
@@ -146,27 +156,31 @@ export default function WorkspaceStaff() {
                   const role = roleOf.get(row.user_id);
                   return (
                     <tr key={row.id} className={rowClass}>
-                      <Td className="max-w-56 truncate">{row.staff_name}</Td>
-                      <Td className="whitespace-nowrap text-muted-foreground">{role ? ROLE_LABEL[role] : "—"}</Td>
-                      <Td className="max-w-56 truncate">{row.checkpoint_label}</Td>
-                      <Td
-                        className="font-mono text-12 whitespace-nowrap tabular-nums"
-                        title={formatDuration(Date.parse(row.shift_end) - Date.parse(row.shift_start))}
-                      >
+                      <Td className="max-w-64 py-1.5">
+                        <span className="block truncate">{row.staff_name}</span>
+                        <span className="block truncate text-12 text-muted-foreground">{role ? ROLE_LABEL[role] : "Role not known"}</span>
+                      </Td>
+                      <Td fit className="pr-8">{row.checkpoint_label}</Td>
+                      <Td fit className={TYPE.value} title={formatDuration(Date.parse(row.shift_end) - Date.parse(row.shift_start))}>
                         {shiftWindow(row, tz)}
                       </Td>
-                      <Td className="whitespace-nowrap">
-                        <span className={cn("inline-flex items-center gap-1.5 text-12", view.tone)}>
+                      <Td fit>
+                        <span className={cn("inline-flex items-center gap-1.5 text-13", view.tone)}>
                           <SignalShape state={view.shape} />
                           {view.label}
                         </span>
                       </Td>
                       {readOnly ? null : (
-                        <Td className="text-right whitespace-nowrap">
+                        <Td fit className="text-right">
                           {state === "on" || state === "ended" ? (
-                            <Button variant="secondary" size="compact" onClick={() => setConfirming(row)} aria-label={`Hand over ${row.staff_name}'s shift at ${row.checkpoint_label}`}>
+                            <button
+                              type="button"
+                              className={cn(ROW_ACTION, "-mr-2.5")}
+                              onClick={() => setConfirming(row)}
+                              aria-label={`Hand over ${row.staff_name}'s shift at ${row.checkpoint_label}`}
+                            >
                               Handover
-                            </Button>
+                            </button>
                           ) : null}
                         </Td>
                       )}
@@ -181,34 +195,12 @@ export default function WorkspaceStaff() {
           </p>
         </section>
 
-        <aside aria-labelledby="staff-gates" className="min-w-0 border-t border-border xl:col-span-4 xl:border-t-0 xl:border-l">
-          <SectionHead id="staff-gates" title="Gate cover" meta="now · shifts in all" />
-          {gates.length === 0 ? (
-            <p className="px-4 py-3 text-13 text-muted-foreground">No gates at this venue.</p>
-          ) : (
-            <ul className="py-1">
-              {gates.map((gate) => {
-                const own = assignments.filter((a) => a.checkpoint_id === gate.id);
-                const covered = own.some((a) => shiftState(a, now) === "on");
-                // An unstaffed perimeter gate is a gap; an interior door may be band-only and unattended.
-                const gap = !covered && own.length === 0 && gate.perimeter;
-                return (
-                  <li key={gate.id} className="grid h-8 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 text-13">
-                    <SignalShape state={covered ? "ok" : gap ? "warn" : "idle"} className={covered ? "text-success" : gap ? "text-warning" : "text-muted-foreground"} />
-                    <span className="truncate">
-                      {gate.label}
-                      <span className="sr-only">: {covered ? "staffed now" : own.length > 0 ? "not staffed now" : "no shifts"}</span>
-                    </span>
-                    <span className="font-mono text-12 text-muted-foreground tabular-nums">{formatNumber(own.length)}</span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          <p className="border-t border-border px-4 py-3 text-12 text-muted-foreground">
+        <aside aria-labelledby="staff-gates" className="min-w-0 border-t border-border lg:border-t-0 lg:border-l">
+          <GateCover gates={gates} assignments={assignments} now={now} />
+          <RailNote>
             One person cannot hold two shifts that overlap. Handing over ends a shift on the scanner and records what the gate did.
             Roles and permissions are managed in Settings.
-          </p>
+          </RailNote>
         </aside>
       </div>
 
@@ -238,6 +230,83 @@ export default function WorkspaceStaff() {
       />
       <HandoverResult summary={summary} timeZone={tz} onClose={() => setSummary(null)} />
     </div>
+  );
+}
+
+/**
+ * Which gates are staffed now. Only the gates that matter are listed — staffed now, a perimeter
+ * gate with nobody assigned (a gap), or a gate with shifts at another time; interior doors with
+ * no shifts are summarised in a sentence, since they may run unattended on the band alone.
+ */
+function GateCover({
+  gates,
+  assignments,
+  now,
+}: {
+  gates: { id: string; label: string; perimeter: boolean }[];
+  assignments: AssignmentRow[];
+  now: number;
+}) {
+  const rows = gates.map((gate) => {
+    const own = assignments.filter((a) => a.checkpoint_id === gate.id);
+    const onNow = own.filter((a) => shiftState(a, now) === "on");
+    const covered = onNow.length > 0;
+    // An unstaffed perimeter gate is a gap; an interior door may be band-only and unattended.
+    const gap = !covered && own.length === 0 && gate.perimeter;
+    return { gate, own, onNow, covered, gap };
+  });
+  const rank = (r: (typeof rows)[number]) => (r.gap ? 0 : r.covered ? 1 : 2);
+  const listed = rows.filter((r) => r.covered || r.gap || r.own.length > 0).sort((a, b) => rank(a) - rank(b));
+  const rest = rows.length - listed.length;
+  const staffed = rows.filter((r) => r.covered).length;
+
+  return (
+    <section aria-labelledby="staff-gates">
+      <SectionHead
+        id="staff-gates"
+        title="Gate cover"
+        meta={
+          gates.length > 0 ? (
+            <>
+              <span className="font-mono tabular-nums">{formatNumber(staffed)}</span> of{" "}
+              <span className="font-mono tabular-nums">{formatNumber(gates.length)}</span> staffed now
+            </>
+          ) : undefined
+        }
+      />
+      {gates.length === 0 ? (
+        <p className={cn("py-4 text-13 text-muted-foreground", RAIL_X)}>No gates at this venue.</p>
+      ) : (
+        <>
+          {listed.length > 0 ? (
+            <ul className="py-1.5">
+              {listed.map(({ gate, own, onNow, covered, gap }) => (
+                <li key={gate.id} className={cn(RAIL_ROW, "grid-cols-[auto_minmax(0,1fr)_minmax(0,auto)]")}>
+                  <SignalShape state={covered ? "ok" : gap ? "warn" : "idle"} className={covered ? "text-success" : gap ? "text-warning" : "text-muted-foreground"} />
+                  <span className="truncate">
+                    {gate.label}
+                    <span className="sr-only">: {covered ? "staffed now" : own.length > 0 ? "not staffed now" : "no shifts"}</span>
+                  </span>
+                  <span
+                    className={cn("max-w-44 truncate text-right text-12", gap ? "text-warning" : "text-muted-foreground")}
+                    title={covered ? onNow.map((a) => a.staff_name).join(", ") : undefined}
+                  >
+                    {covered ? onNow.map((a) => a.staff_name).join(", ") : gap ? "No one assigned" : "Not staffed now"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {rest > 0 ? (
+            <p className={cn("border-t border-border py-3 text-13 text-muted-foreground", RAIL_X)}>
+              {listed.length > 0 ? "The other " : ""}
+              <span className="font-mono text-foreground tabular-nums">{formatNumber(rest)}</span> interior{" "}
+              {plural(rest, "door has", "doors have")} no shifts; {rest === 1 ? "it" : "they"} can admit on the band alone.
+            </p>
+          ) : null}
+        </>
+      )}
+    </section>
   );
 }
 

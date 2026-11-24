@@ -16,13 +16,22 @@
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
     <title>%BRAND_SURFACE_NAME%</title>
+    <!-- Theme before first paint: System (default) / Light / Dark, remembered per device.
+         Mirrors packages/ui/src/theme (key, attributes, chrome colours); follows the system
+         setting and other tabs live. -->
+    <script>
+      (function(){var d=document.documentElement,k="synan.theme",q=matchMedia("(prefers-color-scheme: light)");function a(){var c;try{c=localStorage.getItem(k)}catch(e){}var t=c==="light"||c==="dark"?c:q.matches?"light":"dark";d.setAttribute("data-theme",t);d.classList.toggle("dark",t==="dark");var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",t==="light"?"#f7f5f0":"#0a0a0a");m=document.querySelector('meta[name="color-scheme"]');if(m)m.setAttribute("content",t)}a();q.addEventListener("change",a);addEventListener("storage",function(e){if(e.key===k||e.key===null)a()})})();
+    </script>
+    <!-- The splash's colours before any CSS arrives (brand/fit.ts BRAND_COLOURS, per theme). -->
     <style>
-      html,body{margin:0;background:#0a0a0a;color-scheme:dark}
+      html{--boot-ground:#0a0a0a;--boot-ink:#fafafa;--boot-accent:#8ab4ff;color-scheme:dark}
+      html[data-theme=light]{--boot-ground:#f7f5f0;--boot-ink:#121110;--boot-accent:#2f62d9;color-scheme:light}
+      html,body{margin:0;background:var(--background,var(--boot-ground))}
     </style>
   </head>
   <body>
     <!-- Splash: the mark, shown until the app mounts. Generated from packages/ui/src/brand/fit.ts. -->
-    <div id="root"><div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#0a0a0a" aria-label="Loading %BRAND_SURFACE_NAME%"><svg viewBox="0 0 32 32" width="96" height="96" aria-hidden="true"><path d="M4 4H16A6.65 6.65 0 0 0 16 17.3A4.05 4.05 0 0 1 16 25.4H4Z" fill="#FAFAFA"/><path d="M28 6.6H16A4.05 4.05 0 0 0 16 14.7A6.65 6.65 0 0 1 16 28H28Z" fill="#8AB4FF"/></svg></div></div>
+    <div id="root"><div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--boot-ground)" aria-label="Loading %BRAND_SURFACE_NAME%"><svg viewBox="0 0 32 32" width="96" height="96" aria-hidden="true"><path d="M4 4H16A6.65 6.65 0 0 0 16 17.3A4.05 4.05 0 0 1 16 25.4H4Z" style="fill:var(--boot-ink)"/><path d="M28 6.6H16A4.05 4.05 0 0 0 16 14.7A6.65 6.65 0 0 1 16 28H28Z" style="fill:var(--boot-accent)"/></svg></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

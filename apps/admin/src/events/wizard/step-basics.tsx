@@ -234,7 +234,7 @@ export function BasicsStep({ record, forms, setForm, saved, goto, close }: StepC
             <TimeZoneSelect value={form.timezone} onChange={changeZone} invalid={Boolean(errors.timezone)} />
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Starts" id="event-starts_at" error={errors.starts_at} aside={zone}>
+            <Field label="Starts" id="event-starts_at" error={errors.starts_at}>
               <DateTimeInput
                 value={form.starts_at}
                 timeZone={form.timezone}
@@ -246,7 +246,6 @@ export function BasicsStep({ record, forms, setForm, saved, goto, close }: StepC
               label="Ends"
               id="event-ends_at"
               error={errors.ends_at}
-              aside={zone}
               hint={form.starts_at && form.ends_at ? `${formatDate(form.starts_at, form.timezone, { weekday: true })} to ${formatDate(form.ends_at, form.timezone, { weekday: true })}` : undefined}
             >
               <DateTimeInput

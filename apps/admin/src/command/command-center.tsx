@@ -171,12 +171,6 @@ function MapHeader({
   return (
     <header className="flex min-h-10 shrink-0 items-center gap-x-4 overflow-hidden border-b border-border pl-4 text-13 whitespace-nowrap sm:pl-5">
       <h2 className="truncate font-medium">{layout ? layout.venue.name : "Venue"}</h2>
-      {layout ? (
-        <span className="hidden text-12 text-muted-foreground md:inline">
-          <span className="font-mono tabular-nums">{layout.zones.length}</span> zones ·{" "}
-          <span className="font-mono tabular-nums">{layout.rooms.length}</span> rooms
-        </span>
-      ) : null}
       {stale ? (
         <span className="flex items-center gap-1.5 text-12 text-warning">
           <SignalShape state="warn" /> Last known state
@@ -319,12 +313,11 @@ function NotLive() {
   });
   return (
     <div className="h-full">
-      <div className="grid grid-cols-2 gap-px border-b border-border bg-border md:grid-cols-5" aria-hidden="true">
-        {["Registered", "Checked in", "On site now", "Capacity risk", "Open alerts"].map((label, index) => (
-          <div key={label} className={`bg-background px-4 pt-3 pb-3 ${index === 4 ? "col-span-2 md:col-span-1" : ""}`}>
-            <p className="text-12 text-muted-foreground">{label}</p>
-            <p className="mt-2 font-mono text-40 leading-none text-muted-foreground/40">—</p>
-            <p className="mt-2 h-5" />
+      <div className="grid grid-cols-2 gap-px border-b border-border bg-border md:grid-cols-4" aria-hidden="true">
+        {["On site now", "Checked in", "Rooms filling up", "Open alerts"].map((label) => (
+          <div key={label} className="bg-background px-4 py-3 sm:py-4">
+            <p className="text-13 text-muted-foreground">{label}</p>
+            <p className="mt-2 font-mono text-28 leading-none text-muted-foreground sm:text-40">—</p>
           </div>
         ))}
       </div>

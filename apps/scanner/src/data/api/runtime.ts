@@ -10,7 +10,7 @@
  */
 import { parseSignedQr } from "@synan/contracts/qr";
 import type { ScanDirection } from "@synan/contracts/enums";
-import type { ScanSubmission, SignedAllowlist, SigningKey, StaffAssignment } from "@synan/contracts/rest";
+import type { HandoverSummary, ScanSubmission, SignedAllowlist, SigningKey, StaffAssignment } from "@synan/contracts/rest";
 import type { Gate } from "../mock";
 import type { Presented, Scan } from "../store";
 import { ApiFailure, call, currentSession, onSession, signIn as clientSignIn, signOut as clientSignOut } from "./client";
@@ -34,6 +34,7 @@ import {
   ScanQueue,
   syncQueue,
   undoUntil,
+  undoWindowMs,
   unsent,
   type QueueRecord,
   type SendResult,
@@ -172,16 +173,20 @@ interface AllowlistCache {
   kid: string;
   jws: string;
   fetched_at: number;
+  /** Who fetched it (session `sub`); absent on lists stored before it was recorded. */
+  user?: string | null;
 }
 interface KeysCache {
   keys: SigningKey[];
   fetched_at: number;
   qr_leeway_s?: number;
+  undo_window_s?: number;
 }
 interface ClockCache {
   offset: number;
   at: number;
   qr_leeway_s?: number;
+  undo_window_s?: number;
 }
 
 interface Trusted {
@@ -190,14 +195,41 @@ interface Trusted {
   checkpointId: string;
   issuedAtMs: number;
   fetchedAt: number;
+  /** The signed-in person it was fetched for; null when not known. */
+  user: string | null;
+}
+
+/**
+ * `allowlist_issued_at` for a heartbeat from this gate: the held list's `issued_at` only when it is
+ * this gate's and was fetched for the person signed in now. After a user switch on the same phone the
+ * previous person's list is still trusted for offline decisions, but gate health must not show its
+ * age as the new person's: null until the new person's own list has been fetched.
+ */
+export function heartbeatAllowlistAt(allow: Pick<Trusted, "checkpointId" | "issuedAtMs" | "user"> | null, checkpointId: string, user: string | null): string | null {
+  if (!allow || allow.checkpointId !== checkpointId || !user || allow.user !== user) return null;
+  return new Date(allow.issuedAtMs).toISOString();
 }
 
 /**
  * GET /me/assignments → the gates this person may choose: one row per checkpoint (the current shift,
  * else the next one). Each item carries its checkpoint and event; a shift between events (no event)
  * has nothing to scan for and is left out. Handed-over and ended shifts are not listed by the server.
+ *
+ * `roomNames` (the ADMITTED chips): each item's `event.rooms` and its gate's own room, so the chips
+ * need no public event read and work for unlisted events too. `slugsWithoutRooms`: events whose items
+ * carry no `rooms` (an older server); their names are read from GET /events/:slug instead.
  */
-export function gatesFromAssignments(items: readonly StaffAssignment[], nowServerMs: number): { gates: Gate[]; event: { id: string; title: string } | null } {
+export function gatesFromAssignments(
+  items: readonly StaffAssignment[],
+  nowServerMs: number,
+): { gates: Gate[]; event: { id: string; title: string } | null; roomNames: Record<string, string>; slugsWithoutRooms: string[] } {
+  const roomNames: Record<string, string> = {};
+  const slugsWithoutRooms = new Set<string>();
+  for (const a of items) {
+    if (!a.event_id || !a.event || a.event.id !== a.event_id) continue;
+    if (a.event.rooms) for (const r of a.event.rooms) roomNames[r.room_id] = r.name;
+    else if (a.event.slug) slugsWithoutRooms.add(a.event.slug);
+  }
   const live = (a: StaffAssignment) => Date.parse(a.shift_start) <= nowServerMs && nowServerMs < Date.parse(a.shift_end);
   const byCp = new Map<string, StaffAssignment>();
   for (const a of [...items].sort((x, y) => Date.parse(x.shift_start) - Date.parse(y.shift_start))) {
@@ -208,6 +240,7 @@ export function gatesFromAssignments(items: readonly StaffAssignment[], nowServe
   const gates: Gate[] = [];
   for (const a of byCp.values()) {
     const cp = a.checkpoint!;
+    if (cp.room_id && cp.room_name) roomNames[cp.room_id] = cp.room_name;
     const ev = { id: a.event_id!, title: a.event && a.event.id === a.event_id ? a.event.title : "" };
     gates.push({
       id: cp.id,
@@ -229,7 +262,7 @@ export function gatesFromAssignments(items: readonly StaffAssignment[], nowServe
   }
   // The event named on S1: the one of the shift on now, else of the next shift.
   const pick = gates.find((g) => g.api!.shiftStart <= nowServerMs) ?? gates[0];
-  return { gates, event: pick ? { id: pick.api!.eventId, title: pick.api!.eventTitle } : null };
+  return { gates, event: pick ? { id: pick.api!.eventId, title: pick.api!.eventTitle } : null, roomNames, slugsWithoutRooms: [...slugsWithoutRooms] };
 }
 
 /* ------------------------------------------------------------ runtime */
@@ -245,6 +278,17 @@ class Runtime {
   private offset = 0;
   /** The server's QR clock leeway (GET /time, GET /auth/signing-keys). */
   private leewayS = DEFAULT_QR_LEEWAY_S;
+  /** The server's undo window (`undo_window_s` on GET /time and GET /auth/signing-keys), seconds; null until it has said (60 s). */
+  private undoWindowS: number | null = null;
+  private get undoMs(): number {
+    return undoWindowMs(this.undoWindowS);
+  }
+  /** Read `undo_window_s` from a server answer or a cache; what Undo offers changes with it. */
+  private setUndoWindow(s: number | undefined) {
+    if (typeof s !== "number" || s === this.undoWindowS) return;
+    this.undoWindowS = s;
+    if (this.host) this.publish();
+  }
   private stream: ScanStream | null = null;
   private timers: ReturnType<typeof setInterval>[] = [];
   private probe: ReturnType<typeof setTimeout> | null = null;
@@ -293,6 +337,7 @@ class Runtime {
       if (clock) {
         this.setOffset(clock.offset);
         if (typeof clock.qr_leeway_s === "number") this.leewayS = clock.qr_leeway_s;
+        this.setUndoWindow(clock.undo_window_s);
       }
       const gates = await this.idb.get<GateCache>(KV, "gates");
       if (gates && gates.user === s?.sub) setApi({ event: gates.event, gates: this.refreshShift(gates.gates), roomNames: gates.roomNames });
@@ -387,7 +432,8 @@ class Runtime {
       const t1 = Date.now();
       this.setOffset(r.epoch_ms - (t0 + t1) / 2);
       if (typeof r.qr_leeway_s === "number") this.leewayS = r.qr_leeway_s;
-      void this.idb?.put(KV, { offset: this.offset, at: t1, qr_leeway_s: this.leewayS } satisfies ClockCache, "clock");
+      this.setUndoWindow(r.undo_window_s);
+      void this.idb?.put(KV, { offset: this.offset, at: t1, qr_leeway_s: this.leewayS, undo_window_s: this.undoWindowS ?? undefined } satisfies ClockCache, "clock");
       this.setReachable(true);
       return true;
     } catch {
@@ -481,14 +527,13 @@ class Runtime {
     setApi({ gatesLoading: true, gatesError: null });
     try {
       const res = await call("myAssignments");
-      const { gates, event } = gatesFromAssignments(res.items, Date.now() + this.offset);
-      const roomNames: Record<string, string> = { ...(api.session?.sub === s.sub ? api.roomNames : {}) };
-      for (const g of gates) if (g.roomId && g.roomName) roomNames[g.roomId] = g.roomName;
+      const { gates, event, roomNames: named, slugsWithoutRooms } = gatesFromAssignments(res.items, Date.now() + this.offset);
+      const roomNames: Record<string, string> = { ...(api.session?.sub === s.sub ? api.roomNames : {}), ...named };
       const fresh = this.refreshShift(gates);
       setApi({ gates: fresh, event, roomNames, gatesLoading: false, gatesError: res.items.length > 0 && gates.length === 0 ? "No live event for your gates." : null });
       await this.idb?.put(KV, { user: s.sub, event, roomNames, gates: fresh } satisfies GateCache, "gates");
       this.publish();
-      void this.loadRoomNames([...new Set(gates.map((g) => g.api!.eventId))]);
+      void this.loadRoomNames(slugsWithoutRooms);
       // Scans this person (or an earlier shift at these gates) left queued on the device.
       if (this.linkUp()) void this.syncNow().catch(() => undefined);
     } catch (e) {
@@ -498,18 +543,17 @@ class Runtime {
   }
 
   /**
-   * Names for the ADMITTED room chips (ids come from the outcome or the allowlist). NOT IN CONTRACTS:
-   * an assignment names its event's id and title but neither its slug nor its rooms, so the names
-   * come from the public event page, found by id in the public list. Best effort: pairing and
-   * verdicts never wait on it; without it the chips are left out.
+   * Names for the ADMITTED room chips (ids come from the outcome or the allowlist) come with each
+   * assignment (`event.rooms`). Only for an event whose items carry no rooms (an older server) are
+   * they read from GET /events/:slug, by the slug the assignment names (unlisted events resolve by
+   * slug too). Best effort: pairing and verdicts never wait on it; without it the chips are left out.
    */
-  private async loadRoomNames(eventIds: string[]) {
-    if (eventIds.length === 0) return;
+  private async loadRoomNames(slugs: string[]) {
+    if (slugs.length === 0) return;
     try {
-      const list = await call("listEvents", { query: { state: "live", limit: 100 } }, { auth: false });
       const names: Record<string, string> = {};
-      for (const e of list.items.filter((x) => eventIds.includes(x.id))) {
-        const d = await call("getEvent", { params: { slug: e.slug } }, { auth: false });
+      for (const slug of slugs) {
+        const d = await call("getEvent", { params: { slug } }, { auth: false });
         for (const r of d.rooms) names[r.room_id] = r.name;
       }
       if (Object.keys(names).length === 0) return;
@@ -563,7 +607,9 @@ class Runtime {
       });
       if (!this.host.get().forceOffline) this.stream.start();
     }
-    if (!this.allow || this.allow.checkpointId !== gate.id || this.allow.fetchedAt === 0) void this.refreshAllowlist(gate).catch(() => undefined);
+    // Also refetched when the held list was fetched for someone else (a user switch on this phone).
+    const fetchedForOther = this.allow !== null && this.allow.user !== (currentSession()?.sub ?? null);
+    if (!this.allow || this.allow.checkpointId !== gate.id || this.allow.fetchedAt === 0 || fetchedForOther) void this.refreshAllowlist(gate).catch(() => undefined);
     void this.restHeartbeat();
   }
   private streamFor: string | null = null;
@@ -574,13 +620,18 @@ class Runtime {
     this.streamFor = null;
   }
 
-  /** Shift end (docs/06 §3.1): send what can be sent, then hand the shift over on the server. */
-  async endShift(gate: Gate | null): Promise<void> {
+  /**
+   * Shift end (docs/06 §3.1): send what can be sent, then hand the shift over on the server. Resolves
+   * with the server's summary of the shift (its `undone` count included), or null when the handover
+   * could not be made (offline, refused).
+   */
+  async endShift(gate: Gate | null): Promise<HandoverSummary | null> {
     this.stopGate();
     if (gate?.api && this.linkUp()) {
       await this.syncNow().catch(() => undefined);
-      await call("handover", { params: { id: gate.api.assignmentId } }).catch(() => undefined);
+      return call("handover", { params: { id: gate.api.assignmentId } }).catch(() => null);
     }
+    return null;
   }
 
   /* ---------------------------------------------------------- heartbeat */
@@ -589,9 +640,12 @@ class Runtime {
     return this.records.filter(unsent).length;
   }
 
-  /** `issued_at` of the trusted allowlist for this gate (null: none), for gate health and stale alerts. */
+  /**
+   * `issued_at` of the trusted allowlist for this gate, for gate health and stale alerts: null when
+   * none is held, or when the one held was fetched for the previous user of this phone.
+   */
   private allowlistIssuedAt(checkpointId: string): string | null {
-    return this.allow && this.allow.checkpointId === checkpointId ? new Date(this.allow.issuedAtMs).toISOString() : null;
+    return heartbeatAllowlistAt(this.allow, checkpointId, currentSession()?.sub ?? null);
   }
 
   /** One heartbeat body for both channels: same device id, queue depth, offset, allowlist age. */
@@ -624,6 +678,8 @@ class Runtime {
       this.keys = await importKeys(c.keys);
       this.keysFetchedAt = c.fetched_at;
       if (typeof c.qr_leeway_s === "number") this.leewayS = c.qr_leeway_s;
+      // GET /time (read later, and kept in "clock") is the fresher source; this only fills a gap.
+      if (this.undoWindowS === null) this.setUndoWindow(c.undo_window_s);
     }
   }
 
@@ -632,7 +688,8 @@ class Runtime {
     this.keys = await importKeys(r.keys);
     this.keysFetchedAt = Date.now();
     if (typeof r.qr_leeway_s === "number") this.leewayS = r.qr_leeway_s;
-    await this.idb?.put(KV, { keys: r.keys, fetched_at: this.keysFetchedAt, qr_leeway_s: this.leewayS } satisfies KeysCache, "keys");
+    this.setUndoWindow(r.undo_window_s);
+    await this.idb?.put(KV, { keys: r.keys, fetched_at: this.keysFetchedAt, qr_leeway_s: this.leewayS, undo_window_s: this.undoWindowS ?? undefined } satisfies KeysCache, "keys");
   }
 
   private async loadAllowlistFromCache() {
@@ -652,7 +709,7 @@ class Runtime {
 
   private trust(payload: AllowlistIndex["payload"], c: AllowlistCache) {
     const issuedAtMs = Date.parse(payload.issued_at);
-    this.allow = { idx: indexAllowlist(payload), eventId: payload.event_id, checkpointId: c.checkpoint_id, issuedAtMs, fetchedAt: c.fetched_at };
+    this.allow = { idx: indexAllowlist(payload), eventId: payload.event_id, checkpointId: c.checkpoint_id, issuedAtMs, fetchedAt: c.fetched_at, user: c.user ?? null };
     // Pass-list age on S4 is shown in device time.
     this.host.patch({ allowlistAt: issuedAtMs - this.offset });
     setApi({ allowlistError: null });
@@ -666,6 +723,8 @@ class Runtime {
       return;
     }
     if (this.keys.length === 0 || Date.now() - this.keysFetchedAt > 3600_000) await this.fetchKeys();
+    // Who the list is fetched for, before the request goes (a sign-out or switch meanwhile does not take it over).
+    const fetchedFor = currentSession()?.sub ?? null;
     let signed: SignedAllowlist;
     try {
       signed = await call("allowlist", { params: { id: gate.api.eventId }, query: { checkpoint_id: gate.id } });
@@ -687,7 +746,7 @@ class Runtime {
       });
     }
     if (payload.event_id !== gate.api.eventId || payload.checkpoint_id !== gate.id) throw this.rejectList(new AllowlistRejected("scope"));
-    const cache: AllowlistCache = { event_id: payload.event_id, checkpoint_id: gate.id, kid: signed.kid, jws: signed.jws, fetched_at: Date.now() };
+    const cache: AllowlistCache = { event_id: payload.event_id, checkpoint_id: gate.id, kid: signed.kid, jws: signed.jws, fetched_at: Date.now(), user: fetchedFor };
     await this.idb?.put(KV, cache, "allowlist");
     this.trust(payload, cache);
     this.channel?.postMessage({ type: "allowlist" });
@@ -738,7 +797,7 @@ class Runtime {
       credential: r.credential_key,
       refused: r.state === "rejected" || r.state === "held" ? (r.rejection?.message ?? "Refused by the server.") : null,
       // A scan the server has (or may have) is undone there, so only while the link is up.
-      undoUntil: r.state === "pending" && r.online === null ? undoUntil(r, signer) : this.linkUp() ? undoUntil(r, signer) : null,
+      undoUntil: r.state === "pending" && r.online === null ? undoUntil(r, signer, this.undoMs) : this.linkUp() ? undoUntil(r, signer, this.undoMs) : null,
       undoNote,
       heldBack: r.state === "withheld",
       lateSynced: o?.late_synced === true,
@@ -958,7 +1017,7 @@ class Runtime {
     const queue = this.queue;
     const r = this.records.find((x) => x.idem_key === id);
     if (!queue || !r) throw new Error("scan not found");
-    const until = undoUntil(r, this.signer());
+    const until = undoUntil(r, this.signer(), this.undoMs);
     if (until === null || Date.now() >= until) throw new Error("The undo window for this scan has passed.");
     const next = await queue.undoLocally(id, Date.now());
     if (!next) throw new Error("scan not found");

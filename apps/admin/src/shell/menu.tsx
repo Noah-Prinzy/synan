@@ -96,7 +96,7 @@ export function Menu({
           id={id}
           role="menu"
           onKeyDown={onKey}
-          className={`absolute top-full z-40 mt-px max-h-[calc(100dvh-4rem)] w-max max-w-[min(26rem,calc(100vw-1rem))] min-w-64 overflow-y-auto overscroll-contain border border-border bg-popover py-1 text-13 max-sm:fixed max-sm:inset-x-2 max-sm:top-12 max-sm:w-auto max-sm:max-w-none max-sm:min-w-0 ${
+          className={`absolute top-full z-40 mt-px max-h-[calc(100dvh-4rem)] w-max max-w-[min(26rem,calc(100vw-1rem))] min-w-[max(16rem,100%)] overflow-y-auto overscroll-contain border border-border bg-popover py-1 text-13 text-popover-foreground max-sm:fixed max-sm:inset-x-2 max-sm:top-12 max-sm:w-auto max-sm:max-w-none max-sm:min-w-0 ${
             align === "end" ? "right-0" : "left-0"
           }`}
         >
@@ -123,7 +123,7 @@ export function MenuItem({
       tabIndex={-1}
       aria-current={current || undefined}
       onClick={onSelect}
-      className="relative flex w-full items-start gap-3 px-3 py-2 text-left outline-none transition-colors duration-120 ease-standard before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 hover:bg-muted/60 focus-visible:bg-muted/60 aria-[current=true]:before:bg-brand motion-reduce:transition-none"
+      className="relative flex min-h-9 w-full items-center gap-3 px-3 py-1.5 text-left transition-colors duration-120 ease-standard before:absolute before:inset-y-2.5 before:left-0 before:w-0.5 hover:bg-foreground/5 focus-visible:bg-foreground/5 focus-visible:-outline-offset-1 aria-current:bg-foreground/5 aria-current:before:bg-brand motion-reduce:transition-none pointer-coarse:min-h-11"
     >
       {children}
     </button>
@@ -131,5 +131,5 @@ export function MenuItem({
 }
 
 export function MenuNote({ children }: { children: ReactNode }) {
-  return <div className="border-b border-border px-3 pt-1.5 pb-2 text-12 text-muted-foreground">{children}</div>;
+  return <div className="mb-1 border-b border-border px-3 pt-2 pb-3 text-12 text-muted-foreground">{children}</div>;
 }

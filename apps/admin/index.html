@@ -10,6 +10,15 @@
       content="%BRAND_SURFACE_NAME% — live admission, capacity and gate state for event operations."
     />
     <title>%BRAND_SURFACE_NAME%</title>
+    <!-- Theme before first paint: System (default) / Light / Dark, remembered per device.
+         Mirrors packages/ui/src/theme (key, attributes, chrome colours); follows the system
+         setting and other tabs live. -->
+    <script>
+      (function(){var d=document.documentElement,k="synan.theme",q=matchMedia("(prefers-color-scheme: light)");function a(){var c;try{c=localStorage.getItem(k)}catch(e){}var t=c==="light"||c==="dark"?c:q.matches?"light":"dark";d.setAttribute("data-theme",t);d.classList.toggle("dark",t==="dark");var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",t==="light"?"#f7f5f0":"#0a0a0a");m=document.querySelector('meta[name="color-scheme"]');if(m)m.setAttribute("content",t)}a();q.addEventListener("change",a);addEventListener("storage",function(e){if(e.key===k||e.key===null)a()})})();
+    </script>
+    <style>
+      html{color-scheme:dark}html[data-theme=light]{color-scheme:light;background-color:var(--background,#f7f5f0)}
+    </style>
   </head>
   <body>
     <div id="root"></div>

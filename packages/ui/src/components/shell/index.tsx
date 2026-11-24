@@ -5,6 +5,7 @@
  */
 import type { ReactNode } from "react";
 import { cn } from "../../lib/cn";
+import { AmbientField } from "../../theme";
 
 /* ---------------------------------------------------------------- AppShell */
 
@@ -25,8 +26,11 @@ export interface AppShellProps {
  * frame up when a field was focused.
  */
 export function AppShell({ top, strip, nav, status, children }: AppShellProps) {
+  // No ground of its own: <html> carries it (styles/theme.css), so the still ambient field
+  // (fixed, out of the grid flow) shows between the ground and the frame (D-22).
   return (
-    <div className="relative grid h-dvh grid-cols-[auto_minmax(0,1fr)] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden bg-background text-13 text-foreground">
+    <div className="relative grid h-dvh grid-cols-[auto_minmax(0,1fr)] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden text-13 text-foreground">
+      <AmbientField still />
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:border focus:border-border focus:bg-background focus:px-3 focus:py-2"
@@ -82,15 +86,23 @@ export interface NavGroup {
   items: NavItem[];
 }
 
-/** Class for one rail link. Active: foreground text and a 2px accent rule at the left edge. */
+/**
+ * One row of navigation, shared by the rail and anything that lists the same items: 36px (44px
+ * under a coarse pointer), a 16px icon and a 13px label on one grid. Hover lays a faint surface
+ * under the row; active keeps that surface a step stronger, sets the text in the foreground and
+ * adds a short 2px accent rule at the row's left edge. Blue is the rule only, never the surface.
+ */
+export const NAV_ROW =
+  "relative flex h-9 items-center gap-3 text-13 transition-colors duration-120 ease-standard motion-reduce:transition-none pointer-coarse:h-11 before:absolute before:inset-y-2.5 before:left-0 before:w-0.5 pointer-coarse:before:inset-y-3";
+export const NAV_ROW_ACTIVE = "bg-foreground/7 text-foreground before:bg-brand";
+export const NAV_ROW_REST = "text-muted-foreground before:bg-transparent hover:bg-foreground/4 hover:text-foreground";
+
+/** Class for one rail link. Expanded: an inset row with its label. Collapsed: a centred square. */
 export function navItemClass(active: boolean, expanded: boolean): string {
   return cn(
-    "relative flex h-8 items-center gap-3 text-13 transition-colors duration-120 ease-standard motion-reduce:transition-none",
-    expanded ? "px-4" : "justify-center px-0",
-    "before:absolute before:inset-y-1.5 before:left-0 before:w-0.5",
-    active
-      ? "text-foreground before:bg-brand"
-      : "text-muted-foreground hover:bg-card/60 hover:text-foreground before:bg-transparent",
+    NAV_ROW,
+    expanded ? "mx-2 px-3" : "mx-auto w-10 justify-center pointer-coarse:w-11",
+    active ? NAV_ROW_ACTIVE : NAV_ROW_REST,
   );
 }
 
@@ -98,35 +110,52 @@ export interface NavRailProps {
   groups: NavGroup[];
   expanded: boolean;
   onToggle?: () => void;
+  /** The toggle's icons (16px), the app's own icon set: [collapse, expand]. */
+  toggleIcons?: [ReactNode, ReactNode];
   /** Render a router link for `item`, with `content` inside it. Use `navItemClass` for its class. */
   renderLink: (item: NavItem, content: ReactNode) => ReactNode;
   label?: string;
 }
 
-export function NavRail({ groups, expanded, onToggle, renderLink, label = "Main" }: NavRailProps) {
+/** Rail widths: expanded fits the longest label without truncation; collapsed is one icon column. */
+export const RAIL_WIDTH = { expanded: "w-52", collapsed: "w-14" } as const;
+
+export function NavRail({ groups, expanded, onToggle, toggleIcons, renderLink, label = "Main" }: NavRailProps) {
   return (
     <nav
       aria-label={label}
-      className={cn("flex h-full flex-col overflow-y-auto border-r border-border", expanded ? "w-48" : "w-12")}
+      className={cn(
+        "flex h-full flex-col overflow-x-hidden overflow-y-auto border-r border-border",
+        expanded ? RAIL_WIDTH.expanded : RAIL_WIDTH.collapsed,
+      )}
     >
-      <ul className="flex-1 py-2">
+      <ul className="flex-1 pt-3 pb-4">
         {groups.map((group, index) => (
-          <li key={group.label} className={cn(index > 0 && "mt-2 border-t border-border pt-2")}>
+          <li
+            key={group.label}
+            className={cn(
+              index > 0 &&
+                (expanded
+                  ? "mt-4"
+                  : // Collapsed, a group has no label: a short centred rule marks where the next begins.
+                    "relative mt-3 pt-3 before:absolute before:top-0 before:left-1/2 before:h-px before:w-5 before:-translate-x-1/2 before:bg-border"),
+            )}
+          >
             {expanded ? (
-              <p className="px-4 pt-1.5 pb-1 text-12 text-muted-foreground">{group.label}</p>
+              <p className="flex h-7 items-center px-5 text-12 text-muted-foreground">{group.label}</p>
             ) : (
               <p className="sr-only">{group.label}</p>
             )}
-            <ul>
+            <ul className="flex flex-col gap-px">
               {group.items.map((item) => (
                 <li key={item.to}>
                   {renderLink(
                     item,
                     <>
-                      <span aria-hidden="true" className="grid size-4 shrink-0 place-items-center">
+                      <span aria-hidden="true" className="grid size-4 shrink-0 place-items-center [&_svg]:size-4">
                         {item.icon}
                       </span>
-                      <span className={expanded ? "truncate" : "sr-only"}>{item.label}</span>
+                      <span className={expanded ? "whitespace-nowrap" : "sr-only"}>{item.label}</span>
                     </>,
                   )}
                 </li>
@@ -136,20 +165,24 @@ export function NavRail({ groups, expanded, onToggle, renderLink, label = "Main"
         ))}
       </ul>
       {onToggle ? (
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={expanded}
-          className={cn(
-            "flex h-8 shrink-0 items-center gap-3 border-t border-border text-12 text-muted-foreground transition-colors duration-120 ease-standard hover:text-foreground motion-reduce:transition-none",
-            expanded ? "px-4" : "justify-center",
-          )}
-        >
-          <span aria-hidden="true" className="font-mono">
-            {expanded ? "‹" : "›"}
-          </span>
-          <span className={expanded ? undefined : "sr-only"}>{expanded ? "Collapse menu" : "Expand menu"}</span>
-        </button>
+        <div className="shrink-0 border-t border-border py-2">
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={expanded}
+            title={expanded ? undefined : "Expand menu"}
+            className={cn(
+              NAV_ROW,
+              NAV_ROW_REST,
+              expanded ? "mx-2 w-[calc(100%-1rem)] px-3 text-left" : "mx-auto w-10 justify-center pointer-coarse:w-11",
+            )}
+          >
+            <span aria-hidden="true" className="grid size-4 shrink-0 place-items-center [&_svg]:size-4">
+              {toggleIcons ? (expanded ? toggleIcons[0] : toggleIcons[1]) : expanded ? "‹" : "›"}
+            </span>
+            <span className={expanded ? "whitespace-nowrap" : "sr-only"}>{expanded ? "Collapse menu" : "Expand menu"}</span>
+          </button>
+        </div>
       ) : null}
     </nav>
   );

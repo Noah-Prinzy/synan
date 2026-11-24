@@ -16,7 +16,7 @@ import type { Organization, Venue } from "@synan/contracts/rest";
 import type { SetupStatus, VenueRow } from "@synan/mock/command";
 import { Wordmark } from "@synan/ui/brand";
 import { ActionButton, Field, RewardMoment, TextInput, buttonClass } from "@synan/ui/components";
-import { ErrorState, LoadingState, Notice, Stepper, TimeZoneSelect, errorCopy, fieldErrors, linkClass, useDocumentTitle, useResource } from "../kit";
+import { ErrorState, LoadingState, Notice, PROSE, Stepper, TimeZoneSelect, errorCopy, fieldErrors, linkClass, useDocumentTitle, useResource } from "../kit";
 import { configure } from "../live/backend";
 
 type Step = "organisation" | "venue" | "done";
@@ -135,7 +135,7 @@ function SetupFlow({ organization: existing, venues }: { organization: Organizat
       <h1 ref={heading} tabIndex={-1} className="font-display text-28 leading-tight tracking-tight text-balance outline-none sm:text-40">
         {titles[step].title}
       </h1>
-      {titles[step].lead ? <p className="mt-3 text-15 leading-relaxed text-muted-foreground">{titles[step].lead}</p> : null}
+      {titles[step].lead ? <p className={`mt-3 text-15 leading-relaxed text-muted-foreground ${PROSE}`}>{titles[step].lead}</p> : null}
 
       <Stepper
         className="mt-8 border-t"
@@ -415,7 +415,7 @@ function DoneStep({ organization, venue }: { organization: Organization | null; 
       <p role="status" className="text-17">
         <RewardMoment>Your organisation and first venue are ready</RewardMoment>
       </p>
-      <p className="mt-4 text-15 leading-relaxed text-muted-foreground">
+      <p className={`mt-4 text-15 leading-relaxed text-muted-foreground ${PROSE}`}>
         {organization ? `${organization.name} now has ` : "You now have "}
         {venue.name} in {venue.city ?? "its city"}. Next, draw its rooms: zones for the large areas and rooms inside them, each with its
         own capacity. Gates and the Command Center map work from that drawing.

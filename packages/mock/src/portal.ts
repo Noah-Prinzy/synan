@@ -229,9 +229,9 @@ export function createPortalStore({ clock, storage }: PortalStoreOptions): Porta
   };
 }
 
-/** `04A2…E2`: the band UID as the portal shows it. */
+/** `••••D0E2`: the band as the portal shows it, as the server's band hint reads (the UID's last four, upper-case hex). */
 export function hint(uid: string): string {
-  return `${uid.slice(0, 4)}…${uid.slice(-2)}`;
+  return `••••${uid.slice(-4).toUpperCase()}`;
 }
 
 /** A simulated network round trip, so screens show their loading state. */

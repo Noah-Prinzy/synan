@@ -1,7 +1,8 @@
 import { useEffect } from "react";
+import { AmbientField } from "@synan/ui/components";
 
 /**
- * The ambient field behind every attendee page (see index.css). Pauses with the tab.
+ * The ambient field behind every attendee page (packages/ui theme.css), drifting. Pauses with the tab.
  * Development: ?ambient=off renders the page without it, for comparison.
  */
 export function Ambient() {
@@ -18,5 +19,5 @@ export function Ambient() {
     document.addEventListener("visibilitychange", sync);
     return () => document.removeEventListener("visibilitychange", sync);
   }, []);
-  return <div aria-hidden="true" className="ambient-field" />;
+  return <AmbientField />;
 }

@@ -1,5 +1,7 @@
 /**
- * Finding the person in front of the desk: one field (name or email), results as you type.
+ * Finding the person in front of the desk: one field (name, email, pass reference, or a band's
+ * number or its last four — the server matches them all, so kiosk walk-ins with no name are found
+ * too), results as you type.
  *
  * The field is a combobox over the result list: ↓ and ↑ move through the results, Enter opens
  * the highlighted one (the first if none is), Escape clears. Each result is a 56px row, so a
@@ -14,7 +16,7 @@ import { IdCard, Search, X } from "lucide-react";
 import { Button, Field, cn } from "@synan/ui/components";
 import { SignalShape } from "@synan/ui/data";
 import type { DeskRegistration } from "@synan/mock/command";
-import { Notice } from "../kit";
+import { GUTTER_X, Notice } from "../kit";
 import { bandBlock, bandView, CREDENTIAL_STATE_COPY, displayName, plural, REGISTRATION_STATE_COPY, signalText, TIER_LABEL } from "./copy";
 import { deskFailure, isOffline } from "./desk-api";
 import { DeskInput } from "./desk-input";
@@ -68,7 +70,7 @@ export const SearchField = forwardRef<
             onQuery("");
           }
         }}
-        placeholder="Name or email"
+        placeholder="Name, email, pass or band number"
         autoComplete="off"
         autoCorrect="off"
         spellCheck={false}
@@ -143,12 +145,12 @@ export function SearchResults({
 
   return (
     <div>
-      <p role="status" aria-live="polite" className="flex min-h-8 items-center px-4 text-12 text-muted-foreground sm:px-6">
+      <p role="status" aria-live="polite" className={cn("flex min-h-10 items-center text-12 text-muted-foreground", GUTTER_X)}>
         {status}
       </p>
 
       {search.error ? (
-        <div className="px-4 pb-3 sm:px-6">
+        <div className={cn("pb-3", GUTTER_X)}>
           <Notice tone={isOffline(search.error) ? "warning" : "danger"}>
             <span className="block">
               {isOffline(search.error)
@@ -165,16 +167,16 @@ export function SearchResults({
       ) : null}
 
       {!q ? (
-        <div className="border-t border-border px-4 py-8 sm:px-6">
+        <div className={cn("border-t border-border py-8", GUTTER_X)}>
           <h2 className="font-display text-21 leading-tight">Who's next?</h2>
           <p className="mt-2 max-w-100 text-13 leading-relaxed text-muted-foreground">
-            Type part of their name or their email. Results appear as you type; Enter opens the first one.
+            Type part of their name, their email, or a pass or band number. Results appear as you type; Enter opens the first one.
           </p>
         </div>
       ) : tooShort ? (
-        <p className="border-t border-border px-4 py-6 text-13 text-muted-foreground sm:px-6">Keep typing: two letters or more.</p>
+        <p className={cn("border-t border-border py-6 text-13 text-muted-foreground", GUTTER_X)}>Keep typing: two letters or more.</p>
       ) : items && items.length === 0 && !search.loading && search.forQuery === q ? (
-        <div className="border-t border-border px-4 py-8 sm:px-6">
+        <div className={cn("border-t border-border py-8", GUTTER_X)}>
           <h2 className="font-display text-21 leading-tight">No one matches “{q}”</h2>
           <p className="mt-2 max-w-100 text-13 leading-relaxed text-muted-foreground">
             Check the spelling, or try their email address. Only {eventTitle} is searched here: someone registered for another event
@@ -244,7 +246,8 @@ function ResultRow({
       aria-selected={selected || active}
       onClick={onPick}
       className={cn(
-        "relative grid min-h-14 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-b border-border px-4 py-2 sm:px-6",
+        "relative grid min-h-16 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-b border-border py-2.5",
+        GUTTER_X,
         "transition-colors duration-120 ease-standard hover:bg-foreground/3 motion-reduce:transition-none",
         (active || selected) && "bg-foreground/4",
       )}
@@ -254,12 +257,12 @@ function ResultRow({
         <span className={cn("block truncate text-15", row.attendee.full_name ? "text-foreground" : "text-muted-foreground")}>
           <Highlight text={displayName(row)} query={query} />
         </span>
-        <span className="block truncate text-12 text-muted-foreground">
+        <span className="mt-0.5 block truncate text-13 text-muted-foreground">
           {row.attendee.email ? <Highlight text={row.attendee.email} query={query} /> : "No email: public visitor"}
         </span>
       </span>
-      <span className="flex flex-col items-end gap-0.5 text-right">
-        <span className={cn("inline-flex items-center gap-1.5 text-12", signalText[state.signal])}>
+      <span className="flex flex-col items-end gap-1 text-right">
+        <span className={cn("inline-flex items-center gap-1.5 text-13", signalText[state.signal])}>
           <SignalShape state={state.signal} />
           {state.label}
         </span>

@@ -15,7 +15,7 @@ import { ActionButton, Button, Field, RewardMoment, TextArea, cn } from "@synan/
 import { ResultChip, SignalShape, StatusDot, formatAge } from "@synan/ui/data";
 import type { AlertContext, AlertCredential, OpsScan } from "@synan/mock/command";
 import { Can, useSession } from "../access/session";
-import { KeyValues, Notice, TIER_LABEL, errorCopy, fieldErrors, formatStamp, linkClass, useResource } from "../kit";
+import { KeyValues, Notice, TIER_LABEL, TYPE, errorCopy, fieldErrors, formatStamp, linkClass, useResource } from "../kit";
 import { ALERT_KIND_LABEL, SEVERITY_VIEW } from "../live/alert-copy";
 import { api, configure } from "../live/backend";
 import { useCommand } from "../live/context";
@@ -55,11 +55,14 @@ export function AlertDetail({
   layout,
   timeZone,
   headingId,
+  titled = false,
 }: {
   alert: BreachAlert;
   layout: VenueLayout | null;
   timeZone: string;
   headingId?: string;
+  /** The surrounding dialog already shows the kind, severity and state: do not repeat them. */
+  titled?: boolean;
 }) {
   const { store, event } = useCommand();
   const { can } = useSession();
@@ -98,7 +101,7 @@ export function AlertDetail({
     [
       "Occurred",
       <span>
-        <span className="font-mono text-12 tabular-nums">{formatStamp(alert.occurred_at, timeZone)}</span>
+        <span className={TYPE.value}>{formatStamp(alert.occurred_at, timeZone)}</span>
         <span className="text-muted-foreground"> · {formatAge(now - Date.parse(alert.occurred_at))} ago</span>
       </span>,
     ],
@@ -108,7 +111,7 @@ export function AlertDetail({
         <span>
           {ctx?.acked_by_name ?? "…"}
           <span className="text-muted-foreground"> · </span>
-          <span className="font-mono text-12 tabular-nums">{formatStamp(alert.acked_at, timeZone)}</span>
+          <span className={TYPE.value}>{formatStamp(alert.acked_at, timeZone)}</span>
         </span>
       ) : (
         <span className="text-muted-foreground">Not yet</span>
@@ -118,17 +121,21 @@ export function AlertDetail({
 
   return (
     <div className="pb-6">
-      <div className="px-4 pt-3 pb-3">
-        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-12">
-          <StatusDot state={ALERT_STATE_VIEW[alert.state].state} label={ALERT_STATE_VIEW[alert.state].label} showLabel />
-          <span className="text-muted-foreground">{view.label} severity</span>
-        </p>
-        <h3 id={headingId} tabIndex={-1} className="mt-1.5 font-display text-21 leading-tight outline-none">
-          {ALERT_KIND_LABEL[alert.kind]}
-        </h3>
-        <p className="mt-1 text-13 text-muted-foreground">{alert.detail}</p>
+      <div className="px-4 pt-4 pb-5 sm:px-5">
+        {titled ? null : (
+          <>
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-12">
+              <StatusDot state={ALERT_STATE_VIEW[alert.state].state} label={ALERT_STATE_VIEW[alert.state].label} showLabel />
+              <span className="text-muted-foreground">{view.label} severity</span>
+            </p>
+            <h3 id={headingId} tabIndex={-1} className="mt-2 font-display text-21 leading-tight text-balance outline-none">
+              {ALERT_KIND_LABEL[alert.kind]}
+            </h3>
+          </>
+        )}
+        <p className={cn("text-13 leading-relaxed text-pretty text-muted-foreground", !titled && "mt-1.5")}>{alert.detail}</p>
         {alert.state === "open" && can("alerts.acknowledge") ? (
-          <div className="mt-3">
+          <div className="mt-4">
             <ActionButton variant="quiet" size="compact" reward keepDone doneLabel="Acknowledged" action={() => store.ack(alert.id)}>
               Acknowledge
             </ActionButton>
@@ -166,12 +173,13 @@ export function AlertDetail({
 
 /* --------------------------------------------------------------- sections */
 
+/** A part of the detail: a hairline above, a 13px heading, the body on the panel's 16/20px edge. */
 function Block({ title, children, aside }: { title: string; children: ReactNode; aside?: ReactNode }) {
   return (
-    <section className="border-t border-border px-4 pt-2.5 pb-3">
-      <h4 className="mb-2 flex items-baseline justify-between gap-3 text-12 font-medium text-muted-foreground">
-        {title}
-        {aside ? <span className="text-11 font-normal">{aside}</span> : null}
+    <section className="border-t border-border px-4 pt-3.5 pb-4 sm:px-5">
+      <h4 className="mb-2.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+        <span className={TYPE.heading}>{title}</span>
+        {aside ? <span className="text-12 text-muted-foreground">{aside}</span> : null}
       </h4>
       {children}
     </section>
@@ -198,13 +206,17 @@ function Evidence({ alert, ctx, timeZone }: { alert: BreachAlert; ctx: AlertCont
     const gap = Date.parse(b.corrected_at) - Date.parse(a.corrected_at);
     return (
       <Block title="Last two checkpoints" aside={<span className="font-mono tabular-nums">{formatAge(gap, { fine: true })} apart</span>}>
-        <ol className="grid gap-px border border-border bg-border sm:grid-cols-2">
+        <ol className="border-t border-border">
           {[a, b].map((scan, i) => (
-            <li key={scan.id} className="bg-background px-3 py-2">
-              <p className="text-11 text-muted-foreground">{i === 0 ? "First" : "Then"}</p>
-              <p className="mt-0.5 truncate text-13">{scan.checkpoint_label}</p>
-              <p className="font-mono text-12 tabular-nums">{formatScanTime(scan.corrected_at, timeZone)}</p>
-              <ResultChip result={scan.result} className="mt-1" />
+            <li key={scan.id} className="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-x-3 border-b border-border py-2.5">
+              <span className="text-12 text-muted-foreground">{i === 0 ? "First" : "Then"}</span>
+              <span className="min-w-0">
+                <span className="flex items-baseline justify-between gap-3">
+                  <span className="truncate text-13">{scan.checkpoint_label}</span>
+                  <span className="shrink-0 font-mono text-12 text-muted-foreground tabular-nums">{formatScanTime(scan.corrected_at, timeZone)}</span>
+                </span>
+                <ResultChip result={scan.result} className="mt-1" />
+              </span>
             </li>
           ))}
         </ol>
@@ -215,12 +227,14 @@ function Evidence({ alert, ctx, timeZone }: { alert: BreachAlert; ctx: AlertCont
   if (alert.kind.startsWith("offline_conflict") && ctx.scans.length > 0) {
     return (
       <Block title="Scans involved" aside="Corrected times, oldest first">
-        <ol className={cn("grid gap-px border border-border bg-border", ctx.scans.length > 1 && "sm:grid-cols-2")}>
+        <ol className="border-t border-border">
           {ctx.scans.map((scan) => (
-            <li key={scan.id} className="bg-background px-3 py-2 text-12">
-              <p className="truncate text-13">{scan.checkpoint_label}</p>
-              <p className="mt-0.5 font-mono text-13 tabular-nums">{formatScanTime(scan.corrected_at, timeZone)}</p>
-              <dl className="mt-1.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-muted-foreground">
+            <li key={scan.id} className="border-b border-border py-2.5 text-12">
+              <p className="flex items-baseline justify-between gap-3">
+                <span className="truncate text-13">{scan.checkpoint_label}</span>
+                <span className={cn("shrink-0", TYPE.value)}>{formatScanTime(scan.corrected_at, timeZone)}</span>
+              </p>
+              <dl className="mt-1.5 grid grid-cols-[6rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-muted-foreground">
                 <dt>Device time</dt>
                 <dd className="font-mono tabular-nums">{formatScanTime(scan.occurred_at, timeZone)}</dd>
                 <dt>Synced</dt>
@@ -266,10 +280,10 @@ function ScanLines({ scans, timeZone }: { scans: (OpsScan & { checkpoint_label: 
   return (
     <ul className="border-t border-border">
       {scans.map((scan) => (
-        <li key={scan.id} className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-0.5 border-b border-border py-1.5 text-12">
-          <span className="font-mono tabular-nums text-muted-foreground">{formatScanTime(scan.corrected_at, timeZone)}</span>
-          <span className="truncate">{scan.checkpoint_label}</span>
-          <ResultChip result={scan.result} className="col-start-2 justify-self-start" />
+        <li key={scan.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-1 border-b border-border py-2.5">
+          <span className="truncate text-13">{scan.checkpoint_label}</span>
+          <span className="font-mono text-12 text-muted-foreground tabular-nums">{formatScanTime(scan.corrected_at, timeZone)}</span>
+          <ResultChip result={scan.result} className="col-span-2 justify-self-start" />
         </li>
       ))}
     </ul>
@@ -294,17 +308,17 @@ function CredentialBlock({
   const underReview = credential.state === "suspended_review";
   return (
     <Block title="Credential">
-      <dl className="grid grid-cols-[minmax(6rem,auto)_minmax(0,1fr)] gap-x-3 gap-y-1 text-13">
+      <dl className="grid grid-cols-[6rem_minmax(0,1fr)] items-baseline gap-x-3 gap-y-2 text-13">
         <dt className="text-12 text-muted-foreground">Holder</dt>
         <dd className="truncate">{credential.full_name ?? <span className="text-muted-foreground">Public visitor</span>}</dd>
         <dt className="text-12 text-muted-foreground">Tier</dt>
         <dd>{TIER_LABEL[credential.tier]}</dd>
         <dt className="text-12 text-muted-foreground">Band</dt>
-        <dd className="font-mono text-12 tabular-nums">{credential.band_hint ?? <span className="font-sans text-muted-foreground">None bound</span>}</dd>
+        <dd className={TYPE.value}>{credential.band_hint ?? <span className="font-sans text-muted-foreground">None bound</span>}</dd>
         <dt className="text-12 text-muted-foreground">State</dt>
         <dd>
           {state ? (
-            <span className={cn("inline-flex items-center gap-1.5 text-12", state.tone)}>
+            <span className={cn("inline-flex items-center gap-1.5", state.tone)}>
               <SignalShape state={state.shape} /> {state.label}
             </span>
           ) : (
@@ -353,9 +367,9 @@ function ReviewActions({
 
   if (!mode) {
     return (
-      <div className="mt-3">
+      <div className="mt-4">
         <p className="text-12 text-muted-foreground">Gates refuse this pass until you decide. Check the person at the gate first.</p>
-        <div className="mt-2 flex flex-wrap gap-2">
+        <div className="mt-3 flex flex-wrap gap-2">
           <Button variant="secondary" size="compact" onClick={() => setMode("clear")}>
             Clear credential
           </Button>
@@ -384,7 +398,7 @@ function ReviewActions({
   };
 
   return (
-    <div className="mt-3 border border-border p-3">
+    <div className="mt-4 border-t border-border pt-4">
       <Field
         label={mode === "clear" ? "Why is it safe to clear?" : "Why revoke?"}
         hint={mode === "clear" ? "The pass works again at once. Your note goes in the audit log." : "The pass stops working everywhere. Your note goes in the audit log."}

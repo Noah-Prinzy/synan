@@ -91,7 +91,7 @@ export function FloorsField({
           return (
             <li key={floor.id} className="border-b border-border py-1.5">
               <div className="flex items-center gap-2">
-                <span aria-hidden="true" className="w-5 shrink-0 text-right font-mono text-11 text-muted-foreground tabular-nums">
+                <span aria-hidden="true" className="w-5 shrink-0 text-right font-mono text-12 text-muted-foreground tabular-nums">
                   {index + 1}
                 </span>
                 <TextInput
@@ -109,7 +109,7 @@ export function FloorsField({
                   <button
                     type="button"
                     ref={ref(`${floor.id}:up`)}
-                    className={iconButtonClass}
+                    className={cn(iconButtonClass, "size-8")}
                     aria-label={`Move ${floor.name || `floor ${index + 1}`} up`}
                     disabled={index === 0}
                     onClick={() => move(index, -1)}
@@ -119,7 +119,7 @@ export function FloorsField({
                   <button
                     type="button"
                     ref={ref(`${floor.id}:down`)}
-                    className={iconButtonClass}
+                    className={cn(iconButtonClass, "size-8")}
                     aria-label={`Move ${floor.name || `floor ${index + 1}`} down`}
                     disabled={index === floors.length - 1}
                     onClick={() => move(index, 1)}
@@ -129,7 +129,7 @@ export function FloorsField({
                   <button
                     type="button"
                     ref={ref(`${floor.id}:remove`)}
-                    className={cn(iconButtonClass, "hover:text-destructive")}
+                    className={cn(iconButtonClass, "size-8 hover:text-destructive")}
                     aria-label={`Remove ${floor.name || `floor ${index + 1}`}`}
                     disabled={floors.length <= 1}
                     title={floors.length <= 1 ? "A venue needs at least one floor" : undefined}

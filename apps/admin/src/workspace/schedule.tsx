@@ -10,15 +10,18 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Pencil, Plus, Trash2 } from "lucide-react";
-import { Button, Dialog, Select, buttonClass } from "@synan/ui/components";
+import { Button, Dialog, Select, buttonClass, cn } from "@synan/ui/components";
 import { formatNumber } from "@synan/ui/data";
 import type { EventSession } from "@synan/contracts/rest";
 import {
   EmptyState,
   ErrorState,
+  ICON_BUTTON,
   LoadingState,
   Notice,
+  SPLIT,
   SectionHead,
+  TYPE,
   Table,
   Td,
   Th,
@@ -34,7 +37,8 @@ import {
 } from "../kit";
 import { configure } from "../live/backend";
 import { ReadOnlyNote, eventRooms, useWorkspaceEvent } from "./parts/context";
-import { formatDuration, plural } from "./parts/copy";
+import { plural } from "./parts/copy";
+import { Duration, HEAD_BLEED, Meter, RAIL_ROW, RAIL_X, RailNote, Toolbar } from "./parts/layout";
 import { SessionDialog } from "./parts/session-dialog";
 
 const ALL = "all";
@@ -59,7 +63,7 @@ export default function WorkspaceSchedule() {
 
   const addButton = (
     <Button variant={tabPrimary ? "primary" : "secondary"} size="compact" onClick={() => setEditing({ session: null })} disabled={!canAdd}>
-      <Plus size={14} strokeWidth={1.5} aria-hidden="true" />
+      <Plus size={16} strokeWidth={1.5} aria-hidden="true" />
       Add session
     </Button>
   );
@@ -99,7 +103,7 @@ export default function WorkspaceSchedule() {
     return (
       <>
         {shown.length === 0 ? (
-          <p className="px-4 py-6 text-13 text-muted-foreground sm:px-6">
+          <p className="px-4 py-8 text-13 text-muted-foreground sm:px-6 2xl:px-8">
             No sessions in {roomName.get(filter) ?? "this room"}.{" "}
             <button type="button" className={linkClass} onClick={() => setFilter(ALL)}>
               Show every room
@@ -109,12 +113,14 @@ export default function WorkspaceSchedule() {
           <Table label="Sessions">
             <thead>
               <tr>
-                <Th className="w-36">Time</Th>
+                <Th fit>Time</Th>
                 <Th>Session</Th>
-                <Th>Room</Th>
-                <Th numeric>Length</Th>
+                <Th fit>Room</Th>
+                <Th numeric fit>
+                  Length
+                </Th>
                 {readOnly ? null : (
-                  <Th className="w-24">
+                  <Th fit>
                     <span className="sr-only">Actions</span>
                   </Th>
                 )}
@@ -126,36 +132,36 @@ export default function WorkspaceSchedule() {
                   <th
                     scope="colgroup"
                     colSpan={readOnly ? 4 : 5}
-                    className="h-8 border-b border-border bg-foreground/2 px-4 text-left text-12 font-medium sm:px-6"
+                    className="h-9 border-b border-border bg-foreground/2 px-4 text-left text-13 font-medium sm:px-6 2xl:px-8"
                   >
                     {dayNumber(event.starts_at, day.key, tz) ? `Day ${dayNumber(event.starts_at, day.key, tz)} · ` : ""}
                     {day.label}
-                    <span className="ml-2 font-normal text-muted-foreground">
+                    <span className="ml-3 text-12 font-normal text-muted-foreground">
                       {formatNumber(day.sessions.length)} {plural(day.sessions.length, "session")}
                     </span>
                   </th>
                 </tr>
                 {day.sessions.map((session) => (
                   <tr key={session.id} className={rowClass}>
-                    <Td className="font-mono text-12 whitespace-nowrap tabular-nums">
+                    <Td fit className={TYPE.value}>
                       {formatTime(session.starts_at, tz)}–{formatTime(session.ends_at, tz)}
                     </Td>
                     <Td className="max-w-96">
                       <span className="block truncate">{session.title}</span>
                     </Td>
-                    <Td className="whitespace-nowrap text-muted-foreground">{roomName.get(session.room_id) ?? "Room no longer used"}</Td>
-                    <Td numeric className="whitespace-nowrap">
-                      {formatDuration(Date.parse(session.ends_at) - Date.parse(session.starts_at))}
+                    <Td fit className="pr-8 text-muted-foreground">{roomName.get(session.room_id) ?? "Room no longer used"}</Td>
+                    <Td fit className="text-right">
+                      <Duration ms={Date.parse(session.ends_at) - Date.parse(session.starts_at)} />
                     </Td>
                     {readOnly ? null : (
-                      <Td className="whitespace-nowrap">
-                        <span className="flex justify-end gap-1">
-                          <Button variant="quiet" size="compact" aria-label={`Edit ${session.title}`} onClick={() => setEditing({ session })}>
-                            <Pencil size={14} strokeWidth={1.5} aria-hidden="true" />
-                          </Button>
-                          <Button variant="quiet" size="compact" aria-label={`Delete ${session.title}`} onClick={() => setDeleting(session)}>
-                            <Trash2 size={14} strokeWidth={1.5} aria-hidden="true" />
-                          </Button>
+                      <Td fit className="py-0">
+                        <span className="-mr-2 flex justify-end gap-0.5">
+                          <button type="button" className={ICON_BUTTON} aria-label={`Edit ${session.title}`} onClick={() => setEditing({ session })}>
+                            <Pencil strokeWidth={1.5} aria-hidden="true" />
+                          </button>
+                          <button type="button" className={ICON_BUTTON} aria-label={`Delete ${session.title}`} onClick={() => setDeleting(session)}>
+                            <Trash2 strokeWidth={1.5} aria-hidden="true" />
+                          </button>
                         </span>
                       </Td>
                     )}
@@ -170,55 +176,51 @@ export default function WorkspaceSchedule() {
   })();
 
   return (
-    <div className="pb-8">
+    <div className="pb-10">
       {readOnly ? <ReadOnlyNote event={event} what="its schedule" /> : null}
-      <div className="xl:grid xl:grid-cols-12">
-        <section aria-labelledby="schedule-sessions" className="min-w-0 xl:col-span-8">
-          <SectionHead
-            id="schedule-sessions"
-            title="Sessions"
-            meta={
-              list.length > 0 ? (
-                <>
-                  <span className="font-mono tabular-nums">{formatNumber(list.length)}</span> in total · times in {zoneLabel(tz)}
-                </>
-              ) : (
-                `Times in ${zoneLabel(tz)}`
-              )
-            }
-          />
+      <div className={SPLIT}>
+        <section aria-labelledby="schedule-sessions" className="min-w-0">
+          <SectionHead id="schedule-sessions" title="Sessions" meta={`times in ${zoneLabel(tz)}`} className={HEAD_BLEED} />
           {list.length > 0 ? (
-            <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border px-4 py-3 sm:px-6">
+            <Toolbar actions={readOnly ? undefined : addButton}>
               <div className="w-full max-w-64">
-                  <Select
-                    aria-label="Show sessions in"
-                    options={[
-                      { value: ALL, label: "All rooms", meta: formatNumber(list.length) },
-                      ...rooms.map((room) => ({
-                        value: room.id,
-                        label: room.name,
-                        meta: formatNumber(list.filter((s) => s.room_id === room.id).length),
-                      })),
-                    ]}
-                    value={filter}
-                    onChange={setFilter}
-                  />
+                <Select
+                  aria-label="Show sessions in"
+                  options={[
+                    { value: ALL, label: "All rooms", meta: formatNumber(list.length) },
+                    ...rooms.map((room) => ({
+                      value: room.id,
+                      label: room.name,
+                      meta: formatNumber(list.filter((s) => s.room_id === room.id).length),
+                    })),
+                  ]}
+                  value={filter}
+                  onChange={setFilter}
+                />
               </div>
-              {readOnly ? null : addButton}
-            </div>
+              <span>
+                <span className={TYPE.value}>{formatNumber(shown.length)}</span> {plural(shown.length, "session")}
+                {filter === ALL ? (
+                  <>
+                    {" "}
+                    over <span className={TYPE.value}>{formatNumber(days.length)}</span> {plural(days.length, "day")}
+                  </>
+                ) : null}
+              </span>
+            </Toolbar>
           ) : null}
           {body}
           <p role="status" aria-live="polite" className="sr-only">
             {said}
           </p>
         </section>
-        <aside aria-labelledby="schedule-rooms" className="min-w-0 border-t border-border xl:col-span-4 xl:border-t-0 xl:border-l">
-          <SectionHead id="schedule-rooms" title="By room" meta="sessions · scheduled time" />
+        <aside aria-labelledby="schedule-rooms" className="min-w-0 border-t border-border lg:border-t-0 lg:border-l">
+          <SectionHead id="schedule-rooms" title="By room" meta="sessions and scheduled time" />
           <RoomLoad sessions={list} rooms={rooms} />
-          <p className="border-t border-border px-4 py-3 text-12 text-muted-foreground">
+          <RailNote>
             When a session ends, its room's count is reset against the gates. Continuous rooms (a café, a foyer) have no
             sessions and are never reset.
-          </p>
+          </RailNote>
         </aside>
       </div>
 
@@ -277,35 +279,61 @@ function dayNumber(eventStart: string | null, key: string, timeZone: string): nu
   return Number.isFinite(days) && days >= 0 ? days + 1 : null;
 }
 
+/**
+ * Sessions per room. Rooms that hold sessions are listed with a bar and their scheduled time;
+ * the rest are said in a sentence, so the rail never prints a column of zeros.
+ */
 function RoomLoad({ sessions, rooms }: { sessions: EventSession[]; rooms: { id: string; name: string; continuous: boolean }[] }) {
-  if (rooms.length === 0) return <p className="px-4 py-3 text-13 text-muted-foreground">No rooms yet.</p>;
-  const max = Math.max(1, ...rooms.map((room) => sessions.filter((s) => s.room_id === room.id).length));
+  if (rooms.length === 0) return <p className={cn("py-4 text-13 text-muted-foreground", RAIL_X)}>No rooms yet.</p>;
+  const load = rooms.map((room) => {
+    const own = sessions.filter((s) => s.room_id === room.id);
+    return { room, count: own.length, ms: own.reduce((sum, s) => sum + (Date.parse(s.ends_at) - Date.parse(s.starts_at)), 0) };
+  });
+  const used = load.filter((r) => r.count > 0).sort((a, b) => b.count - a.count || b.ms - a.ms);
+  const continuous = load.filter((r) => r.count === 0 && r.room.continuous).map((r) => r.room.name);
+  const idle = load.filter((r) => r.count === 0 && !r.room.continuous).length;
+  const max = Math.max(1, ...used.map((r) => r.count));
   return (
-    <ul className="py-1">
-      {rooms.map((room) => {
-        const own = sessions.filter((s) => s.room_id === room.id);
-        const ms = own.reduce((sum, s) => sum + (Date.parse(s.ends_at) - Date.parse(s.starts_at)), 0);
-        return (
-          <li key={room.id} className="grid h-8 grid-cols-[minmax(0,1fr)_3.5rem_auto] items-center gap-3 px-4 text-13">
-            <span className="truncate">{room.name}</span>
-            <span aria-hidden="true" className="relative h-1 bg-border">
-              <span className="absolute inset-0 origin-left bg-foreground/60" style={{ transform: `scaleX(${own.length / max})` }} />
-            </span>
-            <span className="text-right font-mono text-12 tabular-nums">
-              {room.continuous && own.length === 0 ? (
-                <span className="text-muted-foreground">continuous</span>
-              ) : (
-                <>
-                  {formatNumber(own.length)}
-                  <span className="text-muted-foreground"> · {ms > 0 ? formatDuration(ms) : "—"}</span>
-                </>
-              )}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
+    <>
+      {used.length > 0 ? (
+        <ul className="py-1.5">
+          {used.map(({ room, count, ms }) => (
+            <li key={room.id} className={cn(RAIL_ROW, "grid-cols-[minmax(0,1fr)_3.5rem_2rem_5.5rem]")}>
+              <span className="truncate">{room.name}</span>
+              <Meter value={count / max} />
+              <span className={cn(TYPE.value, "text-right")}>
+                {formatNumber(count)}
+                <span className="sr-only"> {plural(count, "session")}</span>
+              </span>
+              <Duration ms={ms} className="text-right text-muted-foreground" />
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {continuous.length > 0 || idle > 0 ? (
+        <div className={cn("flex flex-col gap-1.5 border-t border-border py-3 text-13 text-muted-foreground", RAIL_X)}>
+          {idle > 0 ? (
+            <p>
+              <span className="font-mono text-foreground tabular-nums">{formatNumber(idle)}</span>
+              {used.length > 0 ? " other" : ""} {plural(idle, "room has", "rooms have")} no sessions yet.
+            </p>
+          ) : null}
+          {continuous.length > 0 ? (
+            <p>
+              <span className="font-mono text-foreground tabular-nums">{formatNumber(continuous.length)}</span>{" "}
+              {plural(continuous.length, "room is", "rooms are")} open throughout, with no sessions: {listWords(continuous)}.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </>
   );
+}
+
+/** "A", "A and B", "A, B and C". */
+function listWords(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
 function DeleteSession({

@@ -4,29 +4,31 @@
  * edges, and a door fault or an open alert pinned to the room it belongs to.
  *
  * Reading order, at a normal viewing distance (docs/05 map rules):
- *   zone   a faint area with a hairline edge; its name, floor and total in a label band.
- *   room   a raised block. Name, then count / capacity in mono, then a bar on the bottom
- *          edge. The block tints with its capacity level (under warn → near → at capacity),
- *          always with a shape beside the count, so colour is never the only cue.
- *   gate   a chip outside the zone edge: shape + code (G1), and its state in words when it
- *          is not online.
+ *   zone   a faint area with a hairline edge; its name and floor in a label band.
+ *   room   a block with its name and a shade rising from its floor that shows how full it is
+ *          — no figures (owner, 2026-11-24: "too many numbers"). Quiet while it has space; a
+ *          nearly full or full room gets the signal colour, its shape and the word ("Nearly
+ *          full", "Full"), so colour is never the only cue. The exact count is in the hover/focus
+ *          card, the selected room's detail and the rooms list.
+ *   gate   a chip outside the zone edge: shape + code (G1), neutral when online, and its
+ *          problem in words when it has one.
  * The map scales to fit its panel with padding, keeps the venue's aspect ratio and stays
- * centred at every width. Text that does not fit a room is left out, not squeezed: the
- * hover card, the rooms rail and the list view carry it.
+ * centred at every width. A name that does not fit a room is left out, never cut mid-word:
+ * the hover card, the rooms list and the phone's list view carry it.
  *
- * Rendering (docs/02 §9): React lays the map out once per venue and size. After that,
- * counts and bars are written by the interpolator on requestAnimationFrame, and level,
- * highlight, zone totals and aria-label by slice subscriptions (≤ 4 Hz) — never a React
- * render per frame. Zones are SVG; rooms are absolutely positioned buttons, so each is a
- * real focusable control and its bar is a composited `scaleX` transform. Styles live in
- * index.css (`.map-*`) and key off data attributes, so a level change is one attribute write.
+ * Rendering (docs/02 §9): React lays the map out once per venue and size. After that, each
+ * room's shade is written by the interpolator on requestAnimationFrame (a composited `scaleY`
+ * transform), and level and aria-label by slice subscriptions (≤ 4 Hz) — never a React render
+ * per frame. Zones are SVG; rooms are absolutely positioned buttons, so each is a real
+ * focusable control. Styles live in index.css (`.map-*`) and key off data attributes, so a
+ * level change is one attribute write.
  *
  * Keyboard: the map is one tab stop (roving tabindex). Arrow keys move to the nearest room
  * in that direction; Home/End to the first/last; Enter opens the room; Escape closes its card.
  */
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { Checkpoint, Room, Zone } from "@synan/contracts/rest";
-import { OccupancyBar, SignalShape, clampRatio, formatClock, formatNumber, formatPercent, type SignalState } from "@synan/ui/data";
+import { SignalShape, clampRatio, formatClock, formatNumber, formatPercent, type SignalState } from "@synan/ui/data";
 import { useCommand } from "../live/context";
 import { useSlice } from "../live/slice";
 import type { GateLive, RoomLive } from "../live/store";
@@ -59,14 +61,15 @@ export interface PlacedRoom {
   cx: number;
   cy: number;
   fit: RoomFit;
-  /** Whether the name is drawn inside the block, and on how many lines (wrapped at words, never cut). */
+  /** What the block says: the full name, or its shortest clear form when the full name does not fit. */
+  label: string;
+  /** Whether a label is drawn inside the block, and on how many lines (wrapped at words, never cut). */
   named: boolean;
   nameLines: number;
-  /** Name and count on one row, for a block too low to stack them. */
+  /** Name and status shape on one row, for a block too low to stack them. */
   row: boolean;
-  /** Size of the count numeral, px, from the type scale; and of "/ capacity", 0 when it does not fit. */
-  valuePx: number;
-  capPx: number;
+  /** Whether the status ("Nearly full", "Full") is said in words, or by its shape alone. */
+  statusWords: boolean;
 }
 
 interface PlacedZone {
@@ -159,29 +162,38 @@ function nameLines(name: string, px: number, width: number): number {
   return lines;
 }
 
-/** Geist Mono advances 0.6em per character. */
-function monoWidth(chars: number, px: number): number {
-  return chars * px * 0.6;
-}
+/** Words that say what kind of space a room is, dropped first when its name must shorten. */
+const GENERIC = new Set(["room", "lounge", "hall", "floor", "stage", "bar", "booth", "suite", "court", "desk", "point", "area"]);
+
+const singular = (word: string) => word.toLowerCase().replace(/s$/, "");
 
 /**
- * The largest count numeral that fits the block with its capacity beside it (the count can
- * reach the capacity's width), from the fixed scale; without the capacity when even the
- * smallest does not fit. 12px is left for the level shape and 16px for padding.
+ * A room's name from longest to shortest, each still a whole word or a clear abbreviation:
+ *   "Workshop C" in zone "Workshops"  → "C"        (the zone already says "Workshop")
+ *   "Quiet Room", "Partner Lounge"    → "Quiet", "Partner"
+ *   "Boardroom", "Cloakroom"          → "Board", "Cloak"
+ *   "Speaker Green Room"              → "Speaker Green" → "Speaker" (when no other room starts so)
+ * and last the initials ("PL"). The full name is always in the hover card, the list and the
+ * aria-label.
  */
-function numeralsFor(fit: RoomFit, width: number, capacity: number): { valuePx: number; capPx: number } {
-  const digits = formatNumber(capacity).length;
-  const candidates = fit === "lg" ? [28, 21, 17] : fit === "md" ? [17, 15, 13] : fit === "sm" ? [13, 12] : [12];
-  const capPx = fit === "lg" ? 13 : 12;
-  const capChars = digits + (fit === "lg" ? 3 : 1);
-  // Padding, the level shape, and the alert flag when there is one.
-  const room = width - 16 - 12 - 18;
-  if (fit === "lg" || fit === "md") {
-    for (const v of candidates) if (monoWidth(digits, v) + monoWidth(capChars, capPx) <= room) return { valuePx: v, capPx };
-  }
-  for (const v of candidates) if (monoWidth(digits, v) <= room) return { valuePx: v, capPx: 0 };
-  return { valuePx: 12, capPx: 0 };
+function labelCandidates(name: string, zoneName: string, firstWords: Map<string, number>): string[] {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const zoneWords = new Set(zoneName.split(/\s+/).map(singular));
+  const out: string[] = [name.trim()];
+  const withoutZone = words.filter((w) => !zoneWords.has(singular(w)));
+  if (withoutZone.length > 0 && withoutZone.length < words.length) out.push(withoutZone.join(" "));
+  const withoutGeneric = words.filter((w) => !GENERIC.has(w.toLowerCase()));
+  if (withoutGeneric.length > 0 && withoutGeneric.length < words.length) out.push(withoutGeneric.join(" "));
+  const compound = words.map((w) => (/^.{3,}room$/i.test(w) ? w.slice(0, -4) : w));
+  if (compound.join(" ") !== words.join(" ")) out.push(compound.filter((w) => !GENERIC.has(w.toLowerCase())).join(" ") || compound.join(" "));
+  const first = words[0] ?? "";
+  if (words.length > 1 && (firstWords.get(first.toLowerCase()) ?? 0) === 1 && !GENERIC.has(first.toLowerCase())) out.push(first);
+  if (words.length > 1) out.push(words.map((w) => (/^\d+$/.test(w) ? w : w[0]?.toUpperCase() ?? "")).join(""));
+  return [...new Set(out.filter(Boolean))];
 }
+
+/** Height kept at a room's foot for its status line ("Nearly full", "Full", an alert flag). px. */
+const STATUS_LINE = 18;
 
 function place(layout: VenueLayout, width: number, height: number): Placement {
   const { grid } = layout;
@@ -198,6 +210,13 @@ function place(layout: VenueLayout, width: number, height: number): Placement {
   const zoneById = new Map<string, Zone>();
   for (const zone of layout.zones) zoneById.set(zone.id, zone);
 
+  // How many rooms start with each word: a first word alone is a fair short name only when unique.
+  const firstWords = new Map<string, number>();
+  for (const room of layout.rooms) {
+    const first = room.name.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+    firstWords.set(first, (firstWords.get(first) ?? 0) + 1);
+  }
+
   const rooms: PlacedRoom[] = [];
   const firstRoomTop = new Map<string, number>();
   for (const room of layout.rooms) {
@@ -209,28 +228,45 @@ function place(layout: VenueLayout, width: number, height: number): Placement {
     const bottom = Math.round(py(g.y + g.h)) - GAP;
     const box = { left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
     const fit = fitFor(box);
-    const numerals = numeralsFor(fit, box.width, room.capacity);
+    const zone = zoneById.get(room.zone_id);
     const nameSize = fit === "lg" ? 13 : 12;
-    // Lines the name may take: what is left of the height after the count, the bar and padding.
-    const linesByHeight = Math.floor((box.height - numerals.valuePx - (fit === "lg" ? 34 : 26)) / Math.round(nameSize * 1.3));
-    const lines = nameLines(room.name, nameSize, box.width - (fit === "lg" ? 20 : 16));
-    const nameLinesShown = fit === "xs" || lines === 0 || lines > Math.min(2, linesByHeight) ? 0 : lines;
-    // A low, wide room that cannot stack its name over its count can often set both on one row.
-    const row =
-      nameLinesShown === 0 &&
-      box.height >= 24 &&
-      textWidth(room.name, 12) + monoWidth(formatNumber(room.capacity).length, 13) + 16 + 12 + 12 <= box.width;
+    const pad = fit === "lg" ? 20 : 16;
+    // Lines the name may take: the height left after padding and the one-line status
+    // ("Nearly full") a room shows when it needs attention.
+    const linesByHeight = Math.floor((box.height - pad - STATUS_LINE) / Math.round(nameSize * 1.3));
+    // Every room carries an identifier: the full name (wrapped at words) when it fits, else the
+    // first shorter form that does — never an empty block, never a word cut in half.
+    let label = "";
+    let stacked = 0;
+    let row = false;
+    for (const candidate of labelCandidates(room.name, zone?.name ?? "", firstWords)) {
+      const lines = nameLines(candidate, nameSize, box.width - pad);
+      const maxLines = candidate === room.name ? Math.min(3, linesByHeight) : Math.min(1, linesByHeight);
+      if (fit !== "xs" && lines > 0 && lines <= maxLines) {
+        label = candidate;
+        stacked = lines;
+        break;
+      }
+      // A low, wide room that cannot stack its name over its status sets both on one row.
+      if (box.height >= 20 && textWidth(candidate, 12) + 16 + 16 <= box.width) {
+        label = candidate;
+        row = true;
+        break;
+      }
+    }
     rooms.push({
       room,
-      zone: zoneById.get(room.zone_id),
+      zone,
       box,
       cx: left + box.width / 2,
       cy: top + box.height / 2,
       fit,
-      named: nameLinesShown > 0 || row,
-      nameLines: row ? 1 : nameLinesShown,
+      label,
+      named: label !== "",
+      nameLines: row ? 1 : stacked,
       row,
-      ...(row ? { valuePx: 13, capPx: 0 } : numerals),
+      // "Nearly full" in words where there is room for them; the shape alone where there is not.
+      statusWords: !row && box.width - 16 >= textWidth("Nearly full", 12) + 14,
     });
     firstRoomTop.set(room.zone_id, Math.min(firstRoomTop.get(room.zone_id) ?? Infinity, top));
   }
@@ -335,9 +371,7 @@ function gateState(gate: GateLive | undefined): { state: Exclude<SignalState, "i
 
 interface RoomNodes {
   button: HTMLButtonElement | null;
-  count: HTMLSpanElement | null;
-  barRoot: HTMLSpanElement | null;
-  barFill: HTMLSpanElement | null;
+  fill: HTMLSpanElement | null;
 }
 
 export const ZoneMap = memo(function ZoneMap({
@@ -359,12 +393,11 @@ export const ZoneMap = memo(function ZoneMap({
   const wrap = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const nodes = useRef(new Map<string, RoomNodes>());
-  const zoneTotals = useRef(new Map<string, HTMLSpanElement | null>());
   // Refs attach child-first, so whichever arrives first creates the entry.
   const node = (id: string): RoomNodes => {
     let n = nodes.current.get(id);
     if (!n) {
-      n = { button: null, count: null, barRoot: null, barFill: null };
+      n = { button: null, fill: null };
       nodes.current.set(id, n);
     }
     return n;
@@ -398,45 +431,30 @@ export const ZoneMap = memo(function ZoneMap({
   const byId = useMemo(() => new Map(placed?.rooms.map((p) => [p.room.id, p]) ?? []), [placed]);
   const alerting = useMemo(() => alertsByRoom(alerts, layout), [alerts, layout]);
 
-  /* Frame loop writers: count text and bar transform, per room. */
+  /* Frame loop writer: the fill's transform, per room (composited, no layout). */
   useEffect(() => {
     if (!placed) return;
     const unbind = placed.rooms.map(({ room }) =>
       store.interp.bind(`room:${room.id}`, (display) => {
-        const n = nodes.current.get(room.id);
-        if (!n) return;
-        if (n.count) {
-          const text = formatNumber(display);
-          if (n.count.textContent !== text) n.count.textContent = text;
-        }
-        if (n.barFill) n.barFill.style.transform = `scaleX(${clampRatio(display / room.capacity)})`;
+        const fill = nodes.current.get(room.id)?.fill;
+        if (fill) fill.style.transform = `scaleY(${clampRatio(display / room.capacity)})`;
       }),
     );
     return () => unbind.forEach((fn) => fn());
   }, [placed, store]);
 
-  /* ≤ 4 Hz: level (colour), zone totals and the spoken label, from authoritative values. */
+  /* ≤ 4 Hz: level (colour, status words) and the spoken label, from authoritative values. */
   useLayoutEffect(() => {
     if (!placed) return;
     const apply = () => {
       const rooms = store.rooms.get();
-      const totals = new Map<string, number>();
       for (const p of placed.rooms) {
         const n = nodes.current.get(p.room.id);
         const live = rooms.get(p.room.id);
-        if (live) totals.set(p.room.zone_id, (totals.get(p.room.zone_id) ?? 0) + live.occupancy);
         if (!n?.button || !live) continue;
-        if (n.button.dataset.level !== live.level) {
-          n.button.dataset.level = live.level;
-          if (n.barRoot) n.barRoot.dataset.level = live.level;
-        }
+        if (n.button.dataset.level !== live.level) n.button.dataset.level = live.level;
         const label = roomAriaLabel(p.room, p.zone, live, alerting.has(p.room.id));
         if (n.button.getAttribute("aria-label") !== label) n.button.setAttribute("aria-label", label);
-      }
-      for (const [zoneId, el] of zoneTotals.current) {
-        if (!el) continue;
-        const text = formatNumber(totals.get(zoneId) ?? 0);
-        if (el.textContent !== text) el.textContent = text;
       }
     };
     apply();
@@ -496,11 +514,6 @@ export const ZoneMap = memo(function ZoneMap({
 
   const tabStop = active ?? selectedId ?? placed?.rooms[0]?.room.id ?? null;
   const rooms = store.rooms.get();
-  const capacityByZone = useMemo(() => {
-    const out = new Map<string, number>();
-    for (const room of layout.rooms) out.set(room.zone_id, (out.get(room.zone_id) ?? 0) + room.capacity);
-    return out;
-  }, [layout]);
 
   return (
     <div ref={wrap} className="map relative size-full overflow-hidden" data-stale={stale || undefined}>
@@ -537,18 +550,6 @@ export const ZoneMap = memo(function ZoneMap({
                   <span className="text-13 font-medium text-foreground">{z.zone.name}</span>
                   {z.zone.floor ? <span className="text-12 text-muted-foreground"> · {z.zone.floor}</span> : null}
                 </span>
-                {z.box.width >= 220 ? (
-                  <span className="shrink-0 font-mono text-12 text-muted-foreground tabular-nums">
-                    <span
-                      ref={(el) => {
-                        zoneTotals.current.set(z.zone.id, el);
-                      }}
-                      className="text-foreground/85"
-                    />
-                    {" / "}
-                    {formatNumber(capacityByZone.get(z.zone.id) ?? 0)}
-                  </span>
-                ) : null}
               </div>
             ) : null,
           )}
@@ -601,48 +602,37 @@ export const ZoneMap = memo(function ZoneMap({
                 >
                   {p.named ? (
                     <span className="map-room-name" style={{ WebkitLineClamp: p.nameLines }}>
-                      {p.room.name}
+                      {p.label}
                     </span>
                   ) : (
                     <span />
                   )}
-                  <span className="map-room-count" style={{ fontSize: p.valuePx }}>
-                    {alert ? (
-                      // An open alert at the room's door: a flag in the count line, before the level.
-                      <span aria-hidden="true" className="map-room-alert" data-tone={alert}>
-                        {p.fit === "lg" && !p.row ? "Alert" : "!"}
-                      </span>
-                    ) : null}
-                    <span className="map-room-shape map-room-shape-warn">
-                      <SignalShape state="warn" />
-                    </span>
-                    <span className="map-room-shape map-room-shape-stop">
-                      <SignalShape state="stop" />
-                    </span>
-                    <span
-                      ref={(el) => {
-                        node(id).count = el;
-                      }}
-                      className="map-room-value"
-                    />
-                    {p.capPx > 0 ? (
-                      <span className="map-room-cap" style={{ fontSize: p.capPx }}>
-                        {p.fit === "lg" ? " / " : "/"}
-                        {formatNumber(p.room.capacity)}
-                      </span>
-                    ) : null}
-                  </span>
-                  <OccupancyBar
-                    ratio={live ? live.occupancy / p.room.capacity : 0}
-                    level={live?.level ?? "ok"}
-                    rootRef={(el) => {
-                      node(id).barRoot = el;
+                  {/* How full the room is: a fill rising from the floor of the block, no figure.
+                      The exact count is on hover, focus and selection, and in the rooms list. */}
+                  <span
+                    aria-hidden="true"
+                    className="map-room-fill"
+                    ref={(el) => {
+                      node(id).fill = el;
                     }}
-                    fillRef={(el) => {
-                      node(id).barFill = el;
-                    }}
-                    className="map-room-bar"
+                    style={{ transform: `scaleY(${clampRatio(live ? live.occupancy / p.room.capacity : 0)})` }}
                   />
+                  {/* Quiet unless something needs attention: then a shape and a word. */}
+                  <span className="map-room-status" aria-hidden="true">
+                    {alert ? (
+                      <span className="map-room-alert" data-tone={alert}>
+                        {p.statusWords && p.fit === "lg" ? "Alert" : "!"}
+                      </span>
+                    ) : null}
+                    <span className="map-room-level map-room-level-warn">
+                      <SignalShape state="warn" />
+                      {p.statusWords ? <span>Nearly full</span> : null}
+                    </span>
+                    <span className="map-room-level map-room-level-stop">
+                      <SignalShape state="stop" />
+                      {p.statusWords ? <span>Full</span> : null}
+                    </span>
+                  </span>
                 </button>
               );
             })}
@@ -714,12 +704,16 @@ function GateMarkers({ gates }: { gates: PlacedGate[] }) {
             aria-hidden="true"
             data-state={state}
             data-alert={alerted.has(g.checkpoint.id) || undefined}
+            data-side={g.side}
             className="map-gate"
             style={{ left: g.x, top: g.y, transform }}
             title={g.checkpoint.label}
           >
-            <SignalShape state={state} className="map-gate-shape" />
-            <span className="text-foreground">{g.code}</span>
+            {/* On an east or west wall the problem goes under the code, so the chip stays narrow. */}
+            <span className="flex items-center gap-1.5">
+              <SignalShape state={state} className="map-gate-shape" />
+              <span className="text-foreground">{g.code}</span>
+            </span>
             {words ? <span className="map-gate-words">{words}</span> : null}
           </span>
         );
@@ -772,37 +766,23 @@ function DoorFaults({ placed, layout }: { placed: PlacedRoom[]; layout: VenueLay
 
 /** What the map's tints, shapes and outlines mean. Lives under the map, in the panel. */
 export function MapLegend({ className = "" }: { className?: string }) {
-  const swatch = (level: "ok" | "warn" | "block") => <span aria-hidden="true" className="map-legend-swatch" data-level={level} />;
+  // Four keys, in plain words. The neutral state needs no key: a quiet room is simply quiet.
   return (
-    <div className={`flex flex-wrap items-center gap-x-6 gap-y-1.5 text-12 text-muted-foreground ${className}`}>
-      <ul aria-label="Rooms" className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <li className="flex items-center gap-2">
-          {swatch("ok")}
-          Under warning
-        </li>
-        <li className="flex items-center gap-2">
-          {swatch("warn")}
-          <SignalShape state="warn" className="text-warning" />
-          Near capacity
-        </li>
-        <li className="flex items-center gap-2">
-          {swatch("block")}
-          <SignalShape state="stop" className="text-destructive" />
-          At capacity
-        </li>
-      </ul>
-      <ul aria-label="Gates" className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <li className="flex items-center gap-1.5">
-          <SignalShape state="ok" className="text-success" /> Gate online
-        </li>
-        <li className="flex items-center gap-1.5">
-          <SignalShape state="warn" className="text-warning" /> Degraded or queueing
-        </li>
-        <li className="flex items-center gap-1.5">
-          <SignalShape state="stop" className="text-destructive" /> Offline
-        </li>
-      </ul>
-    </div>
+    <ul aria-label="Map key" className={`flex flex-wrap items-center gap-x-5 gap-y-1.5 text-12 text-muted-foreground ${className}`}>
+      <li className="flex items-center gap-2">
+        <span aria-hidden="true" className="map-legend-swatch" data-level="ok" />
+        Shading shows how full a room is
+      </li>
+      <li className="flex items-center gap-1.5">
+        <SignalShape state="warn" className="text-warning" /> Nearly full
+      </li>
+      <li className="flex items-center gap-1.5">
+        <SignalShape state="stop" className="text-destructive" /> Full
+      </li>
+      <li className="flex items-center gap-1.5">
+        <span aria-hidden="true" className="map-gate-key">G1</span> Gate, with its problem when it has one
+      </li>
+    </ul>
   );
 }
 

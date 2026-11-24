@@ -7,9 +7,14 @@
  *   @import "@synan/ui/theme.css";
  *   @source "../../../packages/ui/src";
  *
- * Colour and radius are the shadcn preset b3rmZc8LB2 (nova / neutral / radius none),
- * dark only, plus our three signals. Dark is the only shipped mode, so the values
- * sit on :root and .dark alike. Fonts are imported by each app (Fontsource).
+ * Colour and radius are the shadcn preset b3rmZc8LB2 (nova / neutral / radius none)
+ * plus our three signals. Fonts are imported by each app (Fontsource).
+ *
+ * Two themes (owner, 2026-11-24). Dark is the default and sits on :root and .dark; light
+ * overrides the colour tokens under :root[data-theme="light"]. The attribute is set before
+ * first paint by the inline script in each app's index.html (choice: System, Light or Dark,
+ * remembered per device) and kept in step by packages/ui/src/theme. Components never name
+ * a theme: they read tokens, so one token change re-themes them.
  */
 
 @custom-variant dark (&:is(.dark *));
@@ -42,6 +47,10 @@
   --success: #43c07a; /* admitted / healthy */
   --warning: #e7b643; /* already inside / degraded / near capacity */
   --destructive: #ff6467; /* denied / breach / offline */
+  /* A failure word set on the filled action (ActionButton, primary). The fill is the opposite
+     of the ground, so the red is the other theme's: deep red on dark's near-white fill (5.6:1;
+     the signal itself was 2.8:1 there), pale red on light's ink fill. */
+  --destructive-on-action: #c0292e;
 
   /* The QR field is the one exception to the dark ground (docs/05 §3). */
   --qr-field: #ffffff;
@@ -59,8 +68,16 @@
   --action-foreground: var(--background);
 
   /* Ambient background on the Attendee Portal (owner, 2026-11-23): 0 turns it off.
-     It is the opacity of one soft monochrome luminance field; keep it barely there. */
+     It is the opacity of one soft monochrome luminance field; keep it barely there.
+     --ambient-tint is its colour: the accent itself on dark. */
   --ambient: 0.06;
+  --ambient-tint: var(--brand);
+
+  /* Things drawn outside the utilities. The checkbox tick is drawn in the ground colour on
+     the accent; the skeleton sheen is a faint highlight; the scrollbar thumb is a hairline. */
+  --check-tick: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Cpath d=%27M3.5 8.5 6.5 11.5 12.5 4.5%27 fill=%27none%27 stroke=%27%230a0a0a%27 stroke-width=%272%27/%3E%3C/svg%3E");
+  --sheen: rgba(255, 255, 255, 0.04);
+  --scrollbar: var(--muted);
 
   /* Type families. An identity overrides these three; components never name a face.
      Option 1 (chosen): Bricolage Grotesque, Instrument Sans, Geist Mono. */
@@ -69,6 +86,54 @@
   --type-data: "Geist Mono Variable", ui-monospace, monospace;
 
   color-scheme: dark;
+}
+
+/*
+ * Light (owner, 2026-11-24): the same brand in daylight. A warm off-white ground (the light
+ * ground of the identity's own files, brand/fit.ts), near-black ink, and the hierarchy of the
+ * dark theme kept step for step: a raised surface is lighter than the ground, a muted one a
+ * step away from it, hairlines are ink at low opacity. Daybreak blue (#8AB4FF) is too pale to
+ * carry text, a focus ring or a 1px rule on a light ground (1.9:1), so the accent deepens to
+ * the identity's light accent, #2F62D9, same hue; Daybreak stays as the ambient tint. Signals
+ * keep their meanings and deepen until text in them passes AA on the ground and on their own
+ * tints. Every pair is measured in docs/05 §3.
+ */
+:root[data-theme="light"] {
+  --background: #f7f5f0; /* warm off-white; ink 17.3:1 */
+  --foreground: #121110; /* near-black, a touch warm */
+  --card: #ffffff; /* raised: lighter than the ground, as #171717 is on dark */
+  --card-foreground: #121110;
+  --popover: #ffffff;
+  --popover-foreground: #121110;
+  --primary: #1c1b18;
+  --primary-foreground: #f7f5f0;
+  --secondary: #e9e6df;
+  --secondary-foreground: #121110;
+  --muted: #e9e6df; /* a step from the ground, as #262626 is on dark */
+  --muted-foreground: #5e5a52; /* 6.3:1 on the ground, 6.9:1 on card, 5.6:1 on muted */
+  --accent: #e9e6df;
+  --accent-foreground: #121110;
+  --border: rgb(18 17 16 / 0.12);
+  --input: rgb(18 17 16 / 0.22);
+
+  --brand: #2f62d9; /* the identity's light accent: 5.0:1 on the ground, 5.4:1 on card */
+
+  --success: #18753f; /* 5.3:1 on the ground */
+  --warning: #8a5a00; /* 5.4:1: amber deepened to ochre so it can carry a word */
+  --destructive: #c0292e; /* 5.4:1 */
+  --destructive-on-action: #ff8a8c; /* 8.3:1 on the ink fill */
+
+  --scrim: rgb(18 17 16 / 0.32);
+
+  /* Daybreak itself as the light's atmosphere: a soft blue daylight behind the frame. */
+  --ambient: 0.1;
+  --ambient-tint: #8ab4ff;
+
+  --check-tick: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Cpath d=%27M3.5 8.5 6.5 11.5 12.5 4.5%27 fill=%27none%27 stroke=%27%23f7f5f0%27 stroke-width=%272%27/%3E%3C/svg%3E");
+  --sheen: rgba(255, 255, 255, 0.55);
+  --scrollbar: #cfcbc2;
+
+  color-scheme: light;
 }
 
 /* Ambient off, for comparison (?ambient=off in development) or by setting --ambient: 0. */
@@ -92,6 +157,7 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-on-action: var(--destructive-on-action);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -178,6 +244,53 @@ body::before {
     outline: 1px solid var(--brand);
     outline-offset: 2px;
   }
+}
+
+/*
+ * The ground and the ambient field (D-22: "even in the background the UI should be accented
+ * with the blue"). Both are the root background: the ground is the colour of <html> and the
+ * field its background image, so the field lies under every piece of content in the same
+ * layer. <body> stays transparent; anything with its own opaque ground (the sticky header,
+ * sheets, map rooms) covers it. Earlier the ground sat on <body> over a separate field layer,
+ * which was never visible; a separate layer under transparent content would also have cost
+ * the page its sub-pixel text, so the field is painted, not composited.
+ *
+ * One soft Daybreak luminance behind the frame, top left: atmosphere, never a surface.
+ * Strength is --ambient per theme (0 = off; :root[data-ambient="off"] in development);
+ * colour is --ambient-tint. <AmbientField> (packages/ui/src/theme) turns it on per app:
+ * "drift" (Attendee Portal) moves it 22 x 14 vmax over 90 s in one-second steps (one repaint
+ * a second, no layout), "still" (Admin Command) never moves. Static under reduced motion;
+ * paused while the tab is hidden. The Gate Scanner does not use it.
+ */
+@layer base {
+  html {
+    background-color: var(--background);
+  }
+  :root[data-ambient-field] {
+    /* Where the field sat as a fixed layer (inset -25vmax, a 70vmax disc at 18% 12%). */
+    --ambient-x: calc(0.18 * (100vw - 20vmax) - 25vmax);
+    --ambient-y: calc(0.12 * (100vh - 20vmax) - 25vmax);
+    background-image: radial-gradient(closest-side, color-mix(in oklch, var(--ambient-tint) calc(var(--ambient) * 100%), transparent), transparent);
+    background-size: 70vmax 70vmax;
+    background-repeat: no-repeat;
+    background-position: var(--ambient-x) var(--ambient-y);
+  }
+  :root[data-ambient-field="drift"] {
+    animation: ambientDrift 90s steps(90) infinite alternate;
+  }
+  :root[data-ambient-field][data-hidden] {
+    animation-play-state: paused;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :root[data-ambient-field] {
+      animation: none;
+    }
+  }
+}
+
+@keyframes ambientDrift {
+  from { background-position: var(--ambient-x) var(--ambient-y); }
+  to { background-position: calc(var(--ambient-x) + 22vmax) calc(var(--ambient-y) + 14vmax); }
 }
 
 /* ---- Mobile (mobile agent) ---- */

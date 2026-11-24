@@ -120,7 +120,7 @@ export function AccessStep({ record, forms, setForm, saved, goto, close, loadVen
                 {TIER_ORDER.map((tier) => {
                   const n = rooms.filter((room) => effectOf(rules, tier, room.id) === "permit").length;
                   return (
-                    <li key={tier} className="flex items-baseline justify-between gap-3 border-b border-border py-1.5 last:border-b-0">
+                    <li key={tier} className="flex items-baseline justify-between gap-3 border-b border-border py-2 last:border-b-0">
                       <span>{TIER_LABEL[tier]}</span>
                       <span className={n === 0 ? "text-muted-foreground" : undefined}>
                         {n === 0 ? (

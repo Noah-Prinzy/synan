@@ -1,11 +1,12 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { AppShell, NavRail, navItemClass } from "@synan/ui/shell";
 import { useSession } from "../access/session";
 import { DEV_TOOLS } from "../live/backend";
 import { useCommand } from "../live/context";
 import { navFor } from "../routes";
-import { AlertStrip } from "./alert-strip";
+import { AlertNotice } from "./alert-strip";
 import { ScreenBoundary } from "./screen-boundary";
 import { AdminStatusBar } from "./status-bar";
 import { PhoneNav } from "./phone-nav";
@@ -53,8 +54,14 @@ export function AdminShell() {
 
   return (
     <AppShell
-      top={<AdminTopBar menu={navigable ? <PhoneNav groups={groups} /> : null} />}
-      strip={can("alerts.view") ? <AlertStrip /> : null}
+      top={
+        <AdminTopBar
+          menu={navigable ? <PhoneNav groups={groups} /> : null}
+          rail={navigable ? (expanded ? "expanded" : "collapsed") : null}
+          // The alert notice lives in the top bar, beside the live state (no separate strip row).
+          alerts={can("alerts.view") ? <AlertNotice /> : null}
+        />
+      }
       nav={
         navigable ? (
         // Below 640px the rail gives way to the Menu cell in the top bar (PhoneNav).
@@ -63,6 +70,10 @@ export function AdminShell() {
           label="Admin"
           groups={groups}
           expanded={expanded}
+          toggleIcons={[
+            <PanelLeftClose key="collapse" size={16} strokeWidth={1.5} />,
+            <PanelLeftOpen key="expand" size={16} strokeWidth={1.5} />,
+          ]}
           onToggle={
             wide
               ? () => {

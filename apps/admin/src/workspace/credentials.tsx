@@ -14,7 +14,9 @@ import {
   ErrorState,
   LoadingState,
   Notice,
+  SPLIT,
   SectionHead,
+  TYPE,
   Table,
   Td,
   Th,
@@ -26,6 +28,7 @@ import {
 import { configure } from "../live/backend";
 import { useWorkspaceEvent } from "./parts/context";
 import { CARRIER_ORDER, CARRIER_VIEW, CHIP_PROFILE_LABEL, CREDENTIAL_ORDER, CREDENTIAL_VIEW } from "./parts/copy";
+import { HEAD_BLEED, Meter, RAIL_ROW, RailNote } from "./parts/layout";
 
 const ACTION_WORD = { bound: "Bound", replaced: "Replaced", revoked: "Revoked" } as const;
 
@@ -44,56 +47,63 @@ export default function WorkspaceCredentials() {
   const consoleLink = (
     <Link to="/credentials" className={buttonClass("secondary", "compact")}>
       Open the provisioning console
-      <ArrowUpRight size={14} strokeWidth={1.5} aria-hidden="true" />
+      <ArrowUpRight size={16} strokeWidth={1.5} aria-hidden="true" />
     </Link>
   );
 
   return (
-    <div className="pb-8">
+    <div className="pb-10">
       <section aria-labelledby="cred-bands">
-        <SectionHead id="cred-bands" title="Wristbands" meta="by state · stock is shared across the organisation's events" />
-        <dl className="grid grid-cols-2 gap-px border-b border-border bg-border sm:grid-cols-3 xl:grid-cols-6">
+        <SectionHead id="cred-bands" title="Wristbands" meta="stock is shared across the organisation's events" className={HEAD_BLEED} />
+        {/* Six cells; from 1280 the last two sit over the rail below, so the dividers continue its edge (SPLIT). */}
+        <dl className="grid grid-cols-2 gap-px border-b border-border bg-border sm:grid-cols-3 xl:grid-cols-[repeat(4,minmax(0,1fr))_repeat(2,minmax(10rem,12rem))] 2xl:grid-cols-[repeat(4,minmax(0,1fr))_repeat(2,13rem)]">
           {CARRIER_ORDER.map((state) => (
-            <div key={state} className="flex min-w-0 flex-col gap-2 bg-background px-4 pt-3 pb-3">
-              <dt className="truncate text-12 text-muted-foreground">{CARRIER_VIEW[state].label}</dt>
-              <dd className={cn("font-mono text-40 leading-none tracking-tight tabular-nums", state === "lost" && data.by_state.lost > 0 && "text-warning")}>
+            <div key={state} className="flex min-w-0 flex-col gap-2 bg-background px-4 py-4 sm:px-6 2xl:px-8">
+              <dt className="truncate text-13 text-muted-foreground">{CARRIER_VIEW[state].label}</dt>
+              {/* One size across the strip: 40px once every cell has room for it (1440 up), 28px below. */}
+              <dd
+                className={cn(
+                  "font-mono text-28 leading-none tracking-tight tabular-nums min-[90rem]:text-40",
+                  state === "lost" && data.by_state.lost > 0 && "text-warning",
+                )}
+              >
                 {formatNumber(data.by_state[state])}
               </dd>
-              <dd className="text-12 text-muted-foreground">{CARRIER_VIEW[state].detail}</dd>
+              <dd className="text-12 leading-snug text-muted-foreground">{CARRIER_VIEW[state].detail}</dd>
             </div>
           ))}
         </dl>
       </section>
 
       {issued === 0 ? (
-        <Notice className="mx-4 mt-4 sm:mx-6">
+        <Notice className="mx-4 mt-4 sm:mx-6 2xl:mx-8">
           No passes are issued for this event yet. Each registration gets one when it is confirmed; bands are bound at the
           provisioning desk or at check-in.
         </Notice>
       ) : null}
 
-      <div className="grid grid-cols-12 border-b border-border">
-        <section aria-labelledby="cred-recent" className="col-span-12 min-w-0 xl:col-span-8">
-          <SectionHead id="cred-recent" title="Recent band activity" meta={`times in the event's zone`} />
+      <div className={cn(SPLIT, "border-b border-border")}>
+        <section aria-labelledby="cred-recent" className="flex min-w-0 flex-col">
+          <SectionHead id="cred-recent" title="Recent band activity" meta="times in the event's zone" className={HEAD_BLEED} />
           {data.recent.length === 0 ? (
-            <p className="px-4 py-6 text-13 text-muted-foreground sm:px-6">No band has been bound for this event yet.</p>
+            <p className="px-4 py-8 text-13 text-muted-foreground sm:px-6 2xl:px-8">No band has been bound for this event yet.</p>
           ) : (
             <Table label="Recent band activity">
               <thead>
                 <tr>
-                  <Th>When</Th>
-                  <Th>Band</Th>
+                  <Th fit>When</Th>
+                  <Th fit>Band</Th>
                   <Th>Attendee</Th>
-                  <Th>Action</Th>
+                  <Th fit>Action</Th>
                 </tr>
               </thead>
               <tbody>
                 {data.recent.map((item, index) => (
                   <tr key={`${item.band_hint}:${item.at}:${index}`} className={rowClass}>
-                    <Td className="font-mono text-12 whitespace-nowrap tabular-nums">{formatStamp(item.at, event.timezone)}</Td>
-                    <Td className="font-mono text-12 tabular-nums">{item.band_hint}</Td>
+                    <Td fit className={TYPE.value}>{formatStamp(item.at, event.timezone)}</Td>
+                    <Td fit className={TYPE.value}>{item.band_hint}</Td>
                     <Td className="max-w-64 truncate">{item.attendee}</Td>
-                    <Td className="whitespace-nowrap text-12">
+                    <Td fit>
                       <span className="inline-flex items-center gap-1.5">
                         <SignalShape state={item.action === "revoked" ? "stop" : item.action === "replaced" ? "warn" : "ok"} className={item.action === "revoked" ? "text-destructive" : item.action === "replaced" ? "text-warning" : "text-success"} />
                         {ACTION_WORD[item.action]}
@@ -104,8 +114,8 @@ export default function WorkspaceCredentials() {
               </tbody>
             </Table>
           )}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 sm:px-6">
-            <p className="max-w-120 text-12 text-muted-foreground">
+          <div className="mt-auto flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-border px-4 py-4 sm:px-6 2xl:px-8">
+            <p className="max-w-[60ch] text-12 leading-relaxed text-muted-foreground">
               {readOnly
                 ? "The event is over: bands still bound to it are retired when they come back to stock."
                 : "Bind a band to a registration, replace a lost one or import a batch in the provisioning console. Each change revokes the old band at every gate within a minute."}
@@ -114,19 +124,23 @@ export default function WorkspaceCredentials() {
           </div>
         </section>
 
-        <aside className="col-span-12 min-w-0 border-t border-border xl:col-span-4 xl:border-t-0 xl:border-l">
+        <aside className="min-w-0 border-t border-border lg:border-t-0 lg:border-l">
           <section aria-labelledby="cred-states">
             <SectionHead id="cred-states" title="Credentials" meta={<><span className="font-mono tabular-nums">{formatNumber(issued)}</span> issued in all</>} />
-            <ul className="py-1">
+            <ul className="py-1.5">
               {CREDENTIAL_ORDER.map((state) => {
                 const view = CREDENTIAL_VIEW[state];
                 const n = data.credentials[state];
                 return (
-                  <li key={state} className="grid h-8 grid-cols-[auto_minmax(0,1fr)_auto_3.5rem] items-center gap-3 px-4 text-13">
+                  <li
+                    key={state}
+                    className={cn(RAIL_ROW, "grid-cols-[auto_minmax(0,1fr)_4rem_4rem]")}
+                    title={issued > 0 ? `${formatPercent(n / issued)} of issued` : undefined}
+                  >
                     <SignalShape state={n > 0 ? view.shape : "idle"} className={n > 0 ? view.tone : "text-muted-foreground"} />
-                    <span>{view.label}</span>
-                    <span className="font-mono text-12 tabular-nums">{formatNumber(n)}</span>
-                    <span className="text-right font-mono text-11 text-muted-foreground tabular-nums">{issued > 0 ? formatPercent(n / issued) : "—"}</span>
+                    <span className={n > 0 ? undefined : "text-muted-foreground"}>{view.label}</span>
+                    <Meter value={issued > 0 ? n / issued : 0} />
+                    <span className={cn(TYPE.value, "text-right", n === 0 && "text-muted-foreground")}>{formatNumber(n)}</span>
                   </li>
                 );
               })}
@@ -135,23 +149,21 @@ export default function WorkspaceCredentials() {
           <section aria-labelledby="cred-chips" className="border-t border-border">
             <SectionHead id="cred-chips" title="Chip profiles" meta="bands bound to this event" />
             {chipTotal === 0 ? (
-              <p className="px-4 py-3 text-13 text-muted-foreground">No bands bound yet.</p>
+              <p className="px-4 py-4 text-13 text-muted-foreground sm:px-5">No bands bound yet.</p>
             ) : (
-              <ul className="py-1">
+              <ul className="py-1.5">
                 {chips.map(([profile, n]) => (
-                  <li key={profile} className="grid h-8 grid-cols-[minmax(0,1fr)_4rem_auto] items-center gap-3 px-4 text-13">
+                  <li key={profile} className={cn(RAIL_ROW, "grid-cols-[minmax(0,1fr)_4rem_4rem]")}>
                     <span className="truncate">{CHIP_PROFILE_LABEL[profile] ?? profile}</span>
-                    <span aria-hidden="true" className="relative h-1 bg-border">
-                      <span className="absolute inset-0 origin-left bg-foreground/60" style={{ transform: `scaleX(${n / chipTotal})` }} />
-                    </span>
-                    <span className="text-right font-mono text-12 tabular-nums">{formatNumber(n)}</span>
+                    <Meter value={n / chipTotal} />
+                    <span className={cn(TYPE.value, "text-right")}>{formatNumber(n)}</span>
                   </li>
                 ))}
               </ul>
             )}
-            <p className="border-t border-border px-4 py-3 text-12 text-muted-foreground">
+            <RailNote>
               VIP and invitation bands are cryptographic (NTAG 424 DNA): a copied UID is refused. Ordinary and public bands are read by UID.
-            </p>
+            </RailNote>
           </section>
         </aside>
       </div>

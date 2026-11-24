@@ -1,13 +1,15 @@
 /**
- * The bottom status bar (docs/06 §2.2): WebSocket latency, the age of the last
- * state received, and queue depth across gates. Ages count up once a second.
+ * The bottom status bar (docs/06 §2.2, simplified 2026-11-24): one quiet line in words — the
+ * data is live, or how old it is while the connection is down, and scans waiting at gates only
+ * when there are any. The technical figures (round trip, exact age, queue across gates) are one
+ * click away under "Details", and in the development panel.
  */
-import { StatusBar, StatusItem } from "@synan/ui/shell";
+import { useState } from "react";
+import { StatusBar } from "@synan/ui/shell";
 import { formatAge, formatNumber } from "@synan/ui/data";
 import { useCommand } from "../live/context";
 import { useNow } from "../live/hooks";
 import { useSlice } from "../live/slice";
-
 
 export function AdminStatusBar() {
   const { store } = useCommand();
@@ -15,6 +17,7 @@ export function AdminStatusBar() {
   const gates = useSlice(store.gates);
   const load = useSlice(store.load);
   const now = useNow(1000);
+  const [details, setDetails] = useState(false);
 
   let queue = 0;
   let offline = 0;
@@ -23,31 +26,43 @@ export function AdminStatusBar() {
     if (gate.link_state === "offline") offline++;
   }
   const age = link.lastFrameAt === null ? null : now - link.lastFrameAt;
-  const stale = link.status !== "live";
   const live = load.status === "ready";
+  const current = link.status === "live";
+
+  const line = !live
+    ? "No live data for this event"
+    : current
+      ? "Counts are live"
+      : `Showing the last known counts${age !== null ? `, ${formatAge(age)} old` : ""}`;
 
   return (
     <StatusBar>
-      <StatusItem label="WS latency">{live && link.latencyMs !== null ? `${link.latencyMs} ms` : "—"}</StatusItem>
-      <StatusItem label="Last state">
-        <span className={stale && live ? "text-warning" : undefined}>
-          {live && age !== null ? (link.status !== "live" ? `${formatAge(age)} old` : "current") : "—"}
+      <span className={`flex items-center gap-2 px-3 ${live && !current ? "text-warning" : ""}`}>{line}</span>
+      {live && queue > 0 ? (
+        <span className="flex items-center border-l border-border px-3 text-warning">
+          {formatNumber(queue)} scans waiting to sync{offline > 0 ? ` · ${offline} ${offline === 1 ? "gate" : "gates"} offline` : ""}
         </span>
-      </StatusItem>
-      <StatusItem label="Queued at gates">
-        {live ? (
-          <>
-            <span className={queue > 0 ? "text-warning" : undefined}>{formatNumber(queue)}</span>
-            <span className="text-muted-foreground">
-              {" "}
-              · {offline > 0 ? `${offline} offline of ${gates.size}` : `${gates.size} gates`}
-            </span>
-          </>
-        ) : (
-          "—"
-        )}
-      </StatusItem>
+      ) : null}
       <span className="flex-1" />
+      {details && live ? (
+        <span className="flex items-center gap-3 px-3 font-mono tabular-nums">
+          <span>round trip {link.latencyMs !== null ? `${link.latencyMs} ms` : "—"}</span>
+          <span>last update {age !== null ? `${formatAge(age)} ago` : "—"}</span>
+          <span>
+            {formatNumber(queue)} queued · {gates.size} gates
+          </span>
+        </span>
+      ) : null}
+      {live ? (
+        <button
+          type="button"
+          aria-expanded={details}
+          onClick={() => setDetails((d) => !d)}
+          className="border-l border-border px-3 transition-colors duration-120 ease-standard hover:text-foreground focus-visible:-outline-offset-2 motion-reduce:transition-none"
+        >
+          {details ? "Hide details" : "Details"}
+        </button>
+      ) : null}
     </StatusBar>
   );
 }

@@ -29,7 +29,7 @@ export function MorphSkeleton({
       className={cn("relative overflow-hidden bg-muted", className)}
       style={{ width, height: height ?? defaultHeight[variant], ...style }}
     >
-      <span className="absolute inset-0 -translate-x-full animate-skeleton-sweep bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.04),transparent)] motion-reduce:animate-none" />
+      <span className="absolute inset-0 -translate-x-full animate-skeleton-sweep bg-[linear-gradient(90deg,transparent,var(--sheen),transparent)] motion-reduce:animate-none" />
     </div>
   );
 }

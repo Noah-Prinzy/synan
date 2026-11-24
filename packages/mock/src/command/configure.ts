@@ -220,7 +220,7 @@ export interface AttendeeListRow {
   tier: AttendeeTier;
   state: RegistrationState;
   credential_state: CredentialState | null;
-  /** Masked, e.g. `04A2…9F`. */
+  /** Masked as the server's band hint: the UID's last four, e.g. `••••81BF`. */
   band_hint: string | null;
   checked_in: boolean;
   last_scan_at: string | null;
@@ -949,7 +949,8 @@ export function createConfigureMock(options: ConfigureOptions): ConfigureApi {
         tier,
         state: tier === "VIP" && rng() < 0.15 ? "pending_approval" : "confirmed",
         credential_state: credential,
-        band_hint: bound ? `04${hex()}${hex()}…${hex()}` : null,
+        // The server's hint: the UID's last four (three draws kept, so every later fixture stays the same).
+        band_hint: bound ? ((_a: string, b: string, c: string) => `••••${b}${c}`)(hex(), hex(), hex()) : null,
         checked_in: checkedIn,
         last_scan_at: checkedIn ? new Date(clock.now() - Math.floor(rng() * 5 * 3_600_000)).toISOString() : null,
       });
@@ -1055,7 +1056,8 @@ export function createConfigureMock(options: ConfigureOptions): ConfigureApi {
     }
   };
 
-  const maskBand = (identifier: string) => `${identifier.slice(0, 6)}…${identifier.slice(-2)}`;
+  /** As the server's band hint: the UID's last four in upper-case hex (`••••81BF`). */
+  const maskBand = (identifier: string) => `••••${identifier.slice(-4).toUpperCase()}`;
 
   const deskCount = (eventId: string, what: "bound" | "replaced" | "resent") => {
     const today = deskToday.get(eventId) ?? { bound: 0, replaced: 0, resent: 0 };

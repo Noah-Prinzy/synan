@@ -16,7 +16,7 @@ import { Button, Dialog, Field, TextInput, cn } from "@synan/ui/components";
 import { SignalShape, formatNumber } from "@synan/ui/data";
 import type { AttendeeListRow } from "@synan/mock/command";
 import { useSession } from "../access/session";
-import { EmptyState, ErrorState, FilterChips, LoadingState, PageHeader, SectionHead, TIER_LABEL, useDocumentTitle } from "../kit";
+import { EmptyState, ErrorState, FilterChips, GUTTER_X, ICON_BUTTON, LoadingState, PageHeader, SectionHead, TIER_LABEL, useDocumentTitle } from "../kit";
 import { configure } from "../live/backend";
 import { useCommand } from "../live/context";
 import { AttendeeFacts } from "../workspace/parts/attendee-detail";
@@ -120,7 +120,7 @@ function Lookup() {
             setDecided(row.registration_id);
             replaceRow(row);
           }}
-          className="border-t border-border px-4 py-4"
+          className="border-t border-border px-4 pt-4 pb-5 sm:px-5"
         />
       ) : null}
     </>
@@ -137,7 +137,7 @@ function Lookup() {
           </>
         }
       />
-      <div className="flex flex-wrap items-end gap-x-4 gap-y-3 border-b border-border px-4 py-3 sm:px-6">
+      <div className={cn("flex flex-wrap items-end gap-x-4 gap-y-3 border-b border-border pt-3 pb-4", GUTTER_X)}>
         <Field label="Search" className="w-full sm:w-80">
           <TextInput
             type="search"
@@ -145,7 +145,7 @@ function Lookup() {
             autoFocus
             onChange={(e) => setTyped(e.target.value)}
             placeholder="Name, email or band"
-            suffix={<Search size={14} strokeWidth={1.5} aria-hidden="true" />}
+            suffix={<Search size={16} strokeWidth={1.5} aria-hidden="true" />}
           />
         </Field>
         <FilterChips<Mode>
@@ -162,21 +162,21 @@ function Lookup() {
       <div className={cn("min-w-0", panel && "xl:grid xl:grid-cols-12")}>
         <section aria-labelledby="lookup-results" className={cn("min-w-0", panel && "xl:col-span-7")}>
           {load.status === "idle" ? (
-            <EmptyState title="Who are you looking for?">
+            <EmptyState title="Who are you looking for?" className={GUTTER_X}>
               Type at least two letters of a name or email, or the first characters of a band. To see every pass that gates are
               holding for a check, choose <span className="text-foreground">Passes under review</span>.
             </EmptyState>
           ) : load.status === "loading" ? (
-            <LoadingState label="Searching…" rows={5} />
+            <LoadingState label="Searching…" rows={5} className={GUTTER_X} />
           ) : load.status === "error" ? (
             <ErrorState title="Could not search the attendees" error={load.error} onRetry={() => setAttempt((n) => n + 1)} />
           ) : items.length === 0 ? (
             <EmptyState
               title={mode === "review" ? "No passes under review" : "No one matches"}
+              className={GUTTER_X}
               action={
                 q ? (
                   <Button variant="secondary" size="compact" onClick={() => setTyped("")}>
-                    <X size={14} strokeWidth={1.5} aria-hidden="true" />
                     Clear the search
                   </Button>
                 ) : undefined
@@ -191,6 +191,7 @@ function Lookup() {
               <SectionHead
                 id="lookup-results"
                 title={mode === "review" ? "Under review" : "Matches"}
+                className={GUTTER_X}
                 meta={
                   <span role="status" aria-live="polite">
                     {load.updating
@@ -215,10 +216,11 @@ function Lookup() {
               <SectionHead
                 id="lookup-person"
                 title={selected.full_name ?? "Public visitor"}
+                className="pr-2 sm:pr-3"
                 actions={
-                  <Button variant="quiet" size="compact" aria-label="Close the attendee" onClick={close}>
-                    <X size={14} strokeWidth={1.5} aria-hidden="true" />
-                  </Button>
+                  <button type="button" aria-label="Close the attendee" onClick={close} className={ICON_BUTTON}>
+                    <X size={16} strokeWidth={1.5} aria-hidden="true" />
+                  </button>
                 }
               />
               {detail}
@@ -252,12 +254,15 @@ function ResultRow({ row, selected, onOpen }: { row: AttendeeListRow; selected: 
         type="button"
         onClick={onOpen}
         aria-current={selected || undefined}
-        className="relative grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 px-4 py-2 text-left transition-colors duration-120 ease-standard before:absolute before:inset-y-0 before:left-0 before:w-0.5 hover:bg-foreground/3 aria-current:bg-foreground/4 aria-current:before:bg-brand motion-reduce:transition-none sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_6rem_8rem] sm:px-6"
+        className={cn(
+          "relative grid min-h-12 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 py-2 text-left transition-colors duration-120 ease-standard before:absolute before:inset-y-0 before:left-0 before:w-0.5 hover:bg-foreground/3 aria-current:bg-foreground/4 aria-current:before:bg-brand motion-reduce:transition-none sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_7rem_8.5rem] xl:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_7rem_8.5rem]",
+          GUTTER_X,
+        )}
       >
         <span className={cn("truncate text-13", !row.full_name && "text-muted-foreground")}>{row.full_name ?? "Public visitor"}</span>
-        <span className="col-start-1 row-start-2 truncate text-12 text-muted-foreground sm:col-start-auto sm:row-start-auto">{row.email ?? "—"}</span>
-        <span className="hidden text-12 sm:block">{TIER_LABEL[row.tier]}</span>
-        <span className={cn("row-span-2 inline-flex items-center gap-1.5 justify-self-end text-12 sm:row-span-1 sm:justify-self-start", credential?.tone ?? "text-muted-foreground")}>
+        <span className="col-start-1 row-start-2 truncate text-12 text-muted-foreground sm:col-start-auto sm:row-start-auto sm:text-13">{row.email ?? "—"}</span>
+        <span className="hidden text-13 text-muted-foreground sm:block">{TIER_LABEL[row.tier]}</span>
+        <span className={cn("row-span-2 inline-flex items-center gap-1.5 justify-self-end text-13 sm:row-span-1 sm:justify-self-start", credential?.tone ?? "text-muted-foreground")}>
           {credential ? <SignalShape state={credential.shape} /> : null}
           {credential?.label ?? "No pass"}
         </span>

@@ -102,10 +102,10 @@ export function bandProblem(raw: string): string | null {
   return null;
 }
 
-/** `04A1B2…9F`: what the desk shows for a band typed or scanned a moment ago. */
+/** `••••81BF`: what the desk shows for a band typed or scanned a moment ago, as the server's band hint reads. */
 export function maskBand(raw: string): string {
   const id = normaliseBand(raw);
-  return id.length > 8 ? `${id.slice(0, 6)}…${id.slice(-2)}` : id;
+  return id.length >= 4 ? `••••${id.slice(-4)}` : id;
 }
 
 export function plural(n: number, one: string, many = `${one}s`): string {

@@ -11,6 +11,7 @@ import { useSyncExternalStore } from "react";
 import { SCAN_RESULT_COPY } from "@synan/contracts/copy";
 import { QR_PREFIX_EMAIL, parseSignedQr } from "@synan/contracts/qr";
 import type { AttendeeTier, ScanResult } from "@synan/contracts/enums";
+import type { HandoverSummary } from "@synan/contracts/rest";
 import { BANDS, QR_REFS, gateById, roomState, type Gate, type Holder } from "./mock";
 import { API_MODE } from "./api/config";
 import { runtime } from "./api/runtime";
@@ -154,6 +155,20 @@ export function pairGate(gate: Gate): void {
 
 export async function endShift(): Promise<void> {
   if (API_MODE) await runtime.endShift(runtime.gateById(state.gateId));
+  releaseGate();
+}
+
+/**
+ * API mode, the end-of-shift dialog: hand the shift over on the server first and resolve with its
+ * summary (null when it could not be made), keeping the gate until releaseGate(), so the dialog can
+ * show the server's figures before the device lets go of the gate.
+ */
+export async function handOver(): Promise<HandoverSummary | null> {
+  return API_MODE ? runtime.endShift(runtime.gateById(state.gateId)) : null;
+}
+
+/** The device lets go of the gate (after endShift's handover, or handOver()). */
+export function releaseGate(): void {
   set({ gateId: null, shiftStartedAt: null });
 }
 

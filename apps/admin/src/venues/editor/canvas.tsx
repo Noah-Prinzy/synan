@@ -356,13 +356,14 @@ export function LayoutCanvas({
               >
                 <div
                   className={cn(
-                    "flex items-baseline gap-1 truncate px-1.5 text-11 text-muted-foreground",
+                    "flex items-baseline gap-1 truncate px-2 text-12 text-muted-foreground",
                     editing && "border-b border-dashed border-foreground/10",
                   )}
                   style={{ height: BAND, lineHeight: `${BAND - 2}px` }}
                 >
                   <span className="truncate">
-                    {floorName(zone.floorId)} · <span className={selected ? "text-foreground" : "text-foreground/80"}>{zone.name.trim() || "Unnamed zone"}</span>
+                    <span className={cn("font-medium", selected ? "text-foreground" : "text-foreground/90")}>{zone.name.trim() || "Unnamed zone"}</span> ·{" "}
+                    {floorName(zone.floorId)}
                   </span>
                 </div>
               </div>
@@ -379,7 +380,7 @@ export function LayoutCanvas({
                 key={room.id}
                 aria-hidden="true"
                 className={cn(
-                  "absolute flex flex-col justify-between overflow-hidden border bg-background",
+                  "absolute flex flex-col justify-between overflow-hidden border bg-foreground/[0.035]",
                   selected ? "border-brand" : invalid.has(room.id) ? "border-destructive/60" : "border-foreground/15",
                   lifted && "opacity-40",
                 )}
@@ -387,10 +388,12 @@ export function LayoutCanvas({
               >
                 {roomy ? (
                   <>
-                    <span className={cn("block truncate px-1.5 pt-0.5 text-11", selected ? "text-foreground" : "text-muted-foreground")}>
+                    {/* Same reading as the Command Center map: the name wraps at words (two lines at
+                        most) instead of being cut to "Worksh…"; the capacity is this screen's figure. */}
+                    <span className={cn("line-clamp-2 px-2 pt-1.5 text-12 leading-tight", selected ? "text-foreground" : "text-foreground/85")}>
                       {room.name.trim() || "Unnamed room"}
                     </span>
-                    <span className="px-1.5 pb-1 font-mono text-11 leading-none text-foreground/70 tabular-nums">
+                    <span className="px-2 pb-1.5 font-mono text-12 leading-none text-muted-foreground tabular-nums">
                       {/^\d+$/.test(room.capacity.trim()) ? formatNumber(Number(room.capacity)) : "—"}
                     </span>
                   </>
@@ -432,7 +435,7 @@ function Preview({ rect, blocked, size }: { rect: { left: number; top: number; w
       <span
         aria-hidden="true"
         className={cn(
-          "pointer-events-none absolute max-w-64 border bg-background px-1.5 py-0.5 text-11",
+          "pointer-events-none absolute max-w-64 border bg-background px-1.5 py-0.5 text-12",
           blocked ? "border-destructive/50 text-destructive" : "border-border font-mono text-foreground tabular-nums",
         )}
         style={{ left: rect.left, top: rect.top + rect.height + 4 }}

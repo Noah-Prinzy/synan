@@ -47,8 +47,8 @@ export function NotForRole({ inFrame = false }: { inFrame?: boolean }) {
   const { roleLabel, role, landing, landingLabel } = useSession();
   useDocumentTitle("Not available");
   return (
-    <section aria-labelledby="not-for-role" className={inFrame ? "mt-10 max-w-160" : "max-w-160 px-4 py-10 sm:px-6"}>
-      <p className="font-mono text-11 text-muted-foreground">{roleLabel}</p>
+    <section aria-labelledby="not-for-role" className={inFrame ? "mt-10 max-w-160" : "max-w-160 px-4 py-10 sm:px-6 2xl:px-8"}>
+      <p className="text-12 text-muted-foreground">Signed in as {article(roleLabel)} {roleLabel.toLowerCase()}</p>
       <h1 id="not-for-role" className="mt-1 font-display text-28 leading-tight tracking-tight text-balance">
         This screen is not part of your console
       </h1>

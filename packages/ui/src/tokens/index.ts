@@ -146,45 +146,47 @@ export const letterSpacing = {
 export const colors = {
   // Neutral colors - Dark mode (primary)
   background: {
-    light: 'oklch(1 0 0)',
+    light: '#f7f5f0',
     dark: 'oklch(0.145 0 0)',  // #0A0A0A
   },
   foreground: {
-    light: 'oklch(0.145 0 0)',
+    light: '#121110',
     dark: 'oklch(0.985 0 0)',  // #FAFAFA
   },
   card: {
-    light: 'oklch(1 0 0)',
+    light: '#ffffff',
     dark: 'oklch(0.205 0 0)',  // #171717
   },
   cardForeground: {
-    light: 'oklch(0.145 0 0)',
+    light: '#121110',
     dark: 'oklch(0.985 0 0)',
   },
   
   // Border and input colors
   border: {
-    light: 'oklch(0.922 0 0)',
+    light: 'rgb(18 17 16 / 0.12)',
     dark: 'oklch(1 0 0 / 10%)',
   },
   input: {
-    light: 'oklch(0.922 0 0)',
+    light: 'rgb(18 17 16 / 0.22)',
     dark: 'oklch(1 0 0 / 15%)',
   },
   
   // Muted colors
   muted: {
-    light: 'oklch(0.97 0 0)',
+    light: '#e9e6df',
     dark: 'oklch(0.269 0 0)',  // #262626
   },
   mutedForeground: {
-    light: 'oklch(0.556 0 0)',
+    light: '#5e5a52',
     dark: 'oklch(0.708 0 0)',  // #A1A1A1
   },
   
   // Semantic colors - FROM FRONTEND PLAN
   // Brand: accent only, never a surface
   brand: '#8ab4ff',
+  /** Light theme: the accent deepens to the identity's light accent; signals deepen for AA (theme.css). */
+  light: { brand: '#2f62d9', success: '#18753f', warning: '#8a5a00', destructive: '#c0292e' },
   
   // Signals: carry state meaning
   success: '#43C07A',    // admitted / healthy

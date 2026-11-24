@@ -24,7 +24,7 @@ import { WifiOff } from "lucide-react";
 import { Field, Select, cn } from "@synan/ui/components";
 import { SignalShape, formatNumber } from "@synan/ui/data";
 import type { CommandEvent, DeskInventory, DeskRegistration } from "@synan/mock/command";
-import { EmptyState, EventStateChip, LoadingState, Notice, PageHeader, useDocumentTitle, useResource, type Resource } from "../kit";
+import { EmptyState, EventStateChip, GUTTER_X, LoadingState, Notice, PageHeader, useDocumentTitle, useResource, type Resource } from "../kit";
 import { DEV_TOOLS } from "../live/backend";
 import { useCommand } from "../live/context";
 import { AttendeeCard } from "./attendee-card";
@@ -166,14 +166,18 @@ function Desk({ event, events, onSelectEvent }: { event: CommandEvent; events: C
 
       {offline ? <OfflineBanner onRetry={retryAll} /> : null}
       {readOnly ? (
-        <Notice className="mx-4 mt-4 sm:mx-6">This event is {event.state}. You can look people up, but bands cannot be bound or replaced, and passes are not sent.</Notice>
+        <div className={cn("pt-4", GUTTER_X)}>
+          <Notice>This event is {event.state}. You can look people up, but bands cannot be bound or replaced, and passes are not sent.</Notice>
+        </div>
       ) : event.state === "draft" ? (
-        <Notice className="mx-4 mt-4 sm:mx-6">This event is still a draft: nobody can register yet, so there is no one to find.</Notice>
+        <div className={cn("pt-4", GUTTER_X)}>
+          <Notice>This event is still a draft: nobody can register yet, so there is no one to find.</Notice>
+        </div>
       ) : null}
 
       <div className="lg:grid lg:min-h-[calc(100dvh-16rem)] lg:grid-cols-12">
-        <section aria-label="Find an attendee" className="min-w-0 lg:col-span-5 lg:border-r lg:border-border">
-          <div ref={searchBlock} role="search" className="flex scroll-mt-14 flex-col gap-3 px-4 pt-5 sm:px-6">
+        <section aria-label="Find an attendee" className="min-w-0 lg:col-span-5 lg:border-r lg:border-border 2xl:col-span-4">
+          <div ref={searchBlock} role="search" className={cn("flex scroll-mt-14 flex-col gap-3 pt-5", GUTTER_X)}>
             <SearchField
               ref={searchInput}
               query={query}
@@ -195,7 +199,7 @@ function Desk({ event, events, onSelectEvent }: { event: CommandEvent; events: C
 
           {selected ? (
             // Below 1024 the attendee takes the results' place; a quiet way back to them.
-            <div className="px-4 pt-3 sm:px-6 lg:hidden">
+            <div className={cn("pt-3 lg:hidden", GUTTER_X)}>
               <button
                 type="button"
                 onClick={() => setSelected(null)}
@@ -222,7 +226,7 @@ function Desk({ event, events, onSelectEvent }: { event: CommandEvent; events: C
           </div>
         </section>
 
-        <section aria-label={selected ? displayName(selected.row) : "Attendee"} className="min-w-0 max-lg:mt-2 max-lg:border-t max-lg:border-border lg:col-span-7">
+        <section aria-label={selected ? displayName(selected.row) : "Attendee"} className="min-w-0 max-lg:mt-2 max-lg:border-t max-lg:border-border lg:col-span-7 2xl:col-span-8">
           {selected ? (
             <AttendeeCard
               key={selected.row.id}
@@ -237,8 +241,9 @@ function Desk({ event, events, onSelectEvent }: { event: CommandEvent; events: C
               onCompleted={readyForNext}
             />
           ) : (
-            <div className="hidden px-6 py-10 lg:block">
-              <p className="max-w-100 text-13 leading-relaxed text-muted-foreground">
+            <div className={cn("hidden pt-5 lg:block", GUTTER_X)}>
+              <p className="text-12 text-muted-foreground">Attendee</p>
+              <p className="mt-3 max-w-100 text-13 leading-relaxed text-muted-foreground">
                 Choose someone from the results to see their pass and band. With a band reader, scan as soon as their name opens.
               </p>
             </div>
@@ -259,41 +264,63 @@ function reducedMotion(): boolean {
   return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-/** Bands in the box, as a large mono numeral; amber when the box is running low. */
+/**
+ * Bands in the box, as a large mono numeral; amber when the box is running low. Under it, today's
+ * work at this desk in words: only what happened, so a quiet morning reads "None handed out yet".
+ */
 function StockCell({ inventory }: { inventory: Resource<DeskInventory> & { reload: (quiet?: boolean) => void } }) {
   const stock = inventory.status === "ready" ? inventory.data.by_state.stock : null;
   const low = stock !== null && stock < LOW_STOCK;
   const today = inventory.status === "ready" ? inventory.data.today : null;
+  const done = today
+    ? [
+        [today.bound, "bound"],
+        [today.replaced, "replaced"],
+        [today.resent, today.resent === 1 ? "pass resent" : "passes resent"],
+      ].filter(([n]) => (n as number) > 0)
+    : [];
   return (
-    <div className="grid min-w-40 grid-cols-[auto_auto] items-baseline gap-x-3 border border-border px-3 py-2 max-sm:w-full max-sm:grid-cols-[auto_minmax(0,1fr)] sm:grid-cols-1" role="group" aria-label="Band stock">
-      <span className="text-11 text-muted-foreground">Bands in stock</span>
+    <div
+      className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1 max-sm:w-full sm:grid-cols-1 sm:justify-items-end sm:text-right"
+      role="group"
+      aria-label="Band stock"
+    >
       {inventory.status === "error" ? (
-        <button type="button" onClick={() => inventory.reload()} className="mt-0.5 min-h-8 text-left text-12 text-foreground underline decoration-border underline-offset-4 hover:decoration-brand">
-          Not loaded · try again
+        <button type="button" onClick={() => inventory.reload()} className="min-h-11 text-left text-13 text-foreground underline decoration-border underline-offset-4 hover:decoration-brand sm:order-2">
+          Stock not loaded · try again
         </button>
       ) : (
-        <span className={cn("mt-0.5 flex items-center gap-2 font-mono text-21 leading-none tabular-nums sm:text-28", low && "text-warning")} aria-live="polite">
+        <span className={cn("flex items-center gap-2 font-mono text-28 leading-none tabular-nums sm:order-2", low && "text-warning")} aria-live="polite">
           {low ? <SignalShape state="warn" /> : null}
           {stock === null ? <span className="text-muted-foreground">—</span> : formatNumber(stock)}
         </span>
       )}
+      <span className="text-12 text-muted-foreground sm:order-1">Bands in stock</span>
       {/* Always one line under the number, so the header never changes height. */}
-      {low ? (
-        <span className="mt-1 text-11 text-warning max-sm:col-span-2">Running low: ask for a new box</span>
-      ) : (
-        <span className="mt-1 text-11 text-muted-foreground max-sm:col-span-2">
-          Today <span className="font-mono text-foreground tabular-nums">{today?.bound ?? 0}</span> bound ·{" "}
-          <span className="font-mono text-foreground tabular-nums">{today?.replaced ?? 0}</span> replaced ·{" "}
-          <span className="font-mono text-foreground tabular-nums">{today?.resent ?? 0}</span> resent
-        </span>
-      )}
+      <span className={cn("col-span-2 text-12 sm:order-3 sm:col-span-1", low ? "text-warning" : "text-muted-foreground")}>
+        {low ? (
+          "Running low: ask for a new box"
+        ) : done.length === 0 ? (
+          "None handed out yet today"
+        ) : (
+          <>
+            Today{" "}
+            {done.map(([n, words], i) => (
+              <span key={words as string}>
+                {i > 0 ? " · " : null}
+                <span className="font-mono text-foreground tabular-nums">{n}</span> {words}
+              </span>
+            ))}
+          </>
+        )}
+      </span>
     </div>
   );
 }
 
 function OfflineBanner({ onRetry }: { onRetry: () => void }) {
   return (
-    <div role="status" className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-warning/40 px-4 py-2.5 text-13 sm:px-6">
+    <div role="status" className={cn("flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-warning/40 py-2.5 text-13", GUTTER_X)}>
       <span className="flex min-w-0 flex-1 items-start gap-2 text-warning">
         <WifiOff size={16} strokeWidth={1.5} aria-hidden="true" className="mt-0.5 shrink-0" />
         <span>

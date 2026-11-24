@@ -9,6 +9,7 @@ import type { ScanResult } from "@synan/contracts/enums";
 import { setPreference, useScanner } from "../data/store";
 import { announce, unlockAudio } from "../data/feedback";
 import { toneGlyph, toneText } from "../components/verdict";
+import { ThemeSwitch } from "@synan/ui/components";
 
 const groups: { title: string; meaning: string; results: ScanResult[] }[] = [
   { title: "Green", meaning: "Let them in.", results: ["admitted"] },
@@ -126,6 +127,16 @@ export default function Help() {
               if (next) announce("green", { sound: false, vibrate: true });
             }}
           />
+          {/* Outdoors in sun, light is easier to read; at night, dark. System follows the phone. */}
+          <div className="border-b border-border px-4 py-3 sm:px-6">
+            <ThemeSwitch
+              label="Appearance"
+              legendClassName="text-17"
+              hint="Light reads best in bright sun, dark at night. System follows this phone."
+              fill
+              cellClassName="min-h-14 text-17"
+            />
+          </div>
         </div>
         <p className="px-4 py-4 text-15 text-muted-foreground sm:px-6">
           The screen stays on while the scan screen is open.

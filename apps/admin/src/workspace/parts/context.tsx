@@ -59,7 +59,7 @@ export function eventRooms(event: EventRecord, venue: VenueDetail | null): Event
 export function ReadOnlyNote({ event, what }: { event: EventRecord; what: string }) {
   const word = event.state === "archived" ? "archived" : "closed";
   return (
-    <Notice className="mx-4 mt-4 sm:mx-6">
+    <Notice className="mx-4 mt-4 sm:mx-6 2xl:mx-8">
       This event is {word}, so {what} can no longer be changed. It is kept as the record of what happened.
     </Notice>
   );

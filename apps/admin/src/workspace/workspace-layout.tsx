@@ -13,6 +13,7 @@ import { Radio } from "lucide-react";
 import { Button, buttonClass } from "@synan/ui/components";
 import type { EventRecord } from "@synan/mock/command";
 import {
+  BackLink,
   EmptyState,
   ErrorState,
   EventStateChip,
@@ -21,7 +22,6 @@ import {
   RouteTabs,
   errorCode,
   formatDateRange,
-  linkClass,
   useResource,
   zoneLabel,
 } from "../kit";
@@ -114,11 +114,7 @@ function WorkspaceHeader({ value }: { value: WorkspaceValue }) {
   return (
     <PageHeader
       code="D6"
-      back={
-        <Link to="/events" className={linkClass}>
-          Events
-        </Link>
-      }
+      back={<BackLink to="/events">Events</BackLink>}
       title={event.title || "Untitled event"}
       meta={
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">

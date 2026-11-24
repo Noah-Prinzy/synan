@@ -19,15 +19,15 @@ export function DeskDevPanel({ onStockChanged }: { onStockChanged: () => void })
   const offline = useOffline();
   const [note, setNote] = useState<string | null>(null);
   const button =
-    "min-h-8 border border-border px-2 text-left text-11 transition-colors duration-120 hover:border-foreground/50 disabled:opacity-40";
+    "min-h-8 border border-border px-2.5 text-left text-12 transition-colors duration-120 hover:border-foreground/50 disabled:opacity-40";
   return (
-    <details className="mx-4 mt-8 mb-6 border border-dashed border-foreground/30 text-12 sm:mx-6">
+    <details className="mx-4 mt-10 mb-6 border border-dashed border-foreground/30 text-12 sm:mx-6 2xl:mx-8">
       <summary className="flex min-h-11 cursor-pointer items-center gap-2 px-3 text-muted-foreground">
         <span className="font-mono text-11 tracking-[0.12em] text-foreground">DEV</span> Mock desk: scan a demo band, go offline
       </summary>
       <div className="flex flex-col gap-3 border-t border-dashed border-foreground/30 px-3 py-3">
         <div>
-          <p className="mb-1.5 text-11 text-muted-foreground">Scan into the band field on screen (as a reader would: types, then Enter)</p>
+          <p className="mb-2 text-12 text-muted-foreground">Scan into the band field on screen (as a reader would: types, then Enter)</p>
           <div className="flex flex-wrap gap-1">
             {SCANS.map((scan) => (
               <button
@@ -82,7 +82,7 @@ export function DeskDevPanel({ onStockChanged }: { onStockChanged: () => void })
             Next call fails
           </button>
         </div>
-        <p className="text-11 text-muted-foreground" role="status">
+        <p className="text-12 text-muted-foreground" role="status">
           {note ?? (offline ? "Offline." : "Second factor: any six digits except 000000.")}
         </p>
       </div>

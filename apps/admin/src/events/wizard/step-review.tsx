@@ -10,7 +10,7 @@ import { Trash2 } from "lucide-react";
 import type { EventRecord, ReadinessItem, RuleInput, VenueDetail, WizardStep } from "@synan/mock/command";
 import { ActionButton, Button, Dialog, RewardMoment, buttonClass } from "@synan/ui/components";
 import { formatNumber } from "@synan/ui/data";
-import { ErrorState, KeyValues, LoadingState, Notice, Panel, TIER_LABEL, TIER_ORDER, errorCode, errorCopy, formatDate, formatTime, linkClass, useResource, zoneLabel } from "../../kit";
+import { ErrorState, GUTTER_X, KeyValues, LoadingState, Notice, Panel, TIER_LABEL, TIER_ORDER, errorCode, errorCopy, formatDate, formatTime, linkClass, useResource, zoneLabel } from "../../kit";
 import { configure } from "../../live/backend";
 import { useCommand } from "../../live/context";
 import { ReadinessChecklist, readinessSummary } from "../parts/readiness-checklist";
@@ -109,7 +109,7 @@ export function ReviewStep({ record, goto, close, onPublished }: StepContext & {
 
   if (published) {
     return (
-      <div className="px-4 py-8 sm:px-6">
+      <div className={`py-8 ${GUTTER_X}`}>
         <div className="max-w-160 border border-border px-5 py-5">
           <p role="status" className="font-display text-21">
             <RewardMoment>Published. Registration is open.</RewardMoment>
@@ -153,7 +153,12 @@ export function ReviewStep({ record, goto, close, onPublished }: StepContext & {
   const capacity = rooms.reduce((sum, room) => sum + room.capacity, 0);
 
   return (
-    <div className="grid grid-cols-1 gap-8 px-4 py-6 sm:px-6 xl:grid-cols-[minmax(0,48rem)_minmax(20rem,26rem)] xl:gap-10">
+    <div
+      className={`grid grid-cols-1 gap-8 py-6 xl:grid-cols-[minmax(0,48rem)_minmax(20rem,26rem)] xl:gap-10 2xl:grid-cols-[minmax(0,80rem)_26rem] ${GUTTER_X}`}
+    >
+      {/* The summary: one column, or two side by side once its column is wide enough (a wide screen). */}
+      <div className="@container min-w-0">
+      <div className="grid grid-cols-1 items-start gap-6 @min-[60rem]:grid-cols-2">
       <div className="flex min-w-0 flex-col gap-6">
         <Panel title={STEP_LABEL.basics} actions={<EditLink step="basics" onEdit={goto} />}>
           <KeyValues
@@ -186,6 +191,8 @@ export function ReviewStep({ record, goto, close, onPublished }: StepContext & {
             ]}
           />
         </Panel>
+      </div>
+      <div className="flex min-w-0 flex-col gap-6">
         <Panel title={STEP_LABEL.access} meta="Tiers permitted" actions={<EditLink step="access" onEdit={goto} />}>
           <KeyValues rows={ruleRows} />
         </Panel>
@@ -204,9 +211,11 @@ export function ReviewStep({ record, goto, close, onPublished }: StepContext & {
               ]}
             />
           ) : (
-            <p className="px-4 py-3 text-13 text-muted-foreground">Not set up yet.</p>
+            <p className="px-4 py-3 text-13 text-muted-foreground sm:px-5">Not set up yet.</p>
           )}
         </Panel>
+      </div>
+      </div>
       </div>
 
       <div className="flex min-w-0 flex-col gap-6">

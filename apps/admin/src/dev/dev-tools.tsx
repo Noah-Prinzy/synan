@@ -82,7 +82,8 @@ export default function DevTools() {
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         title="Development tools — not part of the product"
-        className="fixed right-2 bottom-8 z-50 border border-dashed border-foreground/30 bg-background px-2 py-0.5 font-mono text-11 tracking-[0.12em] text-muted-foreground hover:text-foreground"
+        // Sits in the middle of the status bar line (the shell's own chrome), so it never covers content.
+        className="fixed bottom-0 left-1/2 z-50 flex h-6 -translate-x-1/2 items-center border border-b-0 border-dashed border-foreground/30 bg-background px-2 font-mono text-11 tracking-[0.12em] text-muted-foreground hover:text-foreground"
       >
         DEV{role && role !== "admin" ? ` · ${roleLabel.toLowerCase()}` : ""}
         {played ? ` · ${played}` : ""}
@@ -92,7 +93,7 @@ export default function DevTools() {
         <div
           role="dialog"
           aria-label="Development tools"
-          className="fixed right-2 bottom-15 z-50 max-h-[calc(100dvh-5rem)] w-96 max-w-[calc(100vw-1rem)] overflow-y-auto border border-dashed border-foreground/30 bg-popover text-12 text-foreground"
+          className="fixed bottom-8 left-1/2 z-50 max-h-[calc(100dvh-5rem)] -translate-x-1/2 w-96 max-w-[calc(100vw-1rem)] overflow-y-auto border border-dashed border-foreground/30 bg-popover text-12 text-foreground"
         >
           <header className="flex items-center justify-between border-b border-border px-3 py-2">
             <span className="font-medium">Development tools</span>
@@ -222,7 +223,7 @@ function FpsOverlay() {
   return (
     <div
       aria-hidden="true"
-      className="fixed right-2 bottom-15 z-40 border border-dashed border-foreground/30 bg-popover px-2.5 py-1.5 font-mono text-11 leading-relaxed tabular-nums"
+      className="fixed right-2 bottom-8 z-40 border border-dashed border-foreground/30 bg-popover px-2.5 py-1.5 font-mono text-11 leading-relaxed tabular-nums"
     >
       <div className={report.fps >= 55 ? "text-success" : "text-warning"}>{report.fps.toFixed(1)} fps · 2 s</div>
       <div className="text-muted-foreground">

@@ -44,29 +44,32 @@ export default function WorkspaceSettings() {
   return (
     <div className="pb-10">
       {readOnly ? <ReadOnlyNote event={event} what="its settings" /> : null}
-      <div className="xl:grid xl:grid-cols-[minmax(0,40rem)_minmax(0,22rem)] xl:gap-10">
-        <div className="flex w-full max-w-160 flex-col gap-10 px-4 py-6 sm:px-6">
+      <div className="xl:grid xl:grid-cols-[minmax(0,40rem)_minmax(0,18rem)] xl:gap-16">
+        <div className="flex w-full max-w-160 flex-col gap-12 px-4 py-8 sm:px-6 2xl:px-8">
           <Basics event={event} readOnly={readOnly} onSaved={replace} />
           <Capacity event={event} readOnly={readOnly} onSaved={replace} />
           <Retention event={event} readOnly={readOnly} onSaved={replace} />
-          <section aria-labelledby="settings-danger" className="flex flex-col gap-3">
+          <section aria-labelledby="settings-danger" className="flex scroll-mt-4 flex-col gap-4">
             <FormHead id="settings-danger" title="Danger zone" />
             <DangerZone event={event} onChanged={replace} />
           </section>
         </div>
-        <aside aria-label="On this page" className="hidden px-4 py-6 xl:block xl:px-0">
-          <nav aria-label="Settings sections" className="sticky top-6">
-            <h2 className="border-b border-border pb-1.5 text-12 font-medium">On this page</h2>
-            <ul className="mt-1 text-13">
+        <aside aria-label="On this page" className="hidden py-8 xl:block">
+          <nav aria-label="Settings sections" className="sticky top-8">
+            <h2 className="border-b border-border pb-2 text-13 font-medium">On this page</h2>
+            <ul className="text-13">
               {SECTIONS.map(([id, label]) => (
-                <li key={id} className="border-b border-border py-2">
-                  <a href={`#${id}`} className={linkClass}>
+                <li key={id} className="border-b border-border">
+                  <a
+                    href={`#${id}`}
+                    className="flex min-h-10 items-center text-muted-foreground transition-colors duration-120 ease-standard hover:text-foreground focus-visible:text-foreground motion-reduce:transition-none"
+                  >
                     {label}
                   </a>
                 </li>
               ))}
             </ul>
-            <p className="mt-4 text-12 text-muted-foreground">
+            <p className="mt-5 text-12 leading-relaxed text-muted-foreground">
               Each section saves on its own. Access rules are changed in Rooms &amp; rules, where a change is shown as a diff before
               it is republished.
             </p>
@@ -92,11 +95,11 @@ function SaveRow({ dirty, children, note }: { dirty: boolean; children: ReactNod
 /** A section's heading inside the form column: a ruled label, flush with the fields below. */
 function FormHead({ id, title, meta }: { id: string; title: string; meta?: ReactNode }) {
   return (
-    <header className="flex items-baseline justify-between gap-3 border-b border-border pb-1.5">
-      <h2 id={id} className="text-12 font-medium">
+    <header className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
+      <h2 id={id} className="text-15 font-medium">
         {title}
       </h2>
-      {meta ? <span className="text-11 text-muted-foreground">{meta}</span> : null}
+      {meta ? <span className="text-12 text-muted-foreground">{meta}</span> : null}
     </header>
   );
 }

@@ -345,8 +345,9 @@ export function createConfigureApi(client: ApiClient, cache: SharedCache): Confi
     },
 
     /**
-     * GET /events/:id/registrations, up to 2,000 rows. DIFFERENCES: `q` matches name and email only
-     * (the mock also matched the band hint); `last_scan_at` is not served (null); `total` is the
+     * GET /events/:id/registrations, up to 2,000 rows. `q` is matched by the server: name, email, a pass
+     * id or reference, a band UID, or a band hint's last four (`81BF`, `••••81BF`), so kiosk walk-ins
+     * with no name or email are found. DIFFERENCES: `last_scan_at` is not served (null); `total` is the
      * event's registrations in every state before filters.
      */
     async attendees(eventId, query = {}) {
@@ -367,7 +368,9 @@ export function createConfigureApi(client: ApiClient, cache: SharedCache): Confi
     /**
      * GET /credentials/inventory?event_id, with the latest band actions (`recent`). DIFFERENCE: the
      * server names no attendee there (ids and band hints only), so the name shows as a dash; only
-     * binds and replacements are listed (the screen's vocabulary).
+     * binds and replacements are listed (the screen's vocabulary). A lost-band replacement reads
+     * `replaced` on the new band (listed) and `lost` on the old one (left out, as it is the same swap);
+     * a damaged swap's old band reads `retired` (left out too). Band hints as the server gives them.
      */
     async credentialOverview(eventId) {
       const inventory = await client.call("inventory", { query: { event_id: eventId } });

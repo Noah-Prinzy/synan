@@ -162,7 +162,15 @@ export function ActionButton({
         {phase === "done" ? <DrawnCheck className={variant === "primary" ? undefined : "text-brand"} /> : null}
         {doneLabel}
       </span>
-      <span className={cn("col-start-1 row-start-1 flex items-center gap-1.5 text-destructive", phase === "failed" ? "" : "invisible")} aria-hidden="true">
+      <span
+        className={cn(
+          "col-start-1 row-start-1 flex items-center gap-1.5",
+          // On the filled action the failure word needs its own tone (theme.css --destructive-on-action).
+          variant === "primary" ? "text-destructive-on-action" : "text-destructive",
+          phase === "failed" ? "" : "invisible",
+        )}
+        aria-hidden="true"
+      >
         {failedLabel}
       </span>
       {phase === "working" ? (

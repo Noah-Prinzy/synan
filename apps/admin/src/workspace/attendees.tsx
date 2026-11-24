@@ -17,8 +17,10 @@ import type { AttendeeListRow, AttendeeQuery } from "@synan/mock/command";
 import {
   EmptyState,
   ErrorState,
+  ICON_BUTTON,
   LoadingState,
   SectionHead,
+  TYPE,
   TIER_LABEL,
   TIER_ORDER,
   Table,
@@ -33,6 +35,7 @@ import { configure } from "../live/backend";
 import { AttendeeActions, AttendeeFacts } from "./parts/attendee-detail";
 import { useWorkspaceEvent } from "./parts/context";
 import { CREDENTIAL_ORDER, CREDENTIAL_VIEW, REGISTRATION_VIEW } from "./parts/copy";
+import { HEAD_BLEED } from "./parts/layout";
 import { useMedia } from "./parts/use-media";
 
 const PAGE = 50;
@@ -143,14 +146,14 @@ export default function WorkspaceAttendees() {
   const panel = wide && selected !== null;
 
   const toolbar = (
-    <div className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3 sm:px-6">
+    <div className="flex flex-wrap items-end gap-x-4 gap-y-3 border-b border-border px-4 py-4 sm:px-6 2xl:px-8">
       <Field label="Search" className="w-full sm:w-72">
         <TextInput
           type="search"
           value={typed}
           onChange={(e) => setTyped(e.target.value)}
           placeholder="Name, email or band"
-          suffix={<Search size={14} strokeWidth={1.5} aria-hidden="true" />}
+          suffix={<Search size={16} strokeWidth={1.5} aria-hidden="true" />}
         />
       </Field>
       <Field label="Tier" className="w-[calc(50%-0.375rem)] sm:w-40">
@@ -179,7 +182,7 @@ export default function WorkspaceAttendees() {
             update({ q: null, tier: null, credential: null, unbound: null });
           }}
         >
-          <X size={14} strokeWidth={1.5} aria-hidden="true" />
+          <X size={16} strokeWidth={1.5} aria-hidden="true" />
           Clear filters
         </Button>
       ) : null}
@@ -189,11 +192,12 @@ export default function WorkspaceAttendees() {
   return (
     <div className="pb-8">
       {toolbar}
-      <div className={cn("min-w-0", panel && "xl:grid xl:grid-cols-12")}>
-        <section aria-labelledby="attendees-table" className={cn("min-w-0", panel && "xl:col-span-8")}>
+      <div className={cn("min-w-0", panel && "xl:grid xl:grid-cols-[minmax(0,1fr)_24rem] 2xl:grid-cols-[minmax(0,1fr)_26rem]")}>
+        <section aria-labelledby="attendees-table" className="min-w-0">
           <SectionHead
             id="attendees-table"
             title="Registrations"
+            className={HEAD_BLEED}
             meta={
               <span role="status" aria-live="polite">
                 {load.updating ? (
@@ -233,12 +237,14 @@ export default function WorkspaceAttendees() {
                   <tr>
                     <Th>Name</Th>
                     <Th>Email</Th>
-                    <Th>Tier</Th>
-                    <Th>Registration</Th>
-                    <Th>Credential</Th>
-                    <Th>Band</Th>
-                    <Th>Checked in</Th>
-                    <Th numeric>Last scan</Th>
+                    <Th fit>Tier</Th>
+                    <Th fit>Registration</Th>
+                    <Th fit>Credential</Th>
+                    <Th fit>Band</Th>
+                    <Th fit>Checked in</Th>
+                    <Th numeric fit>
+                      Last scan
+                    </Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -254,7 +260,7 @@ export default function WorkspaceAttendees() {
                 </tbody>
               </Table>
               {pages > 1 ? (
-                <nav aria-label="Pages" className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
+                <nav aria-label="Pages" className="flex items-center justify-between gap-3 px-4 py-4 sm:px-6 2xl:px-8">
                   <span className="text-12 text-muted-foreground">
                     Rows <span className="font-mono tabular-nums">{formatNumber((current - 1) * PAGE + 1)}–{formatNumber(Math.min(current * PAGE, load.items.length))}</span> ·
                     page <span className="font-mono tabular-nums">{current}</span> of <span className="font-mono tabular-nums">{pages}</span>
@@ -273,15 +279,16 @@ export default function WorkspaceAttendees() {
           )}
         </section>
         {panel && selected ? (
-          <aside aria-labelledby="attendee-panel" className="min-w-0 border-t border-border xl:col-span-4 xl:border-t-0 xl:border-l">
+          <aside aria-labelledby="attendee-panel" className="min-w-0 border-t border-border xl:border-t-0 xl:border-l">
             <div className="sticky top-0">
               <SectionHead
                 id="attendee-panel"
                 title={selected.full_name ?? "Public visitor"}
+                className="pr-2!"
                 actions={
-                  <Button variant="quiet" size="compact" aria-label="Close the attendee" onClick={() => setOpenId(null)}>
-                    <X size={14} strokeWidth={1.5} aria-hidden="true" />
-                  </Button>
+                  <button type="button" className={ICON_BUTTON} aria-label="Close the attendee" onClick={() => setOpenId(null)}>
+                    <X strokeWidth={1.5} aria-hidden="true" />
+                  </button>
                 }
               />
               <AttendeeFacts row={selected} timeZone={event.timezone} />
@@ -345,29 +352,29 @@ function AttendeeRow({
           {row.full_name ?? "Public visitor"}
         </button>
       </Td>
-      <Td className="max-w-64 truncate text-muted-foreground">{row.email ?? "—"}</Td>
-      <Td className="whitespace-nowrap">{TIER_LABEL[row.tier]}</Td>
-      <Td className="whitespace-nowrap">
-        <span className={cn("inline-flex items-center gap-1.5 text-12", registration.tone)}>
+      <Td className="max-w-72 truncate text-muted-foreground">{row.email ?? "—"}</Td>
+      <Td fit>{TIER_LABEL[row.tier]}</Td>
+      <Td fit>
+        <span className={cn("inline-flex items-center gap-1.5", registration.tone)}>
           <SignalShape state={registration.shape} />
           {registration.label}
         </span>
       </Td>
-      <Td className="whitespace-nowrap">
+      <Td fit>
         {credential ? (
-          <span className={cn("inline-flex items-center gap-1.5 text-12", credential.tone)}>
+          <span className={cn("inline-flex items-center gap-1.5", credential.tone)}>
             <SignalShape state={credential.shape} />
             {credential.label}
           </span>
         ) : (
-          <span className="text-12 text-muted-foreground">—</span>
+          <span className="text-muted-foreground">—</span>
         )}
       </Td>
-      <Td className="max-w-28 truncate font-mono text-12 tabular-nums">
-        {row.band_hint ?? <span className="font-sans text-muted-foreground">Not bound</span>}
+      <Td fit>
+        {row.band_hint ? <span className={TYPE.value}>{row.band_hint}</span> : <span className="text-muted-foreground">Not bound</span>}
       </Td>
-      <Td className="whitespace-nowrap text-12">{row.checked_in ? "Yes" : <span className="text-muted-foreground">No</span>}</Td>
-      <Td numeric className="whitespace-nowrap">
+      <Td fit>{row.checked_in ? "Yes" : <span className="text-muted-foreground">No</span>}</Td>
+      <Td numeric fit>
         {row.last_scan_at ? formatStamp(row.last_scan_at, timeZone) : <span className="text-muted-foreground">—</span>}
       </Td>
     </tr>

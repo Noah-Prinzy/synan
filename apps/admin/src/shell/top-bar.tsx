@@ -1,16 +1,19 @@
 /**
- * The persistent top bar (docs/06 §2.2): lockup, event selector, live pill,
- * venue-local clock, shift label, operator menu. Ruled cells, no fills.
+ * The persistent top bar (docs/06 §2.2): lockup, event selector, live state, operator menu —
+ * four ruled cells on one 48px line, no fills. The venue clock and the shift sit in the
+ * operator menu; the channel's data rate is for the dev panel, not the chrome.
  */
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
-import { Wordmark, surfaceName } from "@synan/ui/brand";
-import { LivePill, formatClock, formatNumber, formatUtcOffset, type LiveState } from "@synan/ui/data";
-import { TopBar, TopBarCell } from "@synan/ui/shell";
+import { Mark, Wordmark, surfaceName } from "@synan/ui/brand";
+import { SignalShape, formatClock, formatNumber, formatUtcOffset, type LiveState, type SignalState } from "@synan/ui/data";
+import { TopBar } from "@synan/ui/shell";
+import { THEME_CHOICES, cn, useTheme } from "@synan/ui/components";
 import type { DashboardData } from "@synan/mock";
 import { api, auth } from "../live/backend";
 import { requestEnrolment } from "../access/mfa-bus";
+import { GUTTER_X } from "../kit/page";
 import { useSession } from "../access/session";
 import { useCommand, useTimeZone } from "../live/context";
 import { useNow } from "../live/hooks";
@@ -18,74 +21,107 @@ import { useSliceValue } from "../live/slice";
 import type { CommandEvent } from "../live/transport";
 import { Menu, MenuItem, MenuNote } from "./menu";
 
-export function AdminTopBar({ menu }: { menu?: ReactNode }) {
+/**
+ * `rail` is the navigation rail beside the page, if the role has one: the lockup cell takes the
+ * rail's width so the two rules line up, and over the collapsed rail it shows the mark alone.
+ * On a phone a role with a rail has the Menu cell instead, and the lockup moves into its sheet,
+ * so the event keeps the room.
+ */
+export function AdminTopBar({
+  menu,
+  rail = null,
+  alerts = null,
+}: {
+  menu?: ReactNode;
+  rail?: "expanded" | "collapsed" | null;
+  /** The alert notice, for roles that see alerts: right-aligned, just before the live state. */
+  alerts?: ReactNode;
+}) {
   const { can, landing, landingLabel } = useSession();
-  // A role that does not watch the floor has no live pill or venue clock to read.
+  // A role that does not watch the floor has no live state to read.
   const watches = can("live.view");
   return (
     <TopBar>
       {menu}
-      <TopBarCell className="px-3 sm:px-4 sm:pr-5">
-        <Link to={landing} aria-label={`${surfaceName("admin")}, ${landingLabel.replace(/^the /, "")}`} className="flex items-baseline gap-2.5">
-          <Wordmark small className="text-17" />
-          <span className="hidden text-12 text-muted-foreground md:inline">Command</span>
+      <div
+        className={cn(
+          "flex shrink-0 items-center border-r border-border",
+          // Without a rail the lockup stands on the page gutter, over the page title.
+          rail === null ? GUTTER_X : "max-sm:hidden",
+          rail === "expanded" && "w-52 px-5",
+          rail === "collapsed" && "w-14 justify-center px-0",
+        )}
+      >
+        <Link
+          to={landing}
+          aria-label={`${surfaceName("admin")}, ${landingLabel.replace(/^the /, "")}`}
+          className="flex h-8 items-center"
+        >
+          {rail === "collapsed" ? <Mark size={20} title="" /> : <AdminLockup />}
         </Link>
-      </TopBarCell>
+      </div>
       <EventSelector />
-      <TopBarCell grow className="hidden border-r-0 sm:flex">
-        <span />
-      </TopBarCell>
+      <div aria-hidden="true" className="hidden flex-1 sm:block" />
+      {alerts}
       {watches ? (
-        <>
-          <TopBarCell className="px-2.5 sm:border-l sm:border-border sm:px-4">
-            <LiveIndicator />
-          </TopBarCell>
-          <TopBarCell className="hidden sm:flex">
-            <VenueClock />
-          </TopBarCell>
-        </>
+        <div className="flex shrink-0 items-center border-r border-border px-3 sm:border-r-0 sm:border-l sm:px-4">
+          <LiveIndicator />
+        </div>
       ) : null}
       <OperatorMenu />
     </TopBar>
   );
 }
 
+/** The wordmark and the surface's name, on one baseline. */
+export function AdminLockup() {
+  return (
+    <span className="flex items-baseline gap-2.5 *:shrink-0">
+      <Wordmark small className="text-17" />
+      <span className="hidden text-12 text-muted-foreground md:inline">Command</span>
+    </span>
+  );
+}
+
 /* ----------------------------------------------------------- event selector */
 
+/** An event's state in words, in the UI sans; only Live carries a signal colour. */
 const stateView: Record<CommandEvent["state"], { text: string; tone: string }> = {
-  live: { text: "LIVE", tone: "text-success" },
-  published: { text: "PUBLISHED", tone: "text-muted-foreground" },
-  draft: { text: "DRAFT", tone: "text-muted-foreground" },
-  closed: { text: "CLOSED", tone: "text-muted-foreground" },
-  archived: { text: "ARCHIVED", tone: "text-muted-foreground" },
+  live: { text: "Live", tone: "text-success" },
+  published: { text: "Published", tone: "text-muted-foreground" },
+  draft: { text: "Draft", tone: "text-muted-foreground" },
+  closed: { text: "Closed", tone: "text-muted-foreground" },
+  archived: { text: "Archived", tone: "text-muted-foreground" },
 };
+
+/** A trigger in the top bar: the full cell height, a faint surface on hover and while open. */
+const BAR_TRIGGER =
+  "flex h-full items-center transition-colors duration-120 ease-standard hover:bg-foreground/4 aria-expanded:bg-foreground/4 focus-visible:-outline-offset-2 motion-reduce:transition-none";
 
 function EventSelector() {
   const { events, event, selectEvent } = useCommand();
   const { can } = useSession();
   const [org, setOrg] = useState<DashboardData | null>(null);
   return (
-    <div className="flex min-w-0 flex-1 items-stretch border-r border-border sm:flex-none">
+    <div className="flex min-w-0 flex-1 items-stretch border-r border-border sm:w-72 sm:flex-none lg:w-80">
       <Menu
         onOpen={() => {
           // The organisation's live totals are for roles that watch the floor.
           if (can("live.view")) api.dashboard().then(setOrg, () => setOrg(null));
         }}
         buttonLabel={event ? `Event: ${event.title}. Change event` : "Choose an event"}
-        buttonClassName="flex h-full w-full min-w-0 items-center gap-3 px-3 text-left sm:px-4 transition-colors duration-120 ease-standard hover:bg-card/60 motion-reduce:transition-none"
+        buttonClassName={cn(BAR_TRIGGER, "w-full min-w-0 gap-3 px-3 text-left sm:px-4")}
         button={
           event ? (
             <>
-              <span className="min-w-0">
-                <span className="block truncate text-13 font-medium">{event.title}</span>
-                <span className="block truncate text-11 text-muted-foreground">{event.venue_name}</span>
-              </span>
-              {event.state !== "live" ? (
-                <span className={`hidden font-mono text-11 tracking-[0.12em] sm:inline ${stateView[event.state].tone}`}>
-                  {stateView[event.state].text}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-13 leading-5 font-medium">{event.title}</span>
+                <span className="block truncate text-12 leading-4 text-muted-foreground">
+                  {event.venue_name}
+                  {event.state !== "live" ? <span className="hidden sm:inline"> · {stateView[event.state].text}</span> : null}
                 </span>
-              ) : null}
-              <ChevronDown aria-hidden="true" size={14} strokeWidth={1.5} className="ml-auto shrink-0 text-muted-foreground" />
+              </span>
+              <ChevronDown aria-hidden="true" size={16} strokeWidth={1.5} className="shrink-0 text-muted-foreground" />
             </>
           ) : (
             <span className="text-muted-foreground">Loading events…</span>
@@ -126,7 +162,8 @@ function EventSelector() {
                     </span>
                   </span>
                 </span>
-                <span className={`pt-0.5 font-mono text-11 tracking-[0.12em] ${stateView[item.state].tone}`}>
+                <span className={cn("flex shrink-0 items-center gap-1.5 self-start pt-0.5 text-12", stateView[item.state].tone)}>
+                  {item.state === "live" ? <SignalShape state="ok" /> : null}
                   {stateView[item.state].text}
                 </span>
               </MenuItem>
@@ -149,31 +186,36 @@ export function useLiveState(): LiveState {
   return "reconnecting";
 }
 
+/** The live state as plain words with its shape: Live, Reconnecting…, Offline. No figures. */
+const liveView: Record<LiveState, { shape: SignalState; text: string; tone: string; word: string }> = {
+  live: { shape: "ok", text: "Live", tone: "text-success", word: "text-foreground" },
+  reconnecting: { shape: "warn", text: "Reconnecting…", tone: "text-warning", word: "text-warning" },
+  offline: { shape: "stop", text: "Offline", tone: "text-destructive", word: "text-destructive" },
+  idle: { shape: "idle", text: "Not live", tone: "text-muted-foreground", word: "text-muted-foreground" },
+};
+
 function LiveIndicator() {
-  const state = useLiveState();
+  const view = liveView[useLiveState()];
   return (
-    <>
-      <span className="hidden sm:contents">
-        <LivePill state={state} />
-      </span>
-      {/* A phone keeps the shape and the word; the rate is a detail for the wall display. */}
-      <span className="contents sm:hidden">
-        <LivePill state={state} rate="" className="px-1.5 tracking-normal" />
-      </span>
-    </>
+    <span className="flex items-center gap-2 text-13 whitespace-nowrap">
+      <SignalShape state={view.shape} className={view.tone} />
+      <span className="sr-only">Connection: </span>
+      <span className={view.word}>{view.text}</span>
+    </span>
   );
 }
 
 /* -------------------------------------------------------------------- clock */
 
+/** Venue-local time, in the operator menu (mounted only while it is open). */
 function VenueClock() {
   const zone = useTimeZone();
   const now = useNow(1000);
   return (
-    <span className="flex items-baseline gap-2" aria-label={`Venue time ${formatClock(now, zone)}`}>
-      <span className="font-mono text-15 tabular-nums">{formatClock(now, zone)}</span>
-      <span className="sr-only">{formatUtcOffset(now, zone)}</span>
-    </span>
+    <>
+      <span className="font-mono text-foreground tabular-nums">{formatClock(now, zone, { seconds: false })}</span>{" "}
+      <span className="font-mono tabular-nums">{formatUtcOffset(now, zone)}</span>
+    </>
   );
 }
 
@@ -223,6 +265,24 @@ function SecondFactorItems({ close, zone }: { close: () => void; zone: string })
   );
 }
 
+/** Appearance for this device: System (follows the OS, live), Light or Dark. The menu stays open
+    so the choice is seen taking effect; the chosen line carries the accent rule. */
+function ThemeItems() {
+  const { choice, resolved, setChoice } = useTheme();
+  return (
+    <div role="group" aria-label="Appearance" className="border-b border-border pb-1">
+      <p className="px-3 pt-1.5 pb-0.5 text-12 text-muted-foreground">
+        Appearance{choice === "system" ? ` · following this device, ${resolved} now` : ""}
+      </p>
+      {THEME_CHOICES.map((option) => (
+        <MenuItem key={option.value} current={choice === option.value} onSelect={() => setChoice(option.value)}>
+          {option.label}
+        </MenuItem>
+      ))}
+    </div>
+  );
+}
+
 function OperatorMenu() {
   const { user: operator, roleLabel, can, signOut } = useSession();
   const navigate = useNavigate();
@@ -234,19 +294,19 @@ function OperatorMenu() {
     .slice(0, 2)
     .toUpperCase();
   return (
-    <div className="flex items-stretch">
+    <div className="flex items-stretch sm:border-l sm:border-border">
       <Menu
         align="end"
         buttonLabel={operator ? `${operator.name}, ${roleLabel}. Account menu` : "Account menu"}
-        buttonClassName="flex h-full items-center gap-3 px-3 sm:px-4 transition-colors duration-120 ease-standard hover:bg-card/60 motion-reduce:transition-none"
+        buttonClassName={cn(BAR_TRIGGER, "gap-3 px-3 sm:px-4")}
         button={
           <>
-            {/* At 1440 and up there is room to say who is signed in without opening the menu. */}
+            {/* From 1536 there is room to say who is signed in without opening the menu. */}
             <span className="hidden text-right 2xl:block">
-              <span className="block text-12 leading-tight">{operator?.name ?? "—"}</span>
-              <span className="block text-11 leading-tight text-muted-foreground">{roleLabel}</span>
+              <span className="block text-12 leading-4">{operator?.name ?? "—"}</span>
+              <span className="block text-12 leading-4 text-muted-foreground">{roleLabel}</span>
             </span>
-            <span aria-hidden="true" className="grid size-7 place-items-center border border-border font-mono text-11">
+            <span aria-hidden="true" className="grid size-8 place-items-center border border-border text-11 font-medium tracking-wide">
               {initials ?? "··"}
             </span>
           </>
@@ -256,19 +316,30 @@ function OperatorMenu() {
           <>
             {operator ? (
               <MenuNote>
-                <span className="block text-13 text-foreground">{operator.name}</span>
+                <span className="block text-13 font-medium text-foreground">{operator.name}</span>
                 {/* The real API has no display name yet: the email stands in, so it is not repeated. */}
                 {operator.email !== operator.name ? <span className="block truncate">{operator.email}</span> : null}
-                <span className="mt-1.5 block">
+                <span className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1">
+                  <span>Role</span>
                   <span className="text-foreground">{roleLabel}</span>
                   {/* The real API sends no shift when there is none; nothing is invented. */}
                   {operator.shift.label ? (
                     <>
-                      {" "}
-                      · {operator.shift.label}{" "}
-                      <span className="font-mono tabular-nums">
-                        {formatClock(operator.shift.starts_at, zone, { seconds: false })}–
-                        {formatClock(operator.shift.ends_at, zone, { seconds: false })}
+                      <span>Shift</span>
+                      <span>
+                        <span className="text-foreground">{operator.shift.label}</span>{" "}
+                        <span className="font-mono tabular-nums">
+                          {formatClock(operator.shift.starts_at, zone, { seconds: false })}–
+                          {formatClock(operator.shift.ends_at, zone, { seconds: false })}
+                        </span>
+                      </span>
+                    </>
+                  ) : null}
+                  {can("live.view") ? (
+                    <>
+                      <span>Venue time</span>
+                      <span>
+                        <VenueClock />
                       </span>
                     </>
                   ) : null}
@@ -276,6 +347,7 @@ function OperatorMenu() {
               </MenuNote>
             ) : null}
             {auth ? <SecondFactorItems close={close} zone={zone} /> : null}
+            <ThemeItems />
             {can("settings.manage") ? (
               <MenuItem
                 onSelect={() => {

@@ -9,18 +9,20 @@
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowUpRight, FileSpreadsheet } from "lucide-react";
-import { ActionButton, Button, Field, Select, buttonClass, cn } from "@synan/ui/components";
-import { SignalShape, formatNumber } from "@synan/ui/data";
+import { ArrowUpRight } from "lucide-react";
+import { ActionButton, Field, Select, buttonClass, cn } from "@synan/ui/components";
+import { SignalShape } from "@synan/ui/data";
 import { EXPORT_FORMAT_LABEL, REPORT_KIND_LABEL } from "@synan/contracts/copy";
 import type { ReportKind } from "@synan/contracts/enums";
 import type { ExportFormat, ReportRow } from "@synan/mock/command";
 import {
-  EmptyState,
   ErrorState,
   LoadingState,
   Notice,
+  ROW_ACTION,
+  SPLIT,
   SectionHead,
+  TYPE,
   Table,
   Td,
   Th,
@@ -32,6 +34,12 @@ import {
 } from "../kit";
 import { api } from "../live/backend";
 import { useWorkspaceEvent } from "./parts/context";
+import { HEAD_BLEED, RAIL_X } from "./parts/layout";
+
+/** One export row: what it is on the left, its control on the right, on the page gutter. */
+const EXPORT_ROW = "flex flex-wrap items-center justify-between gap-x-8 gap-y-3 border-b border-border px-4 py-5 sm:px-6 2xl:px-8";
+/** The prepare buttons share one width, so they read as a column. */
+const PREPARE = "min-w-40";
 
 const KINDS = Object.keys(REPORT_KIND_LABEL) as ReportKind[];
 
@@ -98,20 +106,18 @@ export default function WorkspaceReports() {
   const workbookBusy = rows.some((r) => r.format === "xlsx" && pending(r));
 
   return (
-    <div className="pb-8">
-      <div className="grid grid-cols-12 border-b border-border">
-        <section aria-labelledby="reports-export" className="col-span-12 min-w-0 xl:col-span-8">
-          <SectionHead id="reports-export" title="Export" meta="exports ask for your second factor" />
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border px-4 py-4 sm:px-6">
-            <div className="flex min-w-0 items-start gap-3">
-              <FileSpreadsheet size={16} strokeWidth={1.5} aria-hidden="true" className="mt-0.5 shrink-0 text-muted-foreground" />
-              <div className="min-w-0">
-                <h3 className="text-15 font-medium">Excel workbook</h3>
-                <p className="max-w-120 text-12 text-muted-foreground">
-                  The whole event: a summary sheet, one sheet per report, and an attendee sheet for operators allowed to see
-                  identity. Real number and date cells, frozen headers.
-                </p>
-              </div>
+    <div className="pb-10">
+      <div className={SPLIT}>
+        <div className="min-w-0">
+        <section aria-labelledby="reports-export">
+          <SectionHead id="reports-export" title="Export" meta="exports ask for your second factor" className={HEAD_BLEED} />
+          <div className={EXPORT_ROW}>
+            <div className="min-w-0 flex-1 basis-80">
+              <h3 className="text-15 font-medium">Excel workbook</h3>
+              <p className="mt-1 max-w-[60ch] text-12 leading-relaxed text-muted-foreground">
+                The whole event: a summary sheet, one sheet per report, and an attendee sheet for operators allowed to see
+                identity. Real number and date cells, frozen headers.
+              </p>
             </div>
             <ActionButton
               action={() => start("xlsx")}
@@ -119,60 +125,116 @@ export default function WorkspaceReports() {
               variant={tabPrimary ? "primary" : "quiet"}
               size="compact"
               disabled={workbookBusy}
+              className={PREPARE}
             >
               Prepare workbook
             </ActionButton>
           </div>
-          <div className="border-b border-border px-4 py-4 sm:px-6">
-            <div className="flex flex-wrap items-end gap-3">
-              <Field label="CSV per report" className="w-full max-w-80">
+          <div className={EXPORT_ROW}>
+            <div className="min-w-0 flex-1 basis-80">
+              <Field label={<span className="text-13 font-medium text-foreground">CSV per report</span>} className="max-w-80">
                 <Select
                   options={KINDS.map((k) => ({ value: k, label: REPORT_KIND_LABEL[k] }))}
                   value={kind}
                   onChange={setKind}
                 />
               </Field>
-              <ActionButton action={() => start("csv", kind)} doneLabel="Queued" variant="quiet" size="compact" className="ml-auto">
-                Prepare CSV
-              </ActionButton>
+              <p className="mt-2 text-12 text-muted-foreground">{REPORT_DETAIL[kind]}. For other tools.</p>
             </div>
-            <p className="mt-1.5 text-12 text-muted-foreground">{REPORT_DETAIL[kind]}. For other tools.</p>
+            <ActionButton action={() => start("csv", kind)} doneLabel="Queued" variant="quiet" size="compact" className={PREPARE}>
+              Prepare CSV
+            </ActionButton>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
-            <div className="min-w-0">
+          <div className={EXPORT_ROW}>
+            <div className="min-w-0 flex-1 basis-80">
               <h3 className="text-13 font-medium">PDF summary</h3>
-              <p className="text-12 text-muted-foreground">The headline figures on one page, for people who will not open a spreadsheet.</p>
+              <p className="mt-1 text-12 text-muted-foreground">The headline figures on one page, for people who will not open a spreadsheet.</p>
             </div>
-            <ActionButton action={() => start("pdf")} doneLabel="Queued" variant="quiet" size="compact">
+            <ActionButton action={() => start("pdf")} doneLabel="Queued" variant="quiet" size="compact" className={PREPARE}>
               Prepare PDF
             </ActionButton>
           </div>
-          {noData ? (
-            <Notice className="mx-4 mb-4 sm:mx-6">
-              This event has not opened yet, so exports hold its registrations and nothing more. They fill in once people check in.
-            </Notice>
-          ) : null}
-          {problem ? (
-            <Notice tone="danger" className="mx-4 mb-4 sm:mx-6">
-              {problem}
-            </Notice>
+          {noData || problem ? (
+            <div className="flex flex-col gap-3 px-4 py-4 sm:px-6 2xl:px-8">
+              {noData ? (
+                <Notice>
+                  This event has not opened yet, so exports hold its registrations and nothing more. They fill in once people check in.
+                </Notice>
+              ) : null}
+              {problem ? <Notice tone="danger">{problem}</Notice> : null}
+            </div>
           ) : null}
         </section>
-        <aside aria-labelledby="reports-onscreen" className="col-span-12 min-w-0 border-t border-border xl:col-span-4 xl:border-t-0 xl:border-l">
+
+        <section aria-labelledby="reports-jobs" className="mt-8 border-t border-border">
+          <SectionHead
+            id="reports-jobs"
+            title="Prepared exports"
+            className={HEAD_BLEED}
+            meta={rows.length > 0 ? "links expire shortly after they are made" : undefined}
+          />
+          {jobs.status === "loading" ? <LoadingState label="Loading exports…" rows={3} /> : null}
+          {jobs.status === "error" ? <ErrorState title="Could not load the exports" error={jobs.error} onRetry={() => jobs.reload()} /> : null}
+          {jobs.status === "ready" && rows.length === 0 ? (
+            <p className="max-w-[68ch] px-4 py-6 text-13 leading-relaxed text-muted-foreground sm:px-6 2xl:px-8">
+              <span className="text-foreground">Nothing prepared yet.</span> Each export runs in the background and appears here with
+              a download link when it is ready; you can leave this page meanwhile.
+            </p>
+          ) : null}
+          {jobs.status === "ready" && rows.length > 0 ? (
+            <Table label="Prepared exports">
+              <thead>
+                <tr>
+                  <Th>Export</Th>
+                  <Th fit>Requested</Th>
+                  <Th className="w-56">State</Th>
+                  <Th fit>
+                    <span className="sr-only">Actions</span>
+                  </Th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id} className={rowClass}>
+                    <Td className="max-w-64 truncate">{jobName(row)}</Td>
+                    <Td fit className={TYPE.value}>{formatStamp(row.created_at, event.timezone)}</Td>
+                    <Td>
+                      <JobState row={row} />
+                    </Td>
+                    <Td fit className="text-right">
+                      {row.state === "failed" ? (
+                        <button
+                          type="button"
+                          className={cn(ROW_ACTION, "-mr-2.5")}
+                          onClick={() => void start(row.format, row.format === "csv" ? (row.kind ?? undefined) : undefined).catch(() => undefined)}
+                        >
+                          Prepare again
+                        </button>
+                      ) : null}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          ) : null}
+        </section>
+        </div>
+        <aside aria-labelledby="reports-onscreen" className="min-w-0 border-t border-border lg:border-t-0 lg:border-l">
           <SectionHead id="reports-onscreen" title="On screen" />
-          <div className="px-4 py-3">
-            <p className="text-13 text-muted-foreground">
+          <div className={cn("py-4", RAIL_X)}>
+            <p className="text-13 leading-relaxed text-muted-foreground">
               The event summary shows how the event went on one page: headline figures, attendance by tier, the occupancy curve,
               the busiest rooms and gates, and how fast alerts were handled.
             </p>
-            <Link to={`/events/${event.id}/summary`} className={cn(buttonClass("secondary", "compact"), "mt-3")}>
+            <Link to={`/events/${event.id}/summary`} className={cn(buttonClass("secondary", "compact"), "mt-4")}>
               Open the event summary
-              <ArrowUpRight size={14} strokeWidth={1.5} aria-hidden="true" />
+              <ArrowUpRight size={16} strokeWidth={1.5} aria-hidden="true" />
             </Link>
           </div>
-          <ul className="border-t border-border py-1">
+          <h3 className={cn("border-t border-border pt-4 pb-1 text-12 text-muted-foreground", RAIL_X)}>What each report holds</h3>
+          <ul className="pb-3">
             {KINDS.map((k) => (
-              <li key={k} className="px-4 py-1.5 text-13">
+              <li key={k} className={cn("py-2 text-13", RAIL_X)}>
                 {REPORT_KIND_LABEL[k]}
                 <span className="block text-12 text-muted-foreground">{REPORT_DETAIL[k]}</span>
               </li>
@@ -180,60 +242,6 @@ export default function WorkspaceReports() {
           </ul>
         </aside>
       </div>
-
-      <section aria-labelledby="reports-jobs">
-        <SectionHead
-          id="reports-jobs"
-          title="Prepared exports"
-          meta={
-            rows.length > 0 ? (
-              <>
-                <span className="font-mono tabular-nums">{formatNumber(rows.length)}</span> · links expire shortly after they are made
-              </>
-            ) : undefined
-          }
-        />
-        {jobs.status === "loading" ? <LoadingState label="Loading exports…" rows={3} /> : null}
-        {jobs.status === "error" ? <ErrorState title="Could not load the exports" error={jobs.error} onRetry={() => jobs.reload()} /> : null}
-        {jobs.status === "ready" && rows.length === 0 ? (
-          <EmptyState title="No reports generated yet">
-            Prepare the workbook, a CSV or the PDF above. Each export runs in the background and appears here with a download
-            link when it is ready; you can leave this page meanwhile.
-          </EmptyState>
-        ) : null}
-        {jobs.status === "ready" && rows.length > 0 ? (
-          <Table label="Prepared exports">
-            <thead>
-              <tr>
-                <Th>Export</Th>
-                <Th>Requested</Th>
-                <Th className="w-64">State</Th>
-                <Th>
-                  <span className="sr-only">Actions</span>
-                </Th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id} className={rowClass}>
-                  <Td className="whitespace-nowrap">{jobName(row)}</Td>
-                  <Td className="font-mono text-12 whitespace-nowrap tabular-nums">{formatStamp(row.created_at, event.timezone)}</Td>
-                  <Td>
-                    <JobState row={row} />
-                  </Td>
-                  <Td className="text-right whitespace-nowrap">
-                    {row.state === "failed" ? (
-                      <Button variant="quiet" size="compact" onClick={() => void start(row.format, row.format === "csv" ? (row.kind ?? undefined) : undefined).catch(() => undefined)}>
-                        Prepare again
-                      </Button>
-                    ) : null}
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        ) : null}
-      </section>
       <p role="status" aria-live="polite" className="sr-only">
         {said}
       </p>
@@ -245,7 +253,7 @@ function JobState({ row }: { row: ReportRow }) {
   if (pending(row)) {
     return (
       <span className="block">
-        <span className="text-12">{row.state === "queued" ? "Queued" : "Preparing…"}</span>
+        <span className="text-13">{row.state === "queued" ? "Queued" : "Preparing…"}</span>
         <span className="relative mt-1 block h-px w-full max-w-48 overflow-hidden bg-border">
           <span aria-hidden="true" className="animate-skeleton-sweep absolute inset-y-0 w-1/3 bg-foreground/60" />
         </span>
@@ -254,13 +262,13 @@ function JobState({ row }: { row: ReportRow }) {
   }
   if (row.state === "failed") {
     return (
-      <span className="inline-flex items-center gap-1.5 text-12 text-destructive">
+      <span className="inline-flex items-center gap-1.5 text-13 text-destructive">
         <SignalShape state="stop" /> Failed
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 text-12">
+    <span className="inline-flex items-center gap-1.5 text-13">
       <SignalShape state="ok" className="text-success" />
       {row.download_url ? (
         <a href={row.download_url} className="underline decoration-border underline-offset-4 hover:decoration-brand">

@@ -19,7 +19,7 @@
   }
   * {
     scrollbar-width: thin;
-    scrollbar-color: var(--muted) transparent;
+    scrollbar-color: var(--scrollbar) transparent;
   }
 }
 
@@ -49,38 +49,26 @@
   overflow: hidden;
   contain: strict;
   text-align: left;
-  border: 1px solid color-mix(in oklab, var(--foreground) 14%, transparent);
-  background: color-mix(in oklab, var(--foreground) 5%, var(--background));
-  transition:
-    background-color var(--duration-state) var(--ease-standard),
-    border-color var(--duration-state) var(--ease-standard);
+  border: 1px solid color-mix(in oklab, var(--foreground) 13%, transparent);
+  background: color-mix(in oklab, var(--foreground) 3.5%, var(--background));
+  transition: border-color var(--duration-state) var(--ease-standard);
 }
 .map-room[data-level="warn"] {
   border-color: color-mix(in oklab, var(--warning) 55%, transparent);
-  background: color-mix(in oklab, var(--warning) 9%, var(--background));
 }
 .map-room[data-level="block"] {
   border-color: color-mix(in oklab, var(--destructive) 70%, transparent);
-  background: color-mix(in oklab, var(--destructive) 11%, var(--background));
 }
 .map-room:hover,
 .map-room[data-highlight] {
-  border-color: color-mix(in oklab, var(--foreground) 60%, transparent);
-  background-color: color-mix(in oklab, var(--foreground) 9%, var(--background));
-}
-.map-room[data-level="warn"]:hover,
-.map-room[data-level="warn"][data-highlight] {
-  background-color: color-mix(in oklab, var(--warning) 14%, var(--background));
-}
-.map-room[data-level="block"]:hover,
-.map-room[data-level="block"][data-highlight] {
-  background-color: color-mix(in oklab, var(--destructive) 16%, var(--background));
+  border-color: color-mix(in oklab, var(--foreground) 55%, transparent);
 }
 /* Selected (linked to the rail): a 2px accent frame — blue marks where you are acting. */
 .map-room[data-selected]::after {
   content: "";
   position: absolute;
   inset: 0;
+  z-index: 2;
   border: 2px solid var(--brand);
   pointer-events: none;
 }
@@ -92,6 +80,7 @@
   content: "";
   position: absolute;
   inset: 0;
+  z-index: 2;
   border: 2px solid var(--destructive);
   pointer-events: none;
 }
@@ -100,97 +89,110 @@
   outline-offset: 2px;
 }
 
+/* How full the room is: a shade rising from the block's floor (scaleY, composited), with a
+   hairline at its surface. Neutral while the room has space; the signal colour, still faint,
+   once it is nearly full or full. */
+.map-room-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: bottom;
+  background: color-mix(in oklab, var(--foreground) 8%, transparent);
+  border-top: 1px solid color-mix(in oklab, var(--foreground) 22%, transparent);
+  will-change: transform;
+  pointer-events: none;
+}
+.map-room[data-level="warn"] .map-room-fill {
+  background: color-mix(in oklab, var(--warning) 16%, transparent);
+  border-top-color: color-mix(in oklab, var(--warning) 60%, transparent);
+}
+.map-room[data-level="block"] .map-room-fill {
+  background: color-mix(in oklab, var(--destructive) 20%, transparent);
+  border-top-color: transparent;
+}
+.map-room:hover .map-room-fill,
+.map-room[data-highlight] .map-room-fill {
+  background: color-mix(in oklab, var(--foreground) 12%, transparent);
+}
+.map-room[data-level="warn"]:hover .map-room-fill,
+.map-room[data-level="warn"][data-highlight] .map-room-fill {
+  background: color-mix(in oklab, var(--warning) 22%, transparent);
+}
+.map-room[data-level="block"]:hover .map-room-fill,
+.map-room[data-level="block"][data-highlight] .map-room-fill {
+  background: color-mix(in oklab, var(--destructive) 26%, transparent);
+}
+
 .map-room-name {
+  position: relative;
+  z-index: 1;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 1;
   overflow: hidden;
-  padding: 7px 8px 0;
+  padding: 8px 8px 0;
   font-size: var(--text-12);
   line-height: 1.3;
-  color: color-mix(in oklab, var(--foreground) 82%, transparent);
+  color: var(--foreground);
 }
 .map-room[data-fit="lg"] .map-room-name {
-  padding: 9px 10px 0;
+  padding: 10px 10px 0;
   font-size: var(--text-13);
 }
-/* Low, wide rooms: name and count on one row. */
+
+/* The status line at the block's foot: empty while the room has space. */
+.map-room-status {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 18px;
+  padding: 0 8px 7px;
+  white-space: nowrap;
+  font-size: var(--text-12);
+  line-height: 1;
+}
+.map-room[data-fit="lg"] .map-room-status {
+  padding: 0 10px 9px;
+}
+.map-room-level {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  font-weight: 500;
+}
+.map-room-level-warn {
+  color: var(--warning);
+}
+.map-room-level-stop {
+  color: var(--destructive);
+}
+.map-room[data-level="warn"] .map-room-level-warn,
+.map-room[data-level="block"] .map-room-level-stop {
+  display: inline-flex;
+}
+
+/* Low, wide rooms: the name and the status shape on one row. */
 .map-room[data-row] {
   flex-direction: row;
   align-items: center;
-  gap: 8px;
-  padding-bottom: 4px;
+  gap: 6px;
 }
 .map-room[data-row] .map-room-name {
   min-width: 0;
   padding: 0 0 0 8px;
 }
-.map-room[data-row] .map-room-count {
+.map-room[data-row] .map-room-status {
+  min-height: 0;
   padding: 0 8px 0 0;
 }
 
-.map-room-count {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-  padding: 0 8px 9px;
-  white-space: nowrap;
-  font-family: var(--type-data);
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-  letter-spacing: -0.01em;
-}
-.map-room[data-fit="lg"] .map-room-count {
-  padding: 0 10px 12px;
-}
-.map-room[data-fit="xs"] .map-room-count,
-.map-room[data-fit="sm"] .map-room-count {
-  padding: 0 6px 7px;
-}
-.map-room-value {
-  color: var(--foreground);
-}
-.map-room[data-level="warn"] .map-room-value {
-  color: var(--warning);
-}
-.map-room[data-level="block"] .map-room-value {
-  color: var(--destructive);
-}
-.map-room-cap {
-  color: var(--muted-foreground);
-}
-.map-room-shape {
-  display: none;
-  align-self: center;
-}
-.map-room-shape-warn {
-  color: var(--warning);
-}
-.map-room-shape-stop {
-  color: var(--destructive);
-}
-.map-room[data-level="warn"] .map-room-shape-warn,
-.map-room[data-level="block"] .map-room-shape-stop {
-  display: inline-flex;
-}
-
-.map-room-bar {
-  position: absolute;
-  inset: auto 0 0 0;
-  height: 4px;
-  background: color-mix(in oklab, var(--foreground) 10%, transparent);
-}
-
-/* An open alert at the room's door: a small flag at the start of the count line. */
+/* An open alert at the room's door: a small flag at the start of the status line. */
 .map-room-alert {
-  align-self: center;
-  margin-right: 2px;
   padding: 2px 4px;
-  font-family: var(--type-ui);
   font-size: var(--text-11);
   font-weight: 600;
   line-height: 1;
-  letter-spacing: 0;
   border: 1px solid currentColor;
   background: var(--background);
 }
@@ -217,8 +219,9 @@
   border: 1px solid color-mix(in oklab, var(--foreground) 22%, transparent);
   background: var(--background);
 }
+/* Calm by default: an online gate is neutral; colour appears only when a gate needs someone. */
 .map-gate[data-state="ok"] .map-gate-shape {
-  color: var(--success);
+  color: var(--muted-foreground);
 }
 .map-gate[data-state="warn"] {
   border-color: color-mix(in oklab, var(--warning) 70%, transparent);
@@ -235,11 +238,31 @@
 .map-gate-words {
   font-family: var(--type-ui);
 }
+.map-gate[data-side="w"],
+.map-gate[data-side="e"] {
+  flex-direction: column;
+  align-items: flex-start;
+  height: auto;
+  min-height: 22px;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px 6px;
+}
+.map-gate[data-side="w"] {
+  align-items: flex-end;
+}
+.map-gate[data-side="w"] .map-gate-words,
+.map-gate[data-side="e"] .map-gate-words {
+  max-width: 52px;
+  white-space: normal;
+  font-size: var(--text-11);
+  line-height: 1.2;
+}
 .map-gate-tick {
   stroke: color-mix(in oklab, var(--foreground) 45%, transparent);
 }
 .map-gate-tick[data-state="ok"] {
-  stroke: var(--success);
+  stroke: color-mix(in oklab, var(--foreground) 40%, transparent);
 }
 .map-gate-tick[data-state="warn"] {
   stroke: var(--warning);
@@ -272,20 +295,27 @@
   color: var(--destructive);
 }
 
+/* Key swatch: a small room, half full. */
 .map-legend-swatch {
   display: inline-block;
   width: 14px;
-  height: 10px;
+  height: 12px;
   border: 1px solid color-mix(in oklab, var(--foreground) 30%, transparent);
-  background: color-mix(in oklab, var(--foreground) 5%, var(--background));
+  background: linear-gradient(
+    to top,
+    color-mix(in oklab, var(--foreground) 16%, transparent) 0 50%,
+    color-mix(in oklab, var(--foreground) 3.5%, var(--background)) 50% 100%
+  );
 }
-.map-legend-swatch[data-level="warn"] {
-  border-color: color-mix(in oklab, var(--warning) 60%, transparent);
-  background: color-mix(in oklab, var(--warning) 9%, var(--background));
-}
-.map-legend-swatch[data-level="block"] {
-  border-color: color-mix(in oklab, var(--destructive) 70%, transparent);
-  background: color-mix(in oklab, var(--destructive) 11%, var(--background));
+.map-gate-key {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 5px;
+  font-family: var(--type-data);
+  font-size: var(--text-11);
+  color: var(--foreground);
+  border: 1px solid color-mix(in oklab, var(--foreground) 22%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {

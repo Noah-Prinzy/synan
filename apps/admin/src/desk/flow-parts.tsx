@@ -6,6 +6,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { RewardMoment, cn } from "@synan/ui/components";
 import { SignalShape, type SignalState } from "@synan/ui/data";
+import { GUTTER_X } from "../kit";
 
 export type DeskOutcome =
   | { kind: "bound"; band: string; via: "scan" | "code" }
@@ -42,8 +43,8 @@ export function FlowFrame({
   }, []);
   return (
     <section ref={ref} aria-labelledby={id} className="scroll-mt-14 border-t border-border">
-      <header className="flex items-start justify-between gap-3 px-4 pt-4 sm:px-6">
-        <div className="min-w-0">
+      <header className={cn("flex items-start justify-between gap-3 pt-5", GUTTER_X)}>
+        <div className="max-w-160 min-w-0">
           <h3 id={id} className="text-15 font-medium">
             {title}
           </h3>
@@ -60,7 +61,10 @@ export function FlowFrame({
           </button>
         ) : null}
       </header>
-      <div className="flex flex-col gap-4 px-4 pt-4 pb-5 sm:px-6">{children}</div>
+      {/* Fields keep a form's measure (40rem), so a wide pane never stretches them. */}
+      <div className={cn("pt-4 pb-6", GUTTER_X)}>
+        <div className="flex max-w-160 flex-col gap-4">{children}</div>
+      </div>
     </section>
   );
 }
@@ -151,7 +155,7 @@ export function OutcomePanel({ outcome, name }: { outcome: DeskOutcome; name: st
       break;
   }
   return (
-    <div role="status" className="border-t border-border px-4 py-4 sm:px-6">
+    <div role="status" className={cn("border-t border-border py-5", GUTTER_X)}>
       <RewardMoment className="text-17 font-medium">{word}</RewardMoment>
       <p className="mt-2 max-w-120 text-13 leading-relaxed text-muted-foreground">{detail}</p>
       <p className="mt-1 text-12 text-muted-foreground">The search is ready for the next person.</p>

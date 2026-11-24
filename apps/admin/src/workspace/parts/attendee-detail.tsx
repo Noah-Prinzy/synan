@@ -45,17 +45,17 @@ export function AttendeeFacts({ row, timeZone }: { row: AttendeeListRow; timeZon
             <span className="text-muted-foreground">No pass issued</span>
           ),
         ],
-        ["Band", row.band_hint ? <span className="font-mono text-12">{row.band_hint}</span> : <span className="text-muted-foreground">Not yet bound</span>],
+        ["Band", row.band_hint ? <span className="font-mono tabular-nums">{row.band_hint}</span> : <span className="text-muted-foreground">Not yet bound</span>],
         ["Checked in", row.checked_in ? "Yes" : <span className="text-muted-foreground">Not yet</span>],
         [
           "Last scan",
           row.last_scan_at ? (
-            <span className="font-mono text-12 tabular-nums">{formatStamp(row.last_scan_at, timeZone)}</span>
+            <span className="font-mono tabular-nums">{formatStamp(row.last_scan_at, timeZone)}</span>
           ) : (
             <span className="text-muted-foreground">—</span>
           ),
         ],
-        ["Registration ID", <span key="id" className="font-mono text-11 break-all text-muted-foreground">{row.registration_id}</span>],
+        ["Registration ID", <span key="id" className="font-mono text-12 break-all text-muted-foreground">{row.registration_id}</span>],
       ]}
     />
   );
@@ -85,7 +85,7 @@ export function AttendeeActions({
             setDecided(next.registration_id);
             onChange(next);
           }}
-          className="border-t border-border px-4 py-4"
+          className="border-t border-border px-4 py-4 sm:px-5"
         />
       ) : null}
       {can("attendees.manage") ? <LaterActions /> : null}
@@ -95,8 +95,8 @@ export function AttendeeActions({
 
 function LaterActions() {
   return (
-    <div className="border-t border-border px-4 py-3">
-      <p className="text-12 text-muted-foreground">
+    <div className="border-t border-border px-4 py-4 sm:px-5">
+      <p className="text-12 leading-relaxed text-muted-foreground">
         These actions arrive with the attendee console (D7), which asks for your second factor and records each one in
         the audit log. Bands and resends are done at the{" "}
         <Link to="/desk" className={linkClass}>
@@ -104,11 +104,11 @@ function LaterActions() {
         </Link>
         .
       </p>
-      <ul className="mt-3 flex flex-col gap-2">
+      <ul className="mt-3 border-t border-border">
         {ACTIONS.map(([label, detail]) => (
-          <li key={label} className="flex items-center justify-between gap-3">
+          <li key={label} className="flex min-h-12 items-center justify-between gap-4 border-b border-border py-2 last:border-b-0">
             <span className="min-w-0 text-12 text-muted-foreground">{detail}</span>
-            <Button variant="secondary" size="compact" disabled title="Coming with the attendee console (D7)">
+            <Button variant="secondary" size="compact" disabled title="Coming with the attendee console (D7)" className="min-w-36 shrink-0">
               {label}
             </Button>
           </li>

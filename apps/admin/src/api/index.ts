@@ -32,8 +32,9 @@
  *   - Capabilities: GET /me/operator `capabilities` narrow the role's map (access/capabilities.ts), never widen it.
  *   - OperatorContext.event_ids ← desk_event_ids (desk clerks), else null.
  * Live
- *   - events(): admins/organisers read GET /admin/events; ★ supervisors and desk clerks may not, so
- *     they get GET /events (published and live, listed only). Drafts are left out, as in the mock.
+ *   - events(): admins/organisers read GET /admin/events; supervisors and desk clerks may not, so they
+ *     get GET /events?scope=work (supervisors: published and live, unlisted included; desk clerks: their
+ *     desk events only). Drafts are left out, as in the mock.
  *   - layout(): GET /venues/:id (flat) → { venue, zones, rooms, checkpoints, grid, checkpoint_positions };
  *     positions from checkpoints[].position; grid is a canvas ≥ 96 × 60 (the server's is the shapes' bounding box).
  *   - summary(): the server's `series` is per-minute throughput; the KPI series is `kpi_series` → `series`.
@@ -68,14 +69,19 @@
  *   - updateEvent(): `rules` go to PUT access-rules (expected = current version); venue_id null clears it.
  *   - readiness(): `{ items }` unwrapped; three more keys (doors, gate, sessions).
  *   - publishEvent(): unmet checklist is 409 on the server → re-coded VALIDATION_FAILED.
- *   - attendees(): ★ `last_scan_at` not served (null); `q` matches name/email only; up to 2,000 rows.
- *   - credentialOverview(): `recent` from the inventory (binds and replacements; ★ no attendee name: a dash).
+ *   - attendees(): ★ `last_scan_at` not served (null); `q` matches name, email, a pass id or reference, a
+ *     band UID or a band hint's last four (server-side; kiosk walk-ins have no name); up to 2,000 rows.
+ *   - credentialOverview(): `recent` from the inventory (binds and replacements — a lost-band replacement's
+ *     new band reads `replaced`, the old band's `lost` entry is left out; ★ no attendee name: a dash).
+ *     Band hints are the server's (`••••81BF`, `band` when the UID is unknown), shown as they come.
  *   - deskAttendee(): GET /registrations/:id (carrier_id, pass_sent_at); band_changed_at = the band's bound_at.
  *   - replaceBand()/resendPass(): MFA (step-up); reviewCredential(): MFA for a supervisor.
  *   - deskStock(): `today` from the event's inventory (zeros without a shift).
  *   - The desk (desk/desk-real.ts) calls the contract endpoints directly, desk codes included.
  *   - staff(): display_name → name (email when none).
- *   - assignments(): labels optional on the server ("Unknown" when absent).
+ *   - assignments(): labels optional on the server ("Unknown" when absent). Supervisors read it too
+ *     (GET /staff-assignments?event_id: current and upcoming shifts, display name and times only) for
+ *     the gate page's on-shift list.
  *   - createAssignment(): shift_start/shift_end issues and a bare overlap 409 are also put under `shift`.
  */
 import type { CommandApi, ConfigureApi } from "@synan/mock/command";

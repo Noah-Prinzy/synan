@@ -33,10 +33,13 @@ export function KpiCell({ label, value, valueClassName, delta, spark, className 
       >
         {value}
       </dd>
-      <dd className="flex min-w-0 items-center gap-3">
-        <span className="min-w-0 truncate font-mono text-12 text-muted-foreground tabular-nums">{delta}</span>
-        <span className="hidden min-w-0 flex-1 @min-[11rem]:block">{spark}</span>
-      </dd>
+      {delta || spark ? (
+        // The line under the figure is words (figures inside it set their own mono).
+        <dd className="flex min-h-5 min-w-0 items-center gap-3">
+          <span className="min-w-0 truncate text-13 text-muted-foreground">{delta}</span>
+          {spark ? <span className="hidden min-w-0 flex-1 @min-[11rem]:block">{spark}</span> : null}
+        </dd>
+      ) : null}
     </div>
   );
 }

@@ -9,7 +9,7 @@ import { isPhone } from "../data/registration";
 import { primeResource, useResource } from "../data/resource";
 import { PageHeader, PageShell, RuledRow } from "../components/page";
 import { ErrorState, OfflineState, SkeletonCells } from "../components/states";
-import { ActionButton, Badge, buttonClass } from "@synan/ui/components";
+import { ActionButton, Badge, ThemeSwitch, buttonClass } from "@synan/ui/components";
 import { fieldClass } from "../components/form-styles";
 
 const label = "text-13 font-medium text-muted-foreground";
@@ -288,6 +288,10 @@ function AccountRows({
         <p role="status" className="mt-3 min-h-5 text-15 text-muted-foreground">
           {requested}
         </p>
+      </RuledRow>
+
+      <RuledRow label="Appearance" id="appearance">
+        <ThemeSwitch label="Appearance" hideLabel hint />
       </RuledRow>
 
       <RuledRow label="Sign out">

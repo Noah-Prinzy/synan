@@ -12,7 +12,7 @@ import { ChevronRight, X } from "lucide-react";
 import { cn } from "@synan/ui/components";
 import { SignalShape } from "@synan/ui/data";
 import type { DeskRegistration } from "@synan/mock/command";
-import { Notice, formatStamp } from "../kit";
+import { GUTTER_X, Notice, formatStamp } from "../kit";
 import { BindFlow } from "./bind-flow";
 import {
   bandBlock,
@@ -111,7 +111,7 @@ export function AttendeeCard({
 
   return (
     <article aria-labelledby="desk-card-name" className="min-w-0">
-      <header className="flex items-start justify-between gap-3 px-4 pt-5 pb-4 sm:px-6">
+      <header className={cn("flex items-start justify-between gap-3 pt-5 pb-5", GUTTER_X)}>
         <div className="min-w-0">
           <p className="text-12 text-muted-foreground">{TIER_LABEL[row.tier]}</p>
           <h2 id="desk-card-name" className={cn("mt-0.5 font-display text-21 leading-tight tracking-tight wrap-break-word sm:text-28", !row.attendee.full_name && "text-muted-foreground")}>
@@ -125,42 +125,45 @@ export function AttendeeCard({
           aria-label="Close and go back to the search"
           className="pressable -mr-2 grid size-11 shrink-0 place-items-center text-muted-foreground transition-colors duration-120 ease-standard hover:text-foreground motion-reduce:transition-none"
         >
-          <X size={18} strokeWidth={1.5} aria-hidden="true" />
+          <X size={16} strokeWidth={1.5} aria-hidden="true" />
         </button>
       </header>
 
       {/* What just happened sits right under the name, where the eye already is. */}
       {outcome ? <OutcomePanel outcome={outcome} name={name} /> : null}
 
-      <dl className="grid grid-cols-2 gap-px border-y border-border bg-border">
-        <Fact label="Registration">
-          <State signal={registration.signal}>{registration.label}</State>
-        </Fact>
-        <Fact label="Pass">{pass ? <State signal={pass.signal}>{pass.label}</State> : <span className="text-muted-foreground">No pass yet</span>}</Fact>
-        <Fact label="Band" wide>
-          <State signal={band.signal}>{band.label}</State>
-          {band.hint ? <span className="ml-2 font-mono text-13 text-foreground tabular-nums">{band.hint}</span> : null}
-        </Fact>
-      </dl>
-      <p className="flex flex-wrap gap-x-4 gap-y-1 px-4 pt-2.5 text-12 text-muted-foreground sm:px-6">
-        <span>
-          {row.checked_in_at ? (
-            <>
-              Checked in <Stamp iso={row.checked_in_at} timeZone={timeZone} />
-            </>
-          ) : (
-            "Not checked in yet"
-          )}
-        </span>
-        {row.pass_sent_at ? (
+      {/* Where they stand, as three facts on one band between two hairlines; when below, in words. */}
+      <div className={cn("border-t border-border py-4", GUTTER_X)}>
+        <dl className="grid max-w-3xl grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+          <Fact label="Registration">
+            <State signal={registration.signal}>{registration.label}</State>
+          </Fact>
+          <Fact label="Pass">{pass ? <State signal={pass.signal}>{pass.label}</State> : <span className="text-muted-foreground">No pass yet</span>}</Fact>
+          <Fact label="Band">
+            <State signal={band.signal}>{band.label}</State>
+            {band.hint ? <span className="ml-2.5 font-mono text-13 text-foreground tabular-nums">{band.hint}</span> : null}
+          </Fact>
+        </dl>
+        <p className="mt-4 flex flex-wrap gap-x-5 gap-y-1 text-12 text-muted-foreground">
           <span>
-            Pass emailed <Stamp iso={row.pass_sent_at} timeZone={timeZone} />
+            {row.checked_in_at ? (
+              <>
+                Checked in <Stamp iso={row.checked_in_at} timeZone={timeZone} />
+              </>
+            ) : (
+              "Not checked in yet"
+            )}
           </span>
-        ) : null}
-      </p>
+          {row.pass_sent_at ? (
+            <span>
+              Pass emailed <Stamp iso={row.pass_sent_at} timeZone={timeZone} />
+            </span>
+          ) : null}
+        </p>
+      </div>
 
       {block ? (
-        <div className="px-4 pt-4 sm:px-6">
+        <div className={cn("pt-4", GUTTER_X)}>
           <Notice tone={block.signal === "stop" ? "danger" : block.signal === "warn" ? "warning" : "neutral"}>
             <span className="block font-medium">{block.title}</span>
             <span className="mt-0.5 block text-muted-foreground">{block.body}</span>
@@ -168,7 +171,8 @@ export function AttendeeCard({
         </div>
       ) : null}
 
-      <div className="mt-4">
+      {/* Each step and the action list draw their own top hairline; only a notice above needs air. */}
+      <div className={cn(block && "mt-4")}>
         {flow === "rebind" || flow === "lost" ? (
           <ReplaceFlow row={row} disposition={flow === "lost" ? "lost" : "damaged"} disabled={offline} onCancel={() => setFlow(null)} onDone={complete} />
         ) : flow === "resend" ? (
@@ -201,11 +205,11 @@ export function AttendeeCard({
   );
 }
 
-function Fact({ label, wide, children }: { label: string; wide?: boolean; children: ReactNode }) {
+function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className={cn("min-w-0 bg-background px-4 py-3 sm:px-6", wide && "col-span-2")}>
+    <div className="min-w-0">
       <dt className="text-12 text-muted-foreground">{label}</dt>
-      <dd className="mt-1 flex flex-wrap items-center text-15">{children}</dd>
+      <dd className="mt-1.5 flex flex-wrap items-center text-15">{children}</dd>
     </div>
   );
 }
@@ -220,7 +224,7 @@ function State({ signal, children }: { signal: keyof typeof signalText; children
 }
 
 function Stamp({ iso, timeZone }: { iso: string; timeZone: string }) {
-  return <span className="font-mono text-foreground tabular-nums">{formatStamp(iso, timeZone)}</span>;
+  return <span className="font-mono text-foreground/90 tabular-nums">{formatStamp(iso, timeZone)}</span>;
 }
 
 function ActionList({ children }: { children: ReactNode }) {
@@ -232,11 +236,14 @@ function ActionRow({ title, detail, onClick }: { title: string; detail: string; 
     <button
       type="button"
       onClick={onClick}
-      className="pressable group flex min-h-16 w-full items-center gap-3 border-b border-border px-4 py-2.5 text-left transition-colors duration-120 ease-standard hover:bg-foreground/3 focus-visible:outline focus-visible:-outline-offset-1 focus-visible:outline-brand motion-reduce:transition-none sm:px-6"
+      className={cn(
+        "pressable group flex min-h-16 w-full items-center gap-4 border-b border-border py-3 text-left transition-colors duration-120 ease-standard hover:bg-foreground/3 focus-visible:outline focus-visible:-outline-offset-1 focus-visible:outline-brand motion-reduce:transition-none",
+        GUTTER_X,
+      )}
     >
       <span className="min-w-0 flex-1">
         <span className="block text-15 font-medium">{title}</span>
-        <span className="mt-0.5 block text-12 text-muted-foreground">{detail}</span>
+        <span className="mt-0.5 block text-13 text-muted-foreground">{detail}</span>
       </span>
       <ChevronRight size={16} strokeWidth={1.5} aria-hidden="true" className="shrink-0 text-muted-foreground transition-colors duration-120 group-hover:text-foreground" />
     </button>
