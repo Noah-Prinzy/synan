@@ -23,8 +23,9 @@ import { fadeIn, scaleIn, transitions, easing } from "@synan/ui/motion";
 ```
 
 ```css
-/* Tokens as CSS custom properties, plus animation classes */
-@import "@synan/ui/styles";
+/* The palette and type (light and dark), plus animation classes */
+@import "@synan/ui/theme.css";
+@import "@synan/ui/motion.css";
 ```
 
 ## Layout
@@ -32,7 +33,7 @@ import { fadeIn, scaleIn, transitions, easing } from "@synan/ui/motion";
 ```text
 src/
   tokens/       Colour, spacing, type scales, motion timings
-  styles/       tokens.css, motion.css
+  styles/       theme.css, motion.css
   motion/       Motion primitives
   components/   animated/  form/  layout/
   lib/          cn helper
