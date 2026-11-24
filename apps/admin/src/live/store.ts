@@ -90,6 +90,8 @@ const PING_MS = 5_000;
 const HISTORY_SAMPLE_MS = 5_000;
 const HISTORY_LENGTH = 36; // 3 minutes
 const ANNOUNCE_MS = 1_500;
+/** How far along an alert is; it never moves back. */
+const ALERT_STEP: Record<BreachAlert["state"], number> = { open: 0, acked: 1, resolved: 2 };
 
 export class CommandStore {
   readonly interp = new Interpolator();
@@ -352,7 +354,7 @@ export class CommandStore {
   private onAlerts(message: ChannelMessage<"/stream/alerts">): void {
     if (message.type === "alert.raised") {
       const alert = message.data;
-      this.replaceAlert(alert);
+      if (!this.replaceAlert(alert)) return;
       this.pushFeed({ kind: "alert", id: `alert:${message.id}`, at: Date.parse(alert.occurred_at), alert, change: "raised" });
       if (alert.state === "open") this.queueAnnounce(alert);
       if (alert.severity === "critical" && alert.state === "open") {
@@ -367,7 +369,7 @@ export class CommandStore {
     } else if (message.type === "alert.updated") {
       const alert = message.data;
       const previous = this.alerts.get().find((a) => a.id === alert.id);
-      this.replaceAlert(alert);
+      if (!this.replaceAlert(alert)) return;
       if (previous?.state !== alert.state && (alert.state === "acked" || alert.state === "resolved")) {
         this.pushFeed({ kind: "alert", id: `alert:${message.id}`, at: this.now(), alert, change: alert.state });
       }
@@ -405,9 +407,17 @@ export class CommandStore {
     return { ...health, offlineSince, perimeter, roomId };
   }
 
-  private replaceAlert(alert: BreachAlert): void {
+  /**
+   * Put the server's copy of an alert in the list. An alert only moves forward (open → acked →
+   * resolved; the API never reopens one), so a copy behind the one shown is stale — a late frame,
+   * or an answer overtaken by another operator's — and is ignored. Returns whether it was applied.
+   */
+  private replaceAlert(alert: BreachAlert): boolean {
+    const shown = this.alerts.get().find((a) => a.id === alert.id);
+    if (shown && ALERT_STEP[shown.state] > ALERT_STEP[alert.state]) return false;
     const rest = this.alerts.get().filter((a) => a.id !== alert.id);
     this.alerts.set([alert, ...rest].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at)));
+    return true;
   }
 
   private applySummary(summary: LiveSummary): void {
