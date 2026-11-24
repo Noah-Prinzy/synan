@@ -205,7 +205,10 @@ jobs:
       - name: Scan every commit for secrets
         run: |
           set +e
-          /tmp/gitleaks git --redact --no-banner --verbose \
+          # --log-opts HEAD: the history of the commit under test only. The default (--all) would
+          # also scan every other branch the full checkout fetched, so one branch's finding would
+          # fail every branch's run.
+          /tmp/gitleaks git --redact --no-banner --verbose --log-opts="HEAD" \
             --gitleaks-ignore-path .github/.gitleaksignore \
             --report-format json --report-path gitleaks-report.json .
           status=$?
