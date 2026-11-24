@@ -18,7 +18,10 @@
     "build:apps": "node scripts/lib/pnpm.mjs --filter @synan/attendee --filter @synan/admin --filter @synan/scanner run build --manifest",
     "budget": "node scripts/bundle-budget.mjs",
     "hygiene": "node scripts/hygiene.mjs && node scripts/check-links.mjs",
-    "audit:deps": "node scripts/audit.mjs"
+    "audit:deps": "node scripts/audit.mjs",
+    "e2e": "pnpm --filter @synan/e2e test",
+    "e2e:headed": "pnpm --filter @synan/e2e test:headed",
+    "e2e:report": "pnpm --filter @synan/e2e report"
   },
   "devDependencies": {
     "typescript": "^5.9.0"
