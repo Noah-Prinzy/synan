@@ -47,26 +47,31 @@ test("J9: export a workbook with the second factor, open it, and see it deleted 
   await chooseConsoleEvent(page, w.title);
   await page.goto(`${APP_URLS.admin}events/${w.eventId}/reports`);
   await expect(page.getByRole("heading", { name: "Export", exact: true })).toBeVisible();
+  const admin = await loginAs((await ctl.seed()).emails.admin);
+  const all = async () => (await admin.call<{ items: { id: string; state: string; format: string; download_url: string | null }[] }>("GET", `/reports/${w.eventId}`)).items;
+  const before = new Set((await all()).map((r) => r.id));
+  const mine = async () => (await all()).filter((r) => !before.has(r.id));
+
   await page.getByRole("button", { name: "Prepare workbook" }).click();
   await answerStepUp(page);
   await expect(page.getByRole("button", { name: /Queued/ }).or(page.getByText("Queued")).first()).toBeVisible();
 
-  const admin = await loginAs((await ctl.seed()).emails.admin);
-  const reports = async () => (await admin.call<{ items: { id: string; state: string; format: string; download_url: string | null }[] }>("GET", `/reports/${w.eventId}`)).items;
-  await expect.poll(async () => (await reports()).length).toBe(1);
+  await expect.poll(async () => (await mine()).length, { message: "one export requested" }).toBe(1);
   await ctl.runJob("report.export");
-  await expect.poll(async () => (await reports())[0]!.state, { timeout: 30_000 }).toBe("ready");
-  const report = (await reports())[0]!;
+  await expect.poll(async () => (await mine())[0]!.state, { timeout: 30_000 }).toBe("ready");
+  const report = (await mine())[0]!;
   expect(report.format).toBe("xlsx");
   reportId = report.id;
 
   const table = page.getByRole("table", { name: "Prepared exports" });
-  const link = table.getByRole("link", { name: /download/i });
+  const row = table.getByRole("row").filter({ has: page.getByRole("link", { name: /download/i }) });
+  await expect(row).toHaveCount(before.size + 1, { timeout: 30_000 });
+  const link = row.first().getByRole("link", { name: /download/i });
   await expect(link).toBeVisible({ timeout: 30_000 });
   const [download] = await Promise.all([page.waitForEvent("download"), link.click()]);
   const saved = test.info().outputPath("export.xlsx");
   await download.saveAs(saved);
-  expect(download.suggestedFilename()).toMatch(/\.xlsx$/);
+  expect(download.suggestedFilename(), "the file downloaded is this export").toBe(`report-${report.id}.xlsx`);
 
   await test.step("the file is a valid workbook", async () => {
     const zip = unzipSync(new Uint8Array(readFileSync(saved)));

@@ -41,7 +41,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "tsx server/stack.ts",
+    command: "node --import tsx server/stack.ts",
     url: `${ORIGINS.control}/health`,
     // Builds of all three apps take about 35 s on a developer machine.
     timeout: 240_000,

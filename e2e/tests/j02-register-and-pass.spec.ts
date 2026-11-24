@@ -9,10 +9,10 @@ import { closeWorld, createWorld, type World } from "../support/world.ts";
 import { phone } from "../support/ui.ts";
 
 let w: World;
-test.beforeAll(async () => {
+test.beforeEach(async () => {
   w = await createWorld({ name: "j2" });
 });
-test.afterAll(async () => closeWorld(w));
+test.afterEach(async () => closeWorld(w));
 
 test("J2: register on one device, open the link on another, see the pass and its code rotate", async ({ page, browser }) => {
   const email = `${uniq("e2e-ada")}@synan.dev`.toLowerCase();

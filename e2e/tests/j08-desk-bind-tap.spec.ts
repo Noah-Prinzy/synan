@@ -8,10 +8,10 @@ import { assign, closeWorld, createStaff, createWorld, registerGuest, stockBands
 import { adminSignIn, phone, scannerManualEntry, scannerSignIn, verdict } from "../support/ui.ts";
 
 let w: World;
-test.beforeAll(async () => {
+test.beforeEach(async () => {
   w = await createWorld({ name: "j8" });
 });
-test.afterAll(async () => closeWorld(w));
+test.afterEach(async () => closeWorld(w));
 
 test("J8: a desk clerk binds a band from stock; the band opens the lounge door on a tap", async ({ page, browser }) => {
   const guest = await registerGuest(w, { tier: "VIP", name: "Dana Desk" });

@@ -9,10 +9,10 @@ import { bindBand, closeWorld, createWorld, invite, registerGuest, type Gate, ty
 import { adminSignInSeeded, chooseConsoleEvent, phone, scannerManualEntry, scannerSignIn, verdict } from "../support/ui.ts";
 
 let w: World;
-test.beforeAll(async () => {
+test.beforeEach(async () => {
   w = await createWorld({ name: "j7" });
 });
-test.afterAll(async () => closeWorld(w));
+test.afterEach(async () => closeWorld(w));
 
 async function scannerAt(ctx: BrowserContext, gate: Gate): Promise<Page> {
   const page = await ctx.newPage();

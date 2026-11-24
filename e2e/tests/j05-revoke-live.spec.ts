@@ -8,10 +8,10 @@ import { bindBand, closeWorld, createStaffWithMfa, createWorld, registerGuest, t
 import { adminSignIn, answerStepUp, attendeeSignIn, chooseConsoleEvent, phone } from "../support/ui.ts";
 
 let w: World;
-test.beforeAll(async () => {
+test.beforeEach(async () => {
   w = await createWorld({ name: "j5" });
 });
-test.afterAll(async () => closeWorld(w));
+test.afterEach(async () => closeWorld(w));
 
 const credentialState = async (credentialId: string) => {
   const admin = await adminApi();
@@ -50,7 +50,12 @@ test("J5a: a supervisor revokes a pass under review in the console; the open pas
   await adminSignIn(page, sup.email, sup.password);
   await chooseConsoleEvent(page, w.title);
   await page.getByRole("navigation", { name: "Admin" }).getByRole("link", { name: "Attendees" }).click();
-  await page.getByRole("radio", { name: "Passes under review" }).check();
+  // The filter is a radio button whose state follows the URL: click until it reads checked.
+  const underReview = page.getByRole("radio", { name: "Passes under review" });
+  await expect(async () => {
+    await underReview.click();
+    await expect(underReview).toBeChecked({ timeout: 2_000 });
+  }).toPass({ timeout: 15_000 });
   await page.getByRole("button", { name: new RegExp(`^${guest.name}`) }).click();
   const sheet = page.getByRole("complementary", { name: guest.name });
   await sheet.getByLabel("Note for the audit log").fill("Pass-back between two offline doors; confirmed with the holder.");

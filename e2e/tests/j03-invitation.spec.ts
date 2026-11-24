@@ -8,10 +8,10 @@ import { closeWorld, createWorld, invite, type World } from "../support/world.ts
 import { phone } from "../support/ui.ts";
 
 let w: World;
-test.beforeAll(async () => {
+test.beforeEach(async () => {
   w = await createWorld({ name: "j3" });
 });
-test.afterAll(async () => closeWorld(w));
+test.afterEach(async () => closeWorld(w));
 
 const registrationsOf = async (email: string) => {
   const regs = await w.admin.call<{ items: Record<string, unknown>[] }>("GET", `/events/${w.eventId}/registrations?limit=200`);

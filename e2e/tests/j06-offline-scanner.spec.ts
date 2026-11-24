@@ -9,10 +9,10 @@ import { bindBand, closeWorld, createWorld, registerGuest, type World } from "..
 import { phone, scannerManualEntry, scannerSignIn, verdict } from "../support/ui.ts";
 
 let w: World;
-test.beforeAll(async () => {
+test.beforeEach(async () => {
   w = await createWorld({ name: "j6" });
 });
-test.afterAll(async () => closeWorld(w));
+test.afterEach(async () => closeWorld(w));
 
 test("J6: offline admissions from the allowlist queue on the device and sync exactly once", async ({ browser }) => {
   const admin = await adminApi();

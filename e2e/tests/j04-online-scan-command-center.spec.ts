@@ -7,10 +7,10 @@ import { closeWorld, createWorld, bindBand, currentPassCode, registerGuest, type
 import { adminSignInSeeded, chooseConsoleEvent, phone, scannerManualEntry, scannerSignIn, verdict } from "../support/ui.ts";
 
 let w: World;
-test.beforeAll(async () => {
+test.beforeEach(async () => {
   w = await createWorld({ name: "j4" });
 });
-test.afterAll(async () => closeWorld(w));
+test.afterEach(async () => closeWorld(w));
 
 test("J4: a QR admitted at the entrance and a band at the lounge door show on the Command Center live", async ({ page, browser }) => {
   const guest = await registerGuest(w, { tier: "VIP", name: "Vera Live" });
