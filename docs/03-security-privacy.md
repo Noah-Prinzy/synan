@@ -39,7 +39,9 @@ staff phone could then forge any attendee's pass. With server signatures, a scan
 public keys, which are safe to lose.
 
 **QR codes are accepted only at perimeter gates and desks (D-11).** This limits where a forged or
-replayed code could even be tried, and it means interior gates never depend on code freshness.
+replayed code could even be tried, and it means interior gates never depend on code freshness. This
+is the default carrier policy; an event without wristbands accepts the portal QR at every gate
+(D-32, [01 §12.3](01-product.md)), still verified with public keys only (D-12).
 
 **Private Invitation links** are high-entropy, single-use tokens bound to a hash of the recipient's
 email. They expire the moment the RSVP is completed. The emailed link carries the token after a
@@ -56,7 +58,7 @@ decline sends no name or answers.
 | --- | --- | --- |
 | Signed access tokens | `POST /auth/login` and `/auth/refresh` issue short-lived signed tokens (10 minutes) carrying the role. Required on every REST request that is not public. A refresh token lasts 12 hours for operators and staff and 30 days for attendees. | v1 |
 | Refresh rotation | Each refresh token works once and is replaced. A token presented again is treated as theft and ends the whole sign-in, with one exception: the same client (same browser and network) presenting it again within 10 seconds, while its replacement is still unused, is taken as a lost reply and given a fresh token. Anything later, from elsewhere, or after the replacement was used still ends the sign-in. | v1 |
-| Attendee sign-in | Email link only. No attendee passwords exist. | v1 |
+| Attendee sign-in | An email link, or a six-digit code by SMS or WhatsApp (D-33, [01 §5.4](01-product.md)). No attendee passwords exist. | v1 for the email link; codes by SMS and WhatsApp with their product slice ([07 §2.4](07-roadmap.md)) |
 | Operator and staff sign-in | Email and password. Five wrong passwords in 15 minutes lock that account's sign-in for the rest of the window. A new staff member sets their password from a single-use invite (`POST /auth/activate`). | v1 |
 | Role-based access control | Every endpoint names the roles that may call it ([02 §7](02-architecture.md)), and the server checks it on every request. Roles are in [01 §3](01-product.md); the matrix is below. | v1 |
 | Multi-factor authentication | An authenticator-app code (TOTP). It is not asked at sign-in; it is asked when someone first does a privileged action, and a step-up then lasts 15 minutes. Privileged actions: manual tier change, wristband rebind or replacement, pass resend by an operator, report export and scheduling a report, a role change, webhook and device changes, processing an attendee's data request, and publishing a venue layout while an event there is live. A supervisor also needs it to clear or revoke a pass under review. Five wrong codes in 15 minutes lock the account's step-up for the rest of the window. | v1 |
@@ -104,8 +106,10 @@ shift is current when the server's clock is inside it.
   venue's design peak ([02 §9](02-architecture.md)), so a legitimate gate cannot reach it, and it
   counts scans by when they happened, so an offline backlog is never throttled. Refused scans are
   returned to the scanner, counted in gate health, and alerted.
-- Gate devices are venue-owned ([01 §2](01-product.md), D-09), so a scanner can be wiped, re-issued,
-  and accounted for at the end of a shift.
+- At events that use wristbands, gate devices are venue-owned ([01 §2](01-product.md), D-09), so a
+  scanner can be wiped, re-issued, and accounted for at the end of a shift. At an event without
+  wristbands any phone may scan (D-32); the signed, secret-free allowlist and the shift scoping above
+  are what protect it.
 - Conflicts that only appear when offline gates sync — a single-use QR used twice, a pass-back, a
   capacity overrun — are detected at sync and raised as alerts (D-13, §8.2).
 - Each scan carries the device's clock offset, so a wrong or tampered clock cannot reorder events
@@ -199,7 +203,8 @@ result. **No coordinates are ever stored, streamed, or displayed.** Where older 
 
 **Consent.** At registration, consent to zone-presence processing is a separate row, unticked by
 default, with a plain-language explanation and a "what we store" disclosure. It is not bundled into
-the event terms.
+the event terms. A person who declines is still counted, for safety, but left out of movement
+analysis; declining never blocks entry (D-30, subject to legal review before launch).
 
 **Attendee rights.** An attendee can export their data and request erasure from their account
 screen. Operators see a queue of these requests. Erasure scrubs the name, email, phone, and profile,
@@ -260,7 +265,7 @@ payloads, logs, or stored errors. A send is claimed for 120 seconds; an email ab
 worker is retried when the claim lapses, up to five attempts, and a worker records an outcome only
 for the attempt it claimed. Outbox rows are deleted 7 days after they are sent or fail. Whether a
 recipient can ever receive a duplicate depends on the email provider honouring the idempotency key
-sent with each message (O-13).
+sent with each message; Resend honours it for 24 hours (D-35).
 
 **Encryption.** Data in transit: TLS 1.3, and mutual TLS between scanners, the WebSocket broker,
 inference nodes, and the database once hardening lands. Data at rest: AES-256 for volumes, the

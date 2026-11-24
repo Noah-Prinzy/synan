@@ -39,7 +39,8 @@ Supporting choices (D-17):
 | Real-time fan-out | PostgreSQL `LISTEN` / `NOTIFY` | Enough for one server. Replaced by a message broker only when there is more than one |
 | Scanner offline | `vite-plugin-pwa` and IndexedDB | Installable shell, cached allowlist, queued scans |
 | QR reading | Browser `BarcodeDetector`, with a WebAssembly decoder as fallback | Native speed where available |
-| Email | A transactional provider with a verified domain | Provider not yet chosen |
+| Email | Resend, on a verified domain (D-35) | Separate streams for urgent mail (sign-in links) and bulk mail (passes) |
+| SMS and WhatsApp | A local SMS provider with direct MTN and Airtel routes; Meta's WhatsApp service (D-34) | One shared sender name, "SYNAN" |
 | File storage | S3-compatible object storage | Report exports behind signed short-lived links |
 | Tests | Vitest for units; Playwright driving the named scenarios in §8 | The scenarios are the acceptance tests |
 
@@ -97,7 +98,8 @@ sessions(id, event_id, room_id, title, starts_at, ends_at)                   -- 
 
 `events.state` is `draft | published | live | closed | archived`. `listed_bool` is false for Private
 Invitation events, which never appear in public discovery. `checkpoints.perimeter_bool` marks gates
-and desks that accept QR codes (D-11). `rooms.continuous_bool` exempts a room from the session-end
+and desks that accept QR codes (D-11); at an event without wristbands every gate accepts them
+(D-32). `rooms.continuous_bool` exempts a room from the session-end
 occupancy reset (D-10).
 
 - **Layout.** Zone and room `geometry_jsonb` is a shape on the abstract grid, in whole grid units.

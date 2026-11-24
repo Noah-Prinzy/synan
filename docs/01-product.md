@@ -31,9 +31,10 @@ passes in one place.
   Attendee Portal, a pass sent to any phone, or a printed pass (§5.4).
 
 **Reading §11 to §18.** These sections extend the product to any kind of event and to many
-organisers. Many of their details still wait for the owner's answer. Where a rule rests on an open
-question, the question's number is given beside it, and the rule written is the recommended answer
-([00 §5](00-index.md)). If the owner decides otherwise, the rule here is changed.
+organisers. Where a rule there has been decided, the decision's number is given beside it
+([00 §4](00-index.md)). Where a rule still rests on an open question, the question's number is given
+instead, and the rule written is the recommended answer ([00 §5](00-index.md)). If the owner decides
+otherwise, the rule here is changed.
 
 **In scope**
 
@@ -42,7 +43,7 @@ question, the question's number is given beside it, and the rule written is the 
 - Ticket types, capacity limits, waiting lists, and booked places
 - Credential issuance on several carriers: in-app QR, a sent or printed copy with a short pass code,
   NFC wristband
-- Sign-in and pass delivery by email, SMS or WhatsApp (O-48)
+- Sign-in and pass delivery by email, SMS or WhatsApp (D-33)
 - Gate scanning, online and offline
 - Live room occupancy and capacity enforcement
 - Extras collected by a tap: meals, drinks, bags, parking
@@ -54,7 +55,7 @@ question, the question's number is given beside it, and the rule written is the 
 
 **Out of scope**
 
-- Taking or holding attendees' money (O-02). Registrations are free, or paid for outside Synan;
+- Taking or holding attendees' money (D-36). Registrations are free, or paid for outside Synan;
   paid orders and tickets bought elsewhere can be brought in (§13.6).
 - Precise indoor positioning. Synan knows which zone a credential last entered, never where a
   person is standing (D-04).
@@ -64,8 +65,8 @@ is a known choice and not an oversight; adding one is a new decision. Where the 
 recommend changing an item, the item stays on this list until the owner decides, and the open
 question is named.
 
-- Push or SMS notifications. *Proposed change (O-48):* SMS and WhatsApp become channels for
-  sign-in, passes and emergency messages (§5.4, §17, §18.1). Push notifications stay not planned.
+- Push notifications to phones. Attendees are reached in the portal and by email, SMS or WhatsApp
+  (D-33; §5.4, §17, §18.1).
 - Badge printing. *Proposed change (O-51):* passes and badges printed on ordinary paper (§5.4).
   Badge printers stay not planned.
 - Attendance certificates. These would also need per-person session attendance kept after the
@@ -120,8 +121,9 @@ cannot do it. At an event that uses wristbands (the default, §12.3), a gate is 
   scanner's manual entry field.
 
 An iPhone can run the Gate Scanner for QR at the perimeter and for manual entry, but not for tapping
-wristbands. Staff are not expected to use personal phones at gates. An event that uses no
-wristbands needs only a camera at its gates, so any phone or tablet can staff them (§12.3, O-35).
+wristbands. At events that use wristbands, staff are not expected to use personal phones at gates.
+Wristbands are optional per event (D-32): an event that uses none needs only a camera at its gates,
+so any phone or tablet can staff them, a staff member's own included (§12.3).
 
 Screens for each surface are specified in [06-screens.md](06-screens.md).
 
@@ -271,7 +273,7 @@ six-character code from the desk clerk ([06 §1](06-screens.md), screen A5).
 ### 5.4 Contacts, sign-in and pass delivery (P-11)
 
 - **Contacts.** Every person who signs in has a contact: an email address, a mobile number, or
-  both. Either is enough (O-48). Mobile numbers are stored in international format and shown the way
+  both. Either is enough (D-33). Mobile numbers are stored in international format and shown the way
   the event's country writes them. A guest with no contact of their own is reached through the
   person who booked them (§11.2).
 - **Sign-in.** An attendee signs in with a contact they registered with: a signed, short-lived link
@@ -282,9 +284,9 @@ six-character code from the desk clerk ([06 §1](06-screens.md), screen A5).
   attendee password exists.
 - **Channels.** The organiser chooses which of email, SMS and WhatsApp an event uses. The attendee
   chooses their preferred channel among those. A message only ever goes to a contact the attendee
-  gave. Email is sent through a transactional provider on a verified sending domain, with bounce
-  handling (O-13); SMS and WhatsApp through messaging providers under a registered sender name
-  (O-49).
+  gave. Email is sent through Resend on a verified sending domain, with bounce handling (D-35). SMS
+  goes through a local provider with direct MTN and Airtel routes, and WhatsApp through Meta's own
+  service, under one shared sender name, "SYNAN"; every message opens with the event name (D-34).
 - **What a pass message contains.** The guest's first name, the event, the date and time in the
   event's time zone, a link to the pass, and the short pass code. Email and WhatsApp also carry the
   QR code as an image. The rules for every message are in §17.
@@ -404,9 +406,9 @@ main entrance never says "Restricted room" when the problem is the day on the ti
 - Occupancy never goes negative. A negative result is clamped to 0 and logged as a reconciliation
   fault.
 - **Presence consent.** Declining zone-presence consent ([03 §5](03-security-privacy.md)) never
-  stops a person entering, and is never a condition of getting a wristband. The recommended rule
-  (O-43): the person is still counted, because counting is needed to run the event safely, but is
-  left out of dwell and flow analysis.
+  stops a person entering, and is never a condition of getting a wristband (D-30). The person is
+  still counted, because counting is needed to run the event safely, but is left out of dwell and
+  flow analysis. This is subject to legal review before launch.
 
 **Clarifications settled in the build.**
 
@@ -768,9 +770,10 @@ limit or a quota can only rise above what is already used. The carrier policy an
 are fixed once the event is live. Every change to a published event is shown as a difference before
 it applies, as access-rule changes are (§4).
 
-### 12.3 Carrier policy (O-35)
+### 12.3 Carrier policy (D-32)
 
-This extends §5.1, the gate devices in §2, and D-11, which stays the default.
+Wristbands are optional per event. This extends §5.1, the gate devices in §2, and D-11, which stays
+the default; D-32 amends D-09 and D-11 so that both apply where an event uses wristbands.
 
 | Policy | Perimeter gates and desks | Interior gates | Suits |
 | --- | --- | --- | --- |
@@ -781,8 +784,8 @@ This extends §5.1, the gate devices in §2, and D-11, which stays the default.
 - **QR at every gate** still works offline, because portal codes are signed and checked with public
   keys (D-12). Its cost is speed: reading a QR is slower than a tap.
 - **Events with no wristbands.** Their gates need only a camera, so any phone or tablet can staff
-  them, iPhones included, and staff may use their own phones (O-35). Wherever wristbands are used,
-  D-09 applies.
+  them, iPhones included, and staff may use their own phones. Wherever wristbands are used, D-09
+  applies.
 - **Reusable printed pass (O-36).** An event with QR at every gate and no VIP or Private Invitation
   ticket types may make its printed passes reusable, for guests without a phone. Such a pass is
   protected like a standard wristband, by anti-passback and impossible travel
@@ -859,7 +862,7 @@ An event can lay out tables, and seats where used, and assign people to them, ke
 together. A person's table is shown on their pass and at the desk. Tables are not doors: no gate
 checks them. The live view and the summary can show arrivals per table.
 
-### 13.6 Tickets bought and paid for elsewhere (O-02)
+### 13.6 Tickets bought and paid for elsewhere (D-36)
 
 Synan never holds attendees' money. An event with paid entry sells its tickets elsewhere, and the
 organiser brings the buyers into Synan:
@@ -870,8 +873,8 @@ organiser brings the buyers into Synan:
 
 Refunds stay with the platform that sold the ticket; the organiser cancels the pass in Synan.
 
-A later option: the organiser connects their own payment account, so that the organiser, not
-Synan, is the merchant. Synan issues the pass only after confirming with the payment provider that
+Later, the organiser can connect their own payment account, so that the organiser, not Synan, is
+the merchant. Synan never takes payments directly. Synan issues the pass only after confirming with the payment provider that
 the payment went through, and revokes it if the payment is refunded or reversed.
 
 ---
@@ -918,7 +921,7 @@ such as a security firm working for many, and works for one organiser at a time 
 Each organiser has its own public page listing its events. A listing across all organisers is
 opt-in for each event (O-31).
 
-### 15.2 One person across organisers (O-28)
+### 15.2 One person across organisers (D-27)
 
 A person signs in once and sees, in one wallet, every pass they hold, whatever the organiser: a
 wedding this month, a conference next. Underneath, each organiser's information about that person is
@@ -948,7 +951,7 @@ organiser's record, so that the person sees one wallet and can use their rights 
   carried out by Synan, never by one organiser's admin.
 - Each organiser's request queue shows only requests that touch its own registrations.
 
-### 15.5 Joining as an organiser (O-30)
+### 15.5 Joining as an organiser (D-31)
 
 - An organiser signs up, which creates the organisation and its first admin. That admin must set up
   a second sign-in factor.
@@ -969,12 +972,13 @@ time-limited support grant approved by the organiser, or, in an emergency, with 
 the approval of a second Synan administrator. Everything they do is recorded in Synan's audit log and
 copied into the organiser's own, where its admins can read it.
 
-### 15.7 Who answers for the data (O-29)
+### 15.7 Who answers for the data (D-28)
 
 For event data (registrations, answers, scans), the organiser decides what is collected and why,
 and Synan handles it on the organiser's behalf under a data-processing agreement with each organiser.
 In data-protection terms, the organiser is the controller and Synan the processor. For the person's
-own account (sign-in, contacts, language) and for operator accounts, Synan is the controller. Every
+own account (sign-in, contacts, language) and for operator accounts, Synan is the controller. This
+is to be confirmed by a lawyer before launch. Every
 registration page names the organiser as responsible for the event and links to the privacy notice.
 
 ---

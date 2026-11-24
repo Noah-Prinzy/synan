@@ -118,7 +118,8 @@ The single most important attendee screen. One hairline card, centred, max 600:
   a glitch.
 - The screen says what the QR is for: `Show this when you arrive to collect your wristband`. Once a
   band is bound, the wristband row moves to the top and the QR folds beneath it as "Arrival code,
-  for the entrance and desk", because inside the venue the band is the key (D-11).
+  for the entrance and desk", because inside the venue the band is the key (D-11). At an event
+  without wristbands (D-32), the QR is the pass at every gate, and the screen says so.
 - Wristband row, one of three: `Bound ••9F3A` (the band's last four characters, never the whole
   UID) with a green dot; `Not bound yet`, with `Bind a band` and where to bind one; or `Reported
   lost`, with `Bind a new band`. Reporting a band lost is on A8.
@@ -522,11 +523,13 @@ requests), Audit log (with chain-integrity status), API keys.
 
 Installable PWA. Must be operable one-handed, in the dark, by a temp staffer with 30 seconds of training.
 
-It runs on venue-owned Android devices, because tapping a wristband from a web app works only in
-Chrome on Android (D-09). On any other device the tap target is replaced by the manual entry field,
-which also accepts input from a USB or Bluetooth NFC reader.
+At events that use wristbands it runs on venue-owned Android devices, because tapping a wristband
+from a web app works only in Chrome on Android (D-09). On any other device the tap target is replaced
+by the manual entry field, which also accepts input from a USB or Bluetooth NFC reader. At an event
+without wristbands it needs only a camera, so any phone can run it (D-32).
 
-The scanner adapts to its gate (D-11). At a **perimeter** gate or desk it opens on the camera
+The scanner adapts to its gate (D-11). At an event without wristbands, every gate opens on the
+camera viewfinder (D-32). At a **perimeter** gate or desk it opens on the camera
 viewfinder for QR codes, with wristband tap alongside. At an **interior** gate there is no viewfinder:
 the screen is a tap target, and a QR shown to it is answered with `Use your wristband`.
 

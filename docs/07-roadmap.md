@@ -225,7 +225,7 @@ Controls marked **Hardening** in [03](03-security-privacy.md) ship in this phase
 | # | Fault | Why it matters | Fixed in |
 | --- | --- | --- | --- |
 | 1 | Registration answers are stored on the person, not on the registration | Answers given to one organiser are visible to every other, and two events that use the same question overwrite each other's answers | 5.2 |
-| 2 | The presence-consent choice is recorded and shown, but nothing at the gate reads it | The consent row promises something the system does not do; it must be settled before a guardian consents for a child | 5.2, once O-43 is answered |
+| 2 | The presence-consent choice is recorded and shown, but nothing at the gate reads it | The consent row promises something the system does not do; it must be settled before a guardian consents for a child | 5.2, following D-30 |
 | 3 | The attendee list shows every person in the installation, with a count of their registrations across all events | One organiser would see everyone else's attendees | 5.2 |
 | 4 | There is no approval queue: "VIP by approval" can be reached only by changing a tier by hand | A promise in [01 §4](01-product.md) with nothing behind it. Built once, as the general approval queue that ticket types use ([01 §13.3](01-product.md)) | 5.2 |
 | 5 | There is no boundary between organisers. The code takes "the first organisation" in seven places; event addresses and wristband identifiers must be unique across the whole platform; no database rule keeps organisers apart | D-26 cannot be met | 5.2 |
@@ -275,8 +275,9 @@ Controls marked **Hardening** in [03](03-security-privacy.md) ship in this phase
 
 **Goal:** many organisers, their data kept apart by the database itself (D-26).
 
-1. Record the design: accounts across organisers (O-28), addresses of the form
-   `/{organiser}/{event}`, trial limits (O-30), Synan's own staff (O-33). S
+1. Record the design. Decided: one sign-in and one wallet per person, each organiser's data about
+   them kept separately behind a hidden directory (D-27); organisers sign up on a trial (D-31).
+   Still to settle: addresses of the form `/{organiser}/{event}`, and Synan's own staff (O-33). S
 2. Every table an organiser owns carries the organiser. Database rules stop one organiser's room
    being attached to another's event. Uniqueness becomes per organiser (event address, wristband
    identifier, email lookup). Memberships replace the single role on a user. Scan-table partitions
@@ -286,13 +287,13 @@ Controls marked **Hardening** in [03](03-security-privacy.md) ship in this phase
    database functions that bypass it rewritten to check the organiser. M–L
 5. The server: every query bound to one organiser; "the first organisation" removed; the organiser in
    every token and live-connection ticket; signing, data and lookup keys per organiser; scanners fetch
-   only their organiser's keys. Faults 1, 3, 4, 5 and 21 are fixed here, and fault 2 once O-43 is
-   answered. L
+   only their organiser's keys. Faults 1, 2, 3, 4, 5 and 21 are fixed here; fault 2 follows D-30 (a
+   person who declines presence consent is still counted but left out of movement analysis). L
 6. A generated cross-organiser test: for every endpoint and all four live channels, organiser B's
    token against organiser A's data must be refused, on both backends and on real PostgreSQL with
    the three database logins. M
-7. Organiser sign-up and onboarding, a minimal Synan console, and the table of plan limits (O-30,
-   O-34). M
+7. Organiser sign-up and onboarding with the trial limits (D-31), a minimal Synan console, and the
+   table of plan limits (O-34). M
 
 Nothing is deployed, so this is cheap now. Done later it would cost two to three times as much, plus
 the rework of every feature built in between. These are **not started before 5.2 passes its gate**,
@@ -314,7 +315,7 @@ search endpoint; the venue edge gateway.
   (fault 11).
 - A worker and maintenance process runs the scheduled jobs; each records its last success, and an
   alert is raised when one is overdue (fault 12).
-- The email provider (O-13) with separate urgent and bulk queues, a duplicate-proof key on every
+- Resend for email (D-35), with separate urgent and bulk queues, a duplicate-proof key on every
   message, and send limits per organiser (fault 13).
 - Shared file storage (fault 14); shared counters in PostgreSQL (fault 15); bounded caches
   (fault 16).
@@ -392,19 +393,19 @@ each slice delivers is specified in [01](01-product.md).
 | Slice | Delivers | Makes possible | Depends on | Size |
 | --- | --- | --- | --- | --- |
 | 1 — Groundwork | Nothing visible changes. Each event gets a profile holding today's behaviour; one ticket type per tier made automatically; access rules by ticket type; passes listed by registration, each with a holder; a reason on every refusal; server messages and notifications stored as codes with values, not English sentences, so the language work does not grow; new styles written with start and end sides rather than left and right | Everything after it | 5.2 | M |
-| 2 — Simple events | Event type and presets in the wizard; the simple venue; the "QR at every gate" carrier policy; event limit, on-site limit and registration window; approval for any ticket type; cancel and postpone; the rehearsal state and a demo event; save as template and repeat weekly ([01 §9, §12, §13, §18.2](01-product.md)) | Classes, simple weddings, church services and community gatherings without wristbands | Slice 1; O-35, O-38 | M–L |
-| 3 — Reaching every phone | Contacts by email or mobile number; SMS sign-in codes with limits against abuse; the sent copy in place of the emailed copy; the light pass page; the short pass code; printable passes and door list; delivery status per channel; guest-list import from Excel or CSV with bulk sending; a longer stock of codes on the phone once O-07's review passes ([01 §5, §11.5](01-product.md)) | Guests without email or a smartphone; the organiser's real starting point, a guest list | Slice 1; the mail queues of 5.3; O-48, O-49, O-50, O-51; sender names registered well before | L |
+| 2 — Simple events | Event type and presets in the wizard; the simple venue; the "QR at every gate" carrier policy; event limit, on-site limit and registration window; approval for any ticket type; cancel and postpone; the rehearsal state and a demo event; save as template and repeat weekly ([01 §9, §12, §13, §18.2](01-product.md)) | Classes, simple weddings, church services and community gatherings without wristbands | Slice 1; D-32; O-38 | M–L |
+| 3 — Reaching every phone | Contacts by email or mobile number; SMS sign-in codes with limits against abuse; the sent copy in place of the emailed copy; the light pass page; the short pass code; printable passes and door list; delivery status per channel; guest-list import from Excel or CSV with bulk sending; a longer stock of codes on the phone once O-07's review passes ([01 §5, §11.5](01-product.md)) | Guests without email or a smartphone; the organiser's real starting point, a guest list | Slice 1; the mail queues of 5.3; D-33, D-34; O-50, O-51; the "SYNAN" sender name registered (§5) | L |
 | 4 — Parties | Named guests; held passes and the pass wallet; the desk's party view; cancelling and adding a member ([01 §11.1–§11.4](01-product.md)) | Couples, families, delegations | Slice 1 | L |
 | 5 — Emergency mode | Opening the gates, headcount by zone, broadcast on every channel, muster points ([01 §18.1](01-product.md)). Needed before any large real event | Safe large events | Slice 3 for SMS broadcasts; O-46 | M |
 | 6 — Handover and households | Handing a pass over and claiming it; transfer; change of manager; household invitations with a reply and questions per person (A10 Invitation); tables and seats ([01 §11.3–§11.5, §13.5](01-product.md)) | Weddings and galas complete | Slices 3 and 4; O-40, O-41, O-42 | L |
 | 7 — Languages and messages | Shared wording catalogues, and Swahili for the attendee app and scanner; the message plan with quiet hours, daily limit, opt-out list and the organiser's own wording; WhatsApp delivery once Meta has approved the business and its templates; event certificates; the survey link ([01 §16, §17](01-product.md)) | Swahili speakers; the cheapest channel per message; the organiser's messaging | Slices 1 and 3; O-52, O-53, O-54 | L |
-| 8 — Dependants and safety | Age bands; guardians and consent on someone's behalf; age rules; identity and age checks at the gate; agreements; access needs; companions ([01 §11.6, §11.7, §18.4–§18.6](01-product.md)) | Children's events; age-restricted events | Slice 4; O-43, O-44, O-47; legal review | L |
+| 8 — Dependants and safety | Age bands; guardians and consent on someone's behalf; age rules; identity and age checks at the gate; agreements; access needs; companions ([01 §11.6, §11.7, §18.4–§18.6](01-product.md)) | Children's events; age-restricted events | Slice 4; D-30; O-44, O-47; legal review | L |
 | 9 — Extras | Collection points, including balances offline ([01 §14](01-product.md)) | Meals, drinks, bags, parking | Slice 1 | L |
-| 10 — Several days and tickets bought elsewhere | Days a ticket is valid; overnight reset; no re-entry; wristbands everywhere; imported ticket codes ([01 §12, §13.6](01-product.md)) | Festivals and concerts | Slice 2; the compact allowlist of 5.4; O-02 | M–L |
+| 10 — Several days and tickets bought elsewhere | Days a ticket is valid; overnight reset; no re-entry; wristbands everywhere; imported ticket codes ([01 §12, §13.6](01-product.md)) | Festivals and concerts | Slice 2; the compact allowlist of 5.4; D-36 | M–L |
 | 11 — Places, waiting lists and the rest | Waiting lists; places in sessions with release of no-shows; allocations; release to a guardian; finding a child ([01 §11.5, §11.6, §13.3, §13.4](01-product.md)) | Workshops with places; sponsors and exhibitors; school events | Slices 4 and 8; O-45 | L |
 
-**Later, in no fixed order:** Luganda, then French (O-52); a sender name per organiser (O-49); the
-pay link through the organiser's own payment account, when a paying promoter needs it (O-02, L);
+**Later, in no fixed order:** Luganda, then French (O-52); a sender name per organiser (D-34); the
+pay link through the organiser's own payment account, when a paying promoter needs it (D-36, L);
 wallet passes; A11 Kiosk (O-10); a listing across organisers (O-31); a voice note on WhatsApp
 explaining how to enter.
 
@@ -509,19 +510,19 @@ estimates from the scale study, not measurements.
 | The legally promised purge never runs | A job runner in production with an alert when any job is overdue (5.3) |
 | One organiser's busy event slows the others | Limits per organiser, fair queues, a separate scan path; the noisy-neighbour load test (5.4) |
 | One phone holding many passes invites resale, or passes given to strangers | Named passes, identity checks an event can switch on, a separate rotating code per pass, re-issue on handover |
-| Relaxing D-11 and D-05 per event: a reusable code is as easy to copy as a basic wristband, and QR at interior gates is slower | Limited to presets, and refused when the event has VIP or Private Invitation tickets (O-35, O-36) |
+| Relaxing D-11 and D-05 per event: a reusable code is as easy to copy as a basic wristband, and QR at interior gates is slower | Limited to presets, and refused when the event has VIP or Private Invitation tickets (D-32, O-36) |
 | Access rules over tiers, ticket types, ages and bookings are easy to misconfigure, so doors wrongly open or shut | A "who can enter this room now" preview; heavy tests of the rule evaluation |
-| Children's data and the location exceptions; someone posing as a guardian | Legal review first (O-43, O-44); release only to linked adults; lookups narrow, reasoned and audited |
+| Children's data and the location exceptions; someone posing as a guardian | Legal review before launch (D-30, O-44); release only to linked adults; lookups narrow, reasoned and audited |
 | A forwarded claim link, or a guest record merged into the wrong account, hands a pass to the wrong person | Links tied to a contact; re-issue on handover; erasing everywhere done only by Synan |
 | Emergency mode misused | A typed confirmation, an alert to every operator, and an audit entry |
 | Fraud that makes Synan send codes to costly numbers ("SMS pumping") | Limits per number, per address and per number prefix; accepted countries set per event; bot protection on sign-up and sign-in |
 | Codes by phone are weaker than email: a stolen SIM, a code on a lock screen, a shared phone | A phone code gives a pass, never operator power; operators keep password and second factor; first name only in text messages; photo ID at the desk for VIP |
-| Sender names take weeks and cost money each month; WhatsApp needs Meta's approval | Start registration at once (O-49); email and printed passes meanwhile |
+| Sender names take weeks and cost money each month; WhatsApp needs Meta's approval | Registration starts now (D-34, §5); email and printed passes meanwhile |
 | Emails from Synan land in spam with local providers | Measure inbox placement before launch; SMS as the fallback for sign-in |
 | Translation quality and cost; Luganda's letter ŋ makes a text message cost about 2.3 times as much | A paid translator and a native reviewer; wording of text messages checked for cost |
-| Law in each country: registration with regulators, rules on sending data abroad, storage inside Rwanda | The items in §5; Rwanda deferred (O-24) |
+| Law in each country: registration with regulators, rules on sending data abroad, storage inside Rwanda | The items in §5; Rwanda deferred (D-29) |
 | Many agents working at once break each other's work or the specification | The working rules in §2.6 |
-| Web NFC is Android-only | Desk provisioning is the primary path; in-browser NFC is an accelerator; events without wristbands need only a camera (O-35) |
+| Web NFC is Android-only | Desk provisioning is the primary path; in-browser NFC is an accelerator; events without wristbands need only a camera (D-32) |
 | Gate staff arrive with iPhones | At wristband events, gate devices are venue-owned Android or fixed readers (D-09); at events without wristbands any phone works |
 | A lost scanner is used to forge passes | Scanners hold public keys and scrambled credential references only (D-12), short pass codes included |
 | Offline reconciliation disputes | Idempotency keys, clock-offset ordering, conflicts raised as alerts, and an explicit reconciliation report |
@@ -529,7 +530,7 @@ estimates from the scale study, not measurements.
 | Mocks and the real server disagree | A real backend from Phase 1B, endpoints switched over one at a time, and end-to-end tests against the real server |
 | Admin density on small laptops | One breakpoint at 1280 collapses the right rail into a tab |
 | The attendee redesign exceeds the bundle budget | Route splitting, lazy loading, CSS animation where it is enough; the light pass page for old phones |
-| Scope creep into ticketing and payments | Synan never holds attendees' money (O-02); paid orders are imported |
+| Scope creep into ticketing and payments | Synan never holds attendees' money (D-36); paid orders are imported |
 | Edge hardware is unspecified | AI is last; nothing before it depends on it |
 
 ---
@@ -538,22 +539,38 @@ estimates from the scale study, not measurements.
 
 Things outside the build phases that must exist before Synan runs a real event. None is started.
 
-| Item | Why | Open question |
+**Actions to start now.** Both take time that the build cannot shorten.
+
+1. **Measure the network delay** from MTN and Airtel Uganda and from Safaricom to Azure South
+   Africa North (Johannesburg), and to AWS Cape Town for comparison, before the hosting is set up
+   (D-29). If Johannesburg's delay is bad, AWS Cape Town is used instead.
+2. **Register the "SYNAN" sender name** with MTN and Airtel, and start Meta's business verification
+   for WhatsApp (D-34). Each takes weeks.
+
+**Legal reviews that must finish before launch.** Two decisions are binding for the build but must be
+confirmed in law before the first real event:
+
+- who answers for the data: the organiser as controller of event data, Synan as processor and as
+  controller of accounts (D-28), confirmed by a lawyer;
+- what declining presence consent means: the person is still counted for safety but left out of
+  movement analysis, and declining never blocks entry (D-30), confirmed by legal review.
+
+| Item | Why | Decision or open question |
 | --- | --- | --- |
-| Hosting, a managed PostgreSQL with a standby and point-in-time recovery, a connection pooler, and a staging copy | Nothing has run on a real database. The concurrency, role-separation and privilege checks in `packages/db/test/real-postgres.test.ts` need one, and so do gates 5.3–5.5 | O-24 |
-| Backups and a restore drill | Point-in-time recovery for 14–35 days; at most 5 minutes of data lost and 1 hour to restore; a drill every quarter and before the first large event; a weekly copy to a second region (a legal check if it is outside Africa) | O-24 |
+| Hosting in Azure South Africa North (Johannesburg): a managed PostgreSQL with a standby and point-in-time recovery, a connection pooler, container hosting, a key vault, file storage, Cloudflare in front, and a staging copy | Nothing has run on a real database. The concurrency, role-separation and privilege checks in `packages/db/test/real-postgres.test.ts` need one, and so do gates 5.3–5.5. The network delay is measured first (action 1) | D-29 |
+| Backups and a restore drill | Point-in-time recovery for 14–35 days; at most 5 minutes of data lost and 1 hour to restore; a drill every quarter and before the first large event; a weekly copy to a second region (a legal check if it is outside Africa) | D-29 |
 | Encryption keys and the three database logins in a key vault, never in a settings file | The server refuses to start in production without them; the planned key vault and rotation replace environment settings (fault 21) | |
-| A transactional email provider with a verified sending domain, and separate streams for urgent and bulk mail | Passes, sign-in links and invitations are only logged today | O-13 |
-| SMS and WhatsApp senders | A sender name registered separately with MTN and Airtel takes about 2 weeks, needs a letter on company letterhead and sample messages, and costs about UGX 250,000 a month per name; WhatsApp needs Meta business verification, a display name, and approval of each message template in each language | O-48, O-49 |
+| A Resend account with a verified sending domain, and separate streams for urgent and bulk mail | Passes, sign-in links and invitations are only logged today | D-35 |
+| SMS and WhatsApp senders: a local SMS provider with direct MTN and Airtel routes, and Meta's WhatsApp service, under the one "SYNAN" name (action 2) | A sender name registered separately with MTN and Airtel takes about 2 weeks, needs a letter on company letterhead and sample messages, and costs about UGX 250,000 a month per name; WhatsApp needs Meta business verification, a display name, and approval of each message template in each language | D-33, D-34 |
 | An outside security test (penetration test) | Scope: separation between organisers, sign-in, the scanner's offline cryptography, the allowlist, live connections. About USD 8,000–20,000 | O-55 |
 | Venue-owned Android gate devices, or fixed readers, for events that use wristbands | A web app can read wristbands only in Chrome on Android (D-09) | O-14 |
 | Wristband stock and the chip profile for VIP and Private Invitation bands | For events that use wristbands | O-03 |
 | Trademark search for the name and the mark; purchase of the domains | Only web searches and domain lookups have been done (D-18, D-20) | |
-| A data-processing agreement for organisers, a list of the services that handle data on Synan's behalf (cloud, email, SMS, Cloudflare), and a statement of where data is stored | Synan handles event data for organisers | O-29 |
-| Registration with data-protection regulators | Uganda: the Personal Data Protection Office, renewed yearly. Kenya: the Data Commissioner, above set thresholds. Tanzania: every controller and processor, valid 5 years. Organisers are prompted to register too | O-29 |
-| A privacy notice for each channel and language; terms between Synan and organisers, separate from a template for each event's terms; records of processing; a named privacy contact | The system processes personal and presence data | O-29 |
+| A data-processing agreement for organisers, a list of the services that handle data on Synan's behalf (cloud, email, SMS, Cloudflare), and a statement of where data is stored | Synan handles event data for organisers as their processor | D-28 (lawyer to confirm) |
+| Registration with data-protection regulators | Uganda: the Personal Data Protection Office, renewed yearly. Kenya: the Data Commissioner, above set thresholds. Tanzania: every controller and processor, valid 5 years. Organisers are prompted to register too | D-28 |
+| A privacy notice for each channel and language; terms between Synan and organisers, separate from a template for each event's terms; records of processing; a named privacy contact | The system processes personal and presence data | D-28 |
 | A breach runbook | Uganda expects notice immediately; Kenya and the GDPR within 72 hours | |
-| Privacy policy, terms, consent wording and children's data handling, reviewed by a lawyer | The system processes personal and presence data, including children's | O-06, O-08, O-11, O-43, O-44 |
+| Privacy policy, terms, consent wording and children's data handling, reviewed by a lawyer | The system processes personal and presence data, including children's. Includes the two legal reviews above | D-28, D-30; O-06, O-08, O-11, O-44 |
 | The retention grace period confirmed | The purge is irreversible | O-06 |
 | A decision on event photographs | Screens are built for both cases | O-20 |
 | Apple and Google Wallet passes | Specified in [06 A4](06-screens.md), not built; needs developer accounts and certificates, per organiser, so after 5.2 | |
