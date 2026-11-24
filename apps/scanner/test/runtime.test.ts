@@ -8,6 +8,7 @@ import { ClientHeartbeat } from "@synan/contracts/ws";
 import { ApiFailure, refreshWithRetry } from "../src/data/api/client";
 import { decideLocally, indexAllowlist, type Resolution } from "../src/data/api/decide";
 import { gatesFromAssignments, heartbeatAllowlistAt, offlineAllowlist } from "../src/data/api/runtime";
+import { ALLOWLIST_END_GRACE_MS } from "../src/data/api/crypto";
 import { heartbeatFrame } from "../src/data/api/stream";
 import { entry, nfcId, payload } from "./helpers";
 
@@ -138,20 +139,16 @@ describe("heartbeats carry the device id and the allowlist's issued_at", () => {
   });
 });
 
-describe("an allowlist past its signed window decides nothing offline", () => {
+describe("an allowlist past its signed window: two hours' grace, then no list", () => {
   const EV = "11111111-1111-4111-8111-111111111111";
   const CP = "22222222-2222-4222-8222-222222222222";
   const band = nfcId("04A1B2C3D4E5F6");
-  const list = payload([entry({ credential_hash: "cred-1", nfc_hashes: [band] })], {
-    event_id: EV,
-    checkpoint_id: CP,
-    window_start: iso(T - H),
-    window_end: iso(T + H),
-  });
+  const list = payload([entry({ credential_hash: "cred-1", nfc_hashes: [band] })], { window_start: iso(T - H), window_end: iso(T + H) }, { event_id: EV, checkpoint_id: CP });
   const held = { idx: indexAllowlist(list), eventId: EV, checkpointId: CP };
   const gate = { id: CP, perimeter: true, zoneId: "zone", roomId: null };
 
   /** What the runtime does with a band read offline at `at` (server time). */
+  const GRACE = ALLOWLIST_END_GRACE_MS;
   const offlineRead = (at: number) => {
     const { idx } = offlineAllowlist(held, EV, CP, at);
     const live = idx?.byNfc.get(band);
@@ -162,24 +159,30 @@ describe("an allowlist past its signed window decides nothing offline", () => {
   };
 
   it("inside the window the list decides: a known band is admitted", () => {
-    expect(offlineAllowlist(held, EV, CP, T)).toEqual({ idx: held.idx, ended: false });
+    expect(offlineAllowlist(held, EV, CP, T)).toEqual({ idx: held.idx, trust: "inside" });
     expect(offlineRead(T)).toBe("admitted");
   });
 
-  it("once window_end has passed the list is no list: the same band is refused (fail closed), and the screens are told", () => {
-    expect(offlineAllowlist(held, EV, CP, T + H)).toEqual({ idx: null, ended: true });
-    expect(offlineRead(T + H)).toBe("unknown_token");
-    expect(offlineRead(T + 5 * H)).toBe("unknown_token");
+  it("past window_end, within the grace, it still decides offline, flagged as out of date", () => {
+    expect(offlineAllowlist(held, EV, CP, T + H)).toEqual({ idx: held.idx, trust: "grace" });
+    expect(offlineRead(T + H)).toBe("admitted");
+    expect(offlineRead(T + H + GRACE - 1)).toBe("admitted");
   });
 
-  it("before window_start (past the clock tolerance) it decides nothing either, without reading as ended", () => {
-    expect(offlineAllowlist(held, EV, CP, T - 2 * H)).toEqual({ idx: null, ended: false });
+  it("past the grace the list is no list: the same band is refused (fail closed), and the screens are told", () => {
+    expect(offlineAllowlist(held, EV, CP, T + H + GRACE)).toEqual({ idx: null, trust: "untrusted" });
+    expect(offlineRead(T + H + GRACE)).toBe("unknown_token");
+    expect(offlineRead(T + 10 * H)).toBe("unknown_token");
+  });
+
+  it("before window_start (past the clock tolerance) it decides nothing either", () => {
+    expect(offlineAllowlist(held, EV, CP, T - 2 * H)).toEqual({ idx: null, trust: "untrusted" });
     expect(offlineRead(T - 2 * H)).toBe("unknown_token");
   });
 
-  it("another gate's or event's list, or none, decides nothing", () => {
-    expect(offlineAllowlist(held, EV, "22222222-2222-4222-8222-000000000009", T)).toEqual({ idx: null, ended: false });
-    expect(offlineAllowlist(held, "11111111-1111-4111-8111-000000000009", CP, T)).toEqual({ idx: null, ended: false });
-    expect(offlineAllowlist(null, EV, CP, T)).toEqual({ idx: null, ended: false });
+  it("a list for another event or gate is not trusted there; with none held there is nothing to say", () => {
+    expect(offlineAllowlist(held, EV, "22222222-2222-4222-8222-000000000009", T)).toEqual({ idx: null, trust: "untrusted" });
+    expect(offlineAllowlist(held, "11111111-1111-4111-8111-000000000009", CP, T)).toEqual({ idx: null, trust: "untrusted" });
+    expect(offlineAllowlist(null, EV, CP, T)).toEqual({ idx: null, trust: null });
   });
 });

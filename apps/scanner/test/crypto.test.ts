@@ -2,8 +2,8 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { parseSignedQr } from "@synan/contracts/qr";
-import { ALLOWLIST_START_LEEWAY_MS, AllowlistRejected, allowlistWindow, ed25519Supported, emailCidHash, importKeys, nfcHash, verifyAllowlistJws, verifyQr } from "../src/data/api/crypto";
-import { emailCode, entry, makeKey, nfcId, payload, portalCode, ref16, signJws } from "./helpers";
+import { ALLOWLIST_END_GRACE_MS, ALLOWLIST_START_LEEWAY_MS, AllowlistRejected, allowlistWindow, ed25519Supported, emailCidHash, importKeys, nfcHash, verifyAllowlistJws, verifyQr } from "../src/data/api/crypto";
+import { emailCode, entry, makeKey, nfcId, payload, portalCode, ref16, signJws, windowAround } from "./helpers";
 
 const nowS = 1_800_000_000;
 const at = (s: number) => s * 1000;
@@ -98,7 +98,7 @@ describe("portal and emailed QR", () => {
 });
 
 describe("signed allowlist", () => {
-  const list = payload([entry({ credential_hash: ref16(1), nfc_hashes: [nfcId("04AA")] })]);
+  const list = payload([entry({ credential_hash: ref16(1), nfc_hashes: [nfcId("04AA")] })], windowAround());
 
   it("verifies a list signed with an allowlist key and returns its payload", async () => {
     const k = await makeKey("allowlist");
@@ -138,7 +138,7 @@ describe("signed allowlist", () => {
   it("accepts the additive fields (qr_email_hashes, perimeter_room_ids) and refuses them malformed", async () => {
     const k = await makeKey("allowlist");
     const keys = await importKeys([k.published]);
-    const withExtras = payload([entry({ credential_hash: ref16(1), qr_email_hashes: ["h"], perimeter_room_ids: ["r1", "r2"] })]);
+    const withExtras = payload([entry({ credential_hash: ref16(1), qr_email_hashes: ["h"], perimeter_room_ids: ["r1", "r2"] })], windowAround());
     const p = await verifyAllowlistJws(await signJws(k, withExtras), k.published.kid, keys, Date.now());
     expect(p.entries[0]).toMatchObject({ qr_email_hashes: ["h"], perimeter_room_ids: ["r1", "r2"] });
     const bad = { ...withExtras, entries: [{ ...withExtras.entries[0], perimeter_room_ids: "r1" }] };
@@ -152,6 +152,7 @@ describe("the allowlist's signed validity window", () => {
   const start = Date.parse("2026-11-24T10:00:00.000Z");
   const end = Date.parse("2026-11-24T18:00:00.000Z");
   const list = payload([], { window_start: new Date(start).toISOString(), window_end: new Date(end).toISOString() });
+  const H = 3_600_000;
 
   it("is inside from window_start (less a minute's clock tolerance) until window_end", () => {
     expect(allowlistWindow(list, start)).toBe("inside");
@@ -159,9 +160,16 @@ describe("the allowlist's signed validity window", () => {
     expect(allowlistWindow(list, end - 1)).toBe("inside");
   });
 
-  it("has ended at window_end and after, with no tolerance", () => {
-    expect(allowlistWindow(list, end)).toBe("ended");
-    expect(allowlistWindow(list, end + 60 * 60_000)).toBe("ended");
+  it("the grace is two hours, named", () => {
+    expect(ALLOWLIST_END_GRACE_MS).toBe(2 * H);
+  });
+
+  it("from window_end, for the grace, it still decides (like a stale list); after that it is not trusted", () => {
+    expect(allowlistWindow(list, end)).toBe("grace");
+    expect(allowlistWindow(list, end + H)).toBe("grace");
+    expect(allowlistWindow(list, end + ALLOWLIST_END_GRACE_MS - 1)).toBe("grace");
+    expect(allowlistWindow(list, end + ALLOWLIST_END_GRACE_MS)).toBe("ended");
+    expect(allowlistWindow(list, end + 5 * H)).toBe("ended");
   });
 
   it("is not yet valid before window_start's tolerance", () => {

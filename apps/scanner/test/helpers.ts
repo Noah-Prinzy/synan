@@ -57,17 +57,26 @@ export function entry(p: Partial<AllowlistEntry> & { credential_hash: string }):
   return { nfc_hashes: [], tier: "ORDINARY", permitted_room_ids: [], revoked: false, state: "active", dead_nfc_hashes: [], qr_email_spent: false, ...p };
 }
 
-export function payload(entries: AllowlistEntry[], p: Partial<AllowlistPayload> = {}): AllowlistPayload {
-  const now = new Date().toISOString();
+/** A signed list's validity window, stated by every test: `window_start` → `window_end` (issued at the start). */
+export interface ListWindow {
+  window_start: string;
+  window_end: string;
+}
+
+/** A window of `before` ms up to `after` ms around `atMs` (default: an hour either side of now). */
+export function windowAround(atMs = Date.now(), before = 3_600_000, after = 3_600_000): ListWindow {
+  return { window_start: new Date(atMs - before).toISOString(), window_end: new Date(atMs + after).toISOString() };
+}
+
+export function payload(entries: AllowlistEntry[], window: ListWindow, p: Partial<AllowlistPayload> = {}): AllowlistPayload {
   return {
     event_id: "11111111-1111-4111-8111-111111111111",
     checkpoint_id: "22222222-2222-4222-8222-222222222222",
-    shift_end: now,
+    shift_end: window.window_end,
     revocation_epoch: 1,
     access_rules_version: 1,
-    window_start: now,
-    window_end: now,
-    issued_at: now,
+    ...window,
+    issued_at: window.window_start,
     entries,
     ...p,
   };
