@@ -258,7 +258,7 @@ function Throughput({ row, className }: { row: GateRow; className?: string }) {
 function Maintenance({ since }: { since: number | undefined }) {
   if (since === undefined) return null;
   return (
-    <span className="ml-2 inline-flex shrink-0 items-center gap-1.5 text-12 text-muted-foreground" title="Marked on this page only (mock)">
+    <span className="ml-2 inline-flex shrink-0 items-center gap-1.5 text-12 text-muted-foreground" title="Marked for maintenance">
       <SignalShape state="idle" /> Maintenance
     </span>
   );
