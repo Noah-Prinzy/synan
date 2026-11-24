@@ -3,7 +3,7 @@
  * this event in one dense table: name, email, tier, registration and credential state, band,
  * checked in, last scan in the event's zone. Search and filters live in the URL, so a filtered
  * view can be shared. Pages of 50 in the browser. A row opens the attendee: in a side panel at
- * ≥1280, in a dialog below that. The actions on an attendee belong to D7 and are shown disabled.
+ * ≥1280, in a dialog below that, with the actions the role may take on them (parts/attendee-detail).
  *
  * States: loading, error with retry, no registrations yet, no match for the filters, updating.
  */

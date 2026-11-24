@@ -75,7 +75,7 @@
  *     new band reads `replaced`, the old band's `lost` entry is left out; ★ no attendee name: a dash).
  *     Band hints are the server's (`••••81BF`, `band` when the UID is unknown), shown as they come.
  *   - deskAttendee(): GET /registrations/:id (carrier_id, pass_sent_at); band_changed_at = the band's bound_at.
- *   - replaceBand()/resendPass(): MFA (step-up); reviewCredential(): MFA for a supervisor.
+ *   - replaceBand()/resendPass()/changeTier(): MFA (step-up); reviewCredential()/revokeCredential(): MFA for a supervisor.
  *   - deskStock(): `today` from the event's inventory (zeros without a shift).
  *   - The desk (desk/desk-real.ts) calls the contract endpoints directly, desk codes included.
  *   - staff(): display_name → name (email when none).

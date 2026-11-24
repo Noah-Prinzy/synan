@@ -189,7 +189,7 @@ export const SCREENS = {
     path: "/attendees",
     code: "D7",
     title: "Attendees",
-    purpose: "With the event workspace: the event's attendee table. Without it (supervisor): attendee lookup in the selected event, read only, with clear or revoke for a pass under review. The organisation-wide console (bulk actions, change tier, audit) comes later.",
+    purpose: "With the event workspace: the event's attendee table. Without it (supervisor): attendee lookup in the selected event, read only, with clear or revoke for a pass under review. Bulk actions and invitations are not built.",
     data: "GET /attendees",
     built: true,
     need: "attendees.view",

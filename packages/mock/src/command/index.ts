@@ -42,6 +42,8 @@ export {
   type DeskStock,
   type ReplaceBandBody,
   type ReviewBody,
+  type RevokeBody,
+  type ChangeTierBody,
   type CreateAssignmentBody,
   type CreateVenueBody,
   type CredentialOverview,
