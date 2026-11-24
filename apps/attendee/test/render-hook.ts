@@ -15,7 +15,7 @@ export function cleanup(): void {
   for (const unmount of [...mounted]) unmount();
 }
 
-export function renderHook<P, R>(hook: (props: P) => R, initial: P) {
+export function renderHook<P, R>(hook: (props: P) => R, initial: NoInfer<P>) {
   const result = { current: undefined as R };
   const container = document.createElement("div");
   const root = createRoot(container);
