@@ -4,6 +4,7 @@
  * development switch is on. The next request that gets through clears the second.
  */
 import { useSyncExternalStore } from "react";
+import { noAnswer } from "../kit/errors";
 import { desk, isOffline } from "./desk-api";
 
 const listeners = new Set<() => void>();
@@ -42,7 +43,8 @@ export async function track<T>(request: Promise<T>): Promise<T> {
     }
     return result;
   } catch (error) {
-    if (error instanceof TypeError && !unreachable) {
+    // No answer: the mock throws a TypeError as `fetch` does; the real API client says `kind: "network"`.
+    if ((error instanceof TypeError || noAnswer(error) !== null) && !unreachable) {
       unreachable = true;
       notify();
     }
