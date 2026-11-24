@@ -1,0 +1,30 @@
+{
+  "$comment": "Semgrep findings reviewed and accepted as false positives (scripts/semgrep-report.mjs). One entry per rule and file, with the reason. Add an entry only in a reviewed pull request; fix real findings instead.",
+  "accepted": [
+    {
+      "rule": "create-de-cipher-no-iv",
+      "path": "apps/api/src/app.ts",
+      "reason": "`createCipher` here is @synan/db's own field-cipher factory (AES-256-GCM with a random 12-byte IV per value), not Node's deprecated crypto.createCipher."
+    },
+    {
+      "rule": "create-de-cipher-no-iv",
+      "path": "packages/db/src/seed/index.ts",
+      "reason": "Same: @synan/db's createCipher factory, not Node's deprecated crypto.createCipher."
+    },
+    {
+      "rule": "gcm-no-tag-length",
+      "path": "packages/db/src/crypto/index.ts",
+      "reason": "The tag passed to setAuthTag is always the last 16 bytes of a value checked to be at least 16 bytes, so a short tag cannot be supplied. Hardening suggested to the crypto owner: pass { authTagLength: 16 } to createDecipheriv."
+    },
+    {
+      "rule": "gcm-no-tag-length",
+      "path": "packages/db/src/crypto/files.ts",
+      "reason": "The tag is sliced as exactly 16 bytes from each frame. Same hardening suggestion: { authTagLength: 16 }."
+    },
+    {
+      "rule": "detect-insecure-websocket",
+      "path": "apps/admin/src/api/client.ts",
+      "reason": "The rule matches a doc comment naming the plain WebSocket scheme; the code derives the scheme from the API origin (http -> ws, https -> wss), so an https API gets wss."
+    }
+  ]
+}

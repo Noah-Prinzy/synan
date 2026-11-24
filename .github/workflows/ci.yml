@@ -1,0 +1,349 @@
+# Synan CI (roadmap 5.1): every change is checked on GitHub's hosted Linux runners, including a
+# job on a real PostgreSQL 17 server. Branch protection should require the single job
+# "All required checks" (job id ci-ok), which fails when any job below fails or is cancelled.
+#
+# Action pinning: every action is pinned to a full commit SHA, with its version in a comment
+# (first-party actions/* included). Tools that are not actions (gitleaks, semgrep) are pinned by
+# version, and the gitleaks download is checked against its published SHA-256.
+#
+# Locally, `corepack pnpm check` runs the fast subset (see CONTRIBUTING.md).
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "build/**"
+      - "ci/**"
+
+# One run per branch or pull request: a newer push cancels the older run (not on main).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# Least privilege: read the code, nothing else. No job writes to the repository, issues or checks.
+permissions:
+  contents: read
+
+env:
+  FORCE_COLOR: "1"
+  # The commit to compare with (applied migrations, the test-count baseline, the migration upgrade):
+  # the pull request's base, or the previous tip of the pushed branch.
+  BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+
+jobs:
+  typecheck:
+    name: Typecheck (8 packages)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node and pnpm
+        uses: ./.github/actions/setup
+      - name: Typecheck every workspace package
+        run: pnpm -r typecheck
+
+  test:
+    name: Tests (${{ matrix.suite }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Defined in scripts/run-suite.mjs. The attendee and admin apps have no tests yet.
+        suite: [contracts, db, api-memory, api-pglite, scanner]
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node and pnpm
+        uses: ./.github/actions/setup
+      - name: Run the ${{ matrix.suite }} suite
+        env:
+          SUITE: ${{ matrix.suite }}
+        run: node scripts/run-suite.mjs "$SUITE"
+      - name: Keep the results for the test-count guard
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-results-${{ matrix.suite }}
+          path: test-results/${{ matrix.suite }}.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  realpg:
+    name: Real PostgreSQL 17 (migrations, 8 checks, job runner)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      # A superuser on a throwaway server: it has CREATEDB and CREATEROLE, as the tests require.
+      # Each test file creates its own database and LOGIN roles and drops them afterwards.
+      REAL_PG_ADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - name: Check out (full history, for the upgrade check)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node and pnpm
+        id: setup
+        uses: ./.github/actions/setup
+      - name: Show the server
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec "$PG_CONTAINER" psql -U postgres -tAc "select version()"
+          docker exec "$PG_CONTAINER" psql -U postgres -tAc "show max_connections"
+      - name: Find the comparison base
+        id: base
+        run: bash .github/scripts/base-ref.sh
+      - name: Migrations apply to an empty database and upgrade the base; schema matches (db:migrate:check)
+        env:
+          BASE: ${{ steps.base.outputs.ref }}
+        run: pnpm db:migrate:check ${BASE:+--from "$BASE"}
+      - name: Real-PostgreSQL tests and the job-runner smoke test (test:realpg)
+        # Runs even when the migration check failed, so one run shows both results.
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: pnpm test:realpg
+      - name: Keep the results for the test-count guard
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-results-realpg
+          path: test-results/realpg-*.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  build:
+    name: Build apps (${{ matrix.mode }}) and bundle budgets
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [mock, api]
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node and pnpm
+        uses: ./.github/actions/setup
+      - name: Build attendee, admin and scanner (${{ matrix.mode }} mode)
+        env:
+          # Unset: the mock layer. Set: the real API (a placeholder origin; nothing is contacted).
+          VITE_API_URL: ${{ matrix.mode == 'api' && 'https://api.ci.invalid' || '' }}
+        run: pnpm build:apps
+      - name: Bundle budgets (enforced on the real-API build, reported on the mock build)
+        env:
+          MODE: ${{ matrix.mode }}
+        run: node scripts/bundle-budget.mjs --mode "$MODE" --json "bundle-$MODE.json"
+      - name: Keep the measurements
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bundle-${{ matrix.mode }}
+          path: bundle-${{ matrix.mode }}.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node and pnpm (no install needed)
+        uses: ./.github/actions/setup
+        with:
+          install: "false"
+      - name: pnpm audit (fails on high or critical in production dependencies)
+        run: node scripts/audit.mjs
+
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - name: Check out (full history)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install gitleaks ${{ env.GITLEAKS_VERSION }} (checksum verified)
+        run: |
+          curl -sSfL -o /tmp/gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks version
+      - name: Scan every commit for secrets
+        run: |
+          set +e
+          # --log-opts HEAD: the history of the commit under test only. The default (--all) would
+          # also scan every other branch the full checkout fetched, so one branch's finding would
+          # fail every branch's run.
+          /tmp/gitleaks git --redact --no-banner --verbose --log-opts="HEAD" \
+            --gitleaks-ignore-path .github/.gitleaksignore \
+            --report-format json --report-path gitleaks-report.json .
+          status=$?
+          set -e
+          count=$(node -e "try{console.log(require('./gitleaks-report.json').length)}catch{console.log('?')}")
+          commits=$(git rev-list --count HEAD)
+          ignore_file=".github/.gitleaksignore"
+          if [ "$status" -eq 0 ]; then
+            printf '### Secret scan (gitleaks %s): pass\n\n%s commits scanned; no secrets found. Reviewed false positives: %s.\n' "$GITLEAKS_VERSION" "$commits" "$ignore_file" >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '### Secret scan (gitleaks %s): **%s finding(s)**\n\nSee the log above (secrets redacted). A real secret must be rotated, then removed from history; a reviewed false positive goes in %s with a reason.\n' "$GITLEAKS_VERSION" "$count" "$ignore_file" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
+
+  static-analysis:
+    # Semgrep's open rules (no account, no token, metrics off). CodeQL needs GitHub Advanced
+    # Security on a private repository; when it is available, replace this job's steps with
+    # github/codeql-action init + analyze (languages: javascript-typescript, pinned by SHA) and add
+    # `security-events: write` to this job only. Keep the job id and name so the required check holds.
+    name: Static analysis (semgrep)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SEMGREP_VERSION: 1.186.0
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Set up Node (for the report)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Install semgrep ${{ env.SEMGREP_VERSION }}
+        run: python -m pip install --disable-pip-version-check "semgrep==${SEMGREP_VERSION}"
+      - name: Scan with the open rulesets
+        # semgrep's own exit code is not used: the report step decides, so reviewed false positives
+        # (.github/semgrep-accepted.json) do not fail the job and every finding is listed.
+        run: |
+          semgrep scan --metrics=off --disable-version-check --quiet \
+            --config p/default --config p/typescript --config p/react --config p/nodejs --config p/expressjs \
+            --exclude docs/archive \
+            --json-output semgrep.json --sarif-output semgrep.sarif . || echo "semgrep exited with $?"
+      - name: Report findings (fails on ERROR, HIGH or CRITICAL not reviewed)
+        run: node scripts/semgrep-report.mjs semgrep.json
+      - name: Keep the SARIF report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: semgrep-sarif
+          path: semgrep.sarif
+          if-no-files-found: ignore
+          retention-days: 14
+
+  hygiene:
+    name: Repository hygiene (root, sizes, .env, lockfile, links, applied migrations)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out (full history, to compare migrations with the base)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node and pnpm (the frozen install is the lockfile check)
+        id: setup
+        uses: ./.github/actions/setup
+      # Each check below runs even when an earlier one failed, so one run lists every problem.
+      - name: Root allow-list, file sizes, no .env files
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: node scripts/hygiene.mjs
+      - name: Markdown links in docs/ and the READMEs
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: node scripts/check-links.mjs
+      - name: Find the comparison base
+        id: base
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bash .github/scripts/base-ref.sh
+      - name: No applied migration edited (db:migrations:verify)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        env:
+          BASE: ${{ steps.base.outputs.ref }}
+        run: pnpm db:migrations:verify ${BASE:+--base "$BASE"}
+
+  test-counts:
+    name: Test counts (no suite shrinks without a reason)
+    needs: [test, realpg]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out (full history, to compare the baseline with the base)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Collect every suite's results
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: test-results-*
+          path: test-results
+          merge-multiple: true
+      - name: Find the comparison base
+        id: base
+        run: bash .github/scripts/base-ref.sh
+      - name: Compare with scripts/test-counts.json
+        env:
+          BASE: ${{ steps.base.outputs.ref }}
+        run: node scripts/test-counts.mjs check ${BASE:+--base "$BASE"}
+
+  ci-ok:
+    name: All required checks
+    needs: [typecheck, test, realpg, build, audit, secrets, static-analysis, hygiene, test-counts]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          # shellcheck disable=SC2016 # the single-quoted text is a Node program
+          echo "$RESULTS" | node -e '
+            const needs = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            const rows = Object.entries(needs).map(([job, n]) => `| ${job} | ${n.result} |`);
+            require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### All required checks\n\n| Job | Result |\n| --- | --- |\n${rows.join("\n")}\n`);
+            const bad = Object.entries(needs).filter(([, n]) => n.result !== "success");
+            for (const [job, n] of bad) console.log(`::error title=required check::${job} ${n.result}`);
+            process.exit(bad.length ? 1 : 0);
+          '
