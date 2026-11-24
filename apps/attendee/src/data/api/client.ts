@@ -8,6 +8,10 @@
  * - Refresh tokens rotate and are single-use: two tabs refreshing the same one would look like
  *   theft and end the session, so refreshes run one at a time per browser (Web Locks when
  *   available) and a tab that waited reuses the pair the other tab stored.
+ * - A refresh whose answer is lost (venue Wi-Fi) is sent again at once with the SAME token: the
+ *   server re-issues a rotated token to the same client within its 10-second reuse grace, and
+ *   reads anything later as theft. So the refresh has a short timeout and one quick retry, both
+ *   inside the grace (as the Gate Scanner's refreshWithRetry). No answer twice keeps the session.
  * - Every failure is an `ApiFailure` with a contracts ErrorCode (or OFFLINE / NETWORK), mapped to
  *   words in one place (data/failure.ts).
  */
@@ -52,6 +56,13 @@ export interface ApiClientOptions {
 
 /** Refresh this long before the access token's stated expiry (clock skew, slow networks). */
 const EXPIRY_MARGIN_MS = 30_000;
+/**
+ * A refresh waits at most this long, then the SAME token is sent once more after
+ * REFRESH_RETRY_DELAY_MS: both attempts fit inside the server's 10-second reuse grace (4 + 0.5 + 4 s),
+ * where a later retry would read as reuse and end the session. As the scanner (apps/scanner config.ts).
+ */
+export const REFRESH_TIMEOUT_MS = 4000;
+export const REFRESH_RETRY_DELAY_MS = 500;
 
 const STATUS_CODE: Record<number, FailureCode> = {
   400: "VALIDATION_FAILED",
@@ -100,7 +111,7 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
   const fresh = (session: StoredSession) => Date.parse(session.access_expires_at) - EXPIRY_MARGIN_MS > now();
 
   /** One HTTP exchange: no token logic. Throws ApiFailure; returns the validated response. */
-  async function send<E extends EndpointDef>(def: E, input: CallInput<E>, token: string | null): Promise<ResponseOf<E>> {
+  async function send<E extends EndpointDef>(def: E, input: CallInput<E>, token: string | null, waitMs = timeoutMs): Promise<ResponseOf<E>> {
     const url = base + buildPath(def.path, input.params as Record<string, unknown> | undefined) + buildQuery(input.query as Record<string, unknown> | undefined);
     const headers: Record<string, string> = { Accept: "application/json" };
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -110,7 +121,7 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       body = JSON.stringify(input.body);
     }
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timer = setTimeout(() => controller.abort(), waitMs);
     let response: Response;
     try {
       response = await doFetch(url, { method: def.method, headers, body, signal: controller.signal, credentials: "omit" });
@@ -149,6 +160,22 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     return checked.data as ResponseOf<E>;
   }
 
+  /**
+   * POST /auth/refresh with one retry of the SAME token when no answer came back (no answer, timeout,
+   * 5xx): the server may have rotated it and lost the answer, and re-issues to the same client within
+   * 10 seconds. A refusal (4xx) is never retried.
+   */
+  async function refreshWithRetry(token: string): Promise<TokenPair> {
+    const exchange = () => send(options.refresh, { body: { refresh_token: token } }, null, REFRESH_TIMEOUT_MS) as Promise<TokenPair>;
+    try {
+      return await exchange();
+    } catch (error) {
+      if (!(error instanceof ApiFailure && (error.status === 0 || error.status >= 500))) throw error;
+      await new Promise((resolve) => setTimeout(resolve, REFRESH_RETRY_DELAY_MS));
+      return exchange();
+    }
+  }
+
   /** Exchange the refresh token, once per browser at a time. Resolves with the stored session. */
   function refresh(stale: StoredSession): Promise<StoredSession> {
     refreshing ??= lock("synan.auth.refresh", async () => {
@@ -157,7 +184,7 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       // Another tab refreshed while this one waited for the lock: use its pair.
       if (current.refresh_token !== stale.refresh_token && fresh(current)) return current;
       try {
-        const pair = (await send(options.refresh, { body: { refresh_token: current.refresh_token } }, null)) as TokenPair;
+        const pair = await refreshWithRetry(current.refresh_token);
         return options.session.save(pair);
       } catch (error) {
         if (error instanceof ApiFailure && error.status === 401) {
