@@ -209,3 +209,26 @@ export async function verifyAllowlistJws(jws: string, kidBeside: string, keys: r
   }
   return checkAllowlistPayload(payload);
 }
+
+/**
+ * Tolerance before a list's `window_start`. The server starts a staff list's window when it issues
+ * it, and a device's corrected clock can trail the server's by a little, so a list fetched a moment
+ * ago is not refused as "not yet valid". The end has no tolerance.
+ */
+export const ALLOWLIST_START_LEEWAY_MS = 60_000;
+
+/**
+ * Where `nowMs` (server-corrected) falls in a verified list's signed validity window: `inside` from
+ * `window_start` (less the tolerance) until `window_end`, `ended` from `window_end` on, `before`
+ * ahead of it. Only `inside` may decide offline. A list past its window is a harder condition than
+ * a stale one (more than 15 minutes since issue, which still fails open with an alert, O-05): the
+ * signer vouches for nothing after `window_end`, so the scanner treats it as no list at all and
+ * refuses what it cannot check. Written as "must be inside", so a non-finite time fails closed.
+ */
+export function allowlistWindow(payload: Pick<AllowlistPayload, "window_start" | "window_end">, nowMs: number): "before" | "inside" | "ended" {
+  const start = Date.parse(payload.window_start);
+  const end = Date.parse(payload.window_end);
+  if (!(nowMs < end)) return "ended";
+  if (!(nowMs >= start - ALLOWLIST_START_LEEWAY_MS)) return "before";
+  return "inside";
+}

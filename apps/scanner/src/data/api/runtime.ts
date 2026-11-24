@@ -22,7 +22,7 @@ import {
   REST_HEARTBEAT_MS,
   SYNC_BATCH,
 } from "./config";
-import { AllowlistRejected, ed25519Supported, emailCidHash, importKeys, nfcHash, verifyAllowlistJws, verifyQr, type TrustedKey } from "./crypto";
+import { AllowlistRejected, allowlistWindow, ed25519Supported, emailCidHash, importKeys, nfcHash, verifyAllowlistJws, verifyQr, type TrustedKey } from "./crypto";
 import { decideLocally, indexAllowlist, type AllowlistIndex, type LocalCheckpoint, type Resolution } from "./decide";
 import { Idb, KV } from "./idb";
 import {
@@ -205,6 +205,26 @@ interface Trusted {
  * previous person's list is still trusted for offline decisions, but gate health must not show its
  * age as the new person's: null until the new person's own list has been fetched.
  */
+/** `allowlistError` while the held list is past its signed window. */
+export const ALLOWLIST_ENDED = "allowlist past its validity window";
+
+/**
+ * The verified list this gate may decide with offline at `correctedNow` (server time): the held list
+ * when it is this event's and this gate's and inside its signed window, else null, so an offline
+ * read resolves as unknown and is refused (fail closed, 03 §4). `ended`: the held list is past its
+ * window (docs/03 §4 and 01 §8 do not name this case; a list nobody vouches for is no list).
+ */
+export function offlineAllowlist(
+  allow: Pick<Trusted, "idx" | "eventId" | "checkpointId"> | null,
+  eventId: string,
+  checkpointId: string,
+  correctedNow: number,
+): { idx: AllowlistIndex | null; ended: boolean } {
+  if (!allow || allow.eventId !== eventId || allow.checkpointId !== checkpointId) return { idx: null, ended: false };
+  const where = allowlistWindow(allow.idx.payload, correctedNow);
+  return { idx: where === "inside" ? allow.idx : null, ended: where === "ended" };
+}
+
 export function heartbeatAllowlistAt(allow: Pick<Trusted, "checkpointId" | "issuedAtMs" | "user"> | null, checkpointId: string, user: string | null): string | null {
   if (!allow || allow.checkpointId !== checkpointId || !user || allow.user !== user) return null;
   return new Date(allow.issuedAtMs).toISOString();
@@ -471,6 +491,8 @@ class Runtime {
 
   /** Every 15 s: drain what is due, settle undos, refresh what is old. */
   private async tick() {
+    // Offline too: a list that has passed its window shows as no list (decisions check it anyway).
+    this.checkWindow();
     if (!this.linkUp()) return;
     const gate = this.currentGate();
     const signer = this.signer();
@@ -713,6 +735,18 @@ class Runtime {
     // Pass-list age on S4 is shown in device time.
     this.host.patch({ allowlistAt: issuedAtMs - this.offset });
     setApi({ allowlistError: null });
+    this.checkWindow();
+  }
+
+  /**
+   * A held list past its signed window decides nothing offline (`offlineAllowlist`); the screens then
+   * show the no-list state, not its age, so S4 does not say known passes are still let in.
+   */
+  private checkWindow() {
+    const a = this.allow;
+    if (!a || allowlistWindow(a.idx.payload, Date.now() + this.offset) !== "ended") return;
+    if (this.host.get().allowlistAt !== null) this.host.patch({ allowlistAt: null });
+    if (getApi().allowlistError !== ALLOWLIST_ENDED) setApi({ allowlistError: ALLOWLIST_ENDED });
   }
 
   /** GET /events/:id/allowlist for this gate, verified with an `allowlist` key before it is stored or used. */
@@ -851,13 +885,14 @@ class Runtime {
 
   /* ---------------------------------------------------------- decide */
 
-  private allowFor(eventId: string, checkpointId: string): AllowlistIndex | null {
-    const a = this.allow;
-    return a && a.eventId === eventId && a.checkpointId === checkpointId ? a.idx : null;
+  private allowFor(eventId: string, checkpointId: string, correctedNow: number): AllowlistIndex | null {
+    const { idx, ended } = offlineAllowlist(this.allow, eventId, checkpointId, correctedNow);
+    if (ended) this.checkWindow();
+    return idx;
   }
 
   private async resolve(p: Presented, gate: Gate, correctedNow: number): Promise<{ r: Resolution; identifier: string }> {
-    const idx = this.allowFor(gate.api!.eventId, gate.id);
+    const idx = this.allowFor(gate.api!.eventId, gate.id, correctedNow);
     const trustedCrypto = await ed25519Supported();
     if (p.medium === "qr") {
       const q = parseSignedQr(p.data);

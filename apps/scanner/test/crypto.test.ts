@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { parseSignedQr } from "@synan/contracts/qr";
-import { AllowlistRejected, ed25519Supported, emailCidHash, importKeys, nfcHash, verifyAllowlistJws, verifyQr } from "../src/data/api/crypto";
+import { ALLOWLIST_START_LEEWAY_MS, AllowlistRejected, allowlistWindow, ed25519Supported, emailCidHash, importKeys, nfcHash, verifyAllowlistJws, verifyQr } from "../src/data/api/crypto";
 import { emailCode, entry, makeKey, nfcId, payload, portalCode, ref16, signJws } from "./helpers";
 
 const nowS = 1_800_000_000;
@@ -145,5 +145,32 @@ describe("signed allowlist", () => {
     await rejects(async () => verifyAllowlistJws(await signJws(k, bad), k.published.kid, keys, Date.now()), "payload.entries[].perimeter_room_ids");
     const bad2 = { ...withExtras, entries: [{ ...withExtras.entries[0], qr_email_hashes: [1] }] };
     await rejects(async () => verifyAllowlistJws(await signJws(k, bad2), k.published.kid, keys, Date.now()), "payload.entries[].qr_email_hashes");
+  });
+});
+
+describe("the allowlist's signed validity window", () => {
+  const start = Date.parse("2026-11-24T10:00:00.000Z");
+  const end = Date.parse("2026-11-24T18:00:00.000Z");
+  const list = payload([], { window_start: new Date(start).toISOString(), window_end: new Date(end).toISOString() });
+
+  it("is inside from window_start (less a minute's clock tolerance) until window_end", () => {
+    expect(allowlistWindow(list, start)).toBe("inside");
+    expect(allowlistWindow(list, start - ALLOWLIST_START_LEEWAY_MS)).toBe("inside");
+    expect(allowlistWindow(list, end - 1)).toBe("inside");
+  });
+
+  it("has ended at window_end and after, with no tolerance", () => {
+    expect(allowlistWindow(list, end)).toBe("ended");
+    expect(allowlistWindow(list, end + 60 * 60_000)).toBe("ended");
+  });
+
+  it("is not yet valid before window_start's tolerance", () => {
+    expect(allowlistWindow(list, start - ALLOWLIST_START_LEEWAY_MS - 1)).toBe("before");
+  });
+
+  it("fails closed on a non-finite time or bound", () => {
+    expect(allowlistWindow(list, Number.NaN)).toBe("ended");
+    expect(allowlistWindow({ ...list, window_end: "not a time" }, start)).toBe("ended");
+    expect(allowlistWindow({ ...list, window_start: "not a time" }, start)).toBe("before");
   });
 });
