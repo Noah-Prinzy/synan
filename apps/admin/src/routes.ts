@@ -360,6 +360,21 @@ export function mayOpen(pathname: string, can: (capability: Capability) => boole
  * because the event is the context of every screen (docs/06 §2.2); a role without it (the
  * supervisor) gets the attendee lookup at `/attendees`.
  */
+/**
+ * Which navigation entry is active for a path: exactly one at a time. An entry is active on its
+ * own path and the paths under it (Gate health on a gate's detail, Venues in the venue editor,
+ * Alerts with an alert open). Inside an event workspace (`/events/:id/…`, its tabs and summary)
+ * "Events" is the active entry and the workspace's own tabs say which tab you are on — so the
+ * "Attendees" entry that leads into the workspace tab is never the active one; it is active only
+ * as the top-level lookup at `/attendees`.
+ */
+export function navItemActive(item: { to: string; end?: boolean }, pathname: string): boolean {
+  const to = item.to.split("?")[0] ?? item.to;
+  if (/^\/events\/[^/]+\/attendees$/.test(to)) return false;
+  if (item.end || to === "/") return pathname === to;
+  return pathname === to || pathname.startsWith(`${to}/`);
+}
+
 export function navFor(can: (capability: Capability) => boolean, eventId: string | null): NavSection[] {
   return NAV_GROUPS.map((group) => ({
     label: group.label,

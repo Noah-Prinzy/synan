@@ -74,7 +74,7 @@ screens themselves are specified in [06-screens.md](06-screens.md).
 
 | Screen | Addition |
 | --- | --- |
-| D1 Command Center | Forecast warnings in the alert strip ("Hall B saturates in ~15 min"), with a suggested overflow route |
+| D1 Command Center | Forecast warnings in the alert notice ("Hall B saturates in ~15 min"), with a suggested overflow route |
 | D10 Security alerts | New alert kinds from the anomaly module: tailgating, loitering. Each is labelled as model-raised and shows the scans it was based on |
 | D6 Event workspace → Schedule | Room reallocation and buffer suggestions, accepted or dismissed by an operator |
 | A6 Agenda | Session suggestions, only for attendees who opted in to interest tags |

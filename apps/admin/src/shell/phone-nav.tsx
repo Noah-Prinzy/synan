@@ -4,12 +4,12 @@
  * the left: a native modal <dialog> (focus trapped, Escape closes, focus returns to Menu).
  */
 import { useEffect, useRef, useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Menu as MenuIcon, X } from "lucide-react";
 import { Wordmark } from "@synan/ui/brand";
 import { cn } from "@synan/ui/components";
 import { NAV_ROW_ACTIVE, NAV_ROW_REST } from "@synan/ui/shell";
-import type { NavSection } from "../routes";
+import { navItemActive, type NavSection } from "../routes";
 
 /** `groups` is the signed-in role's navigation (`navFor`), the same the rail shows. */
 export function PhoneNav({ groups }: { groups: NavSection[] }) {
@@ -74,22 +74,21 @@ export function PhoneNav({ groups }: { groups: NavSection[] }) {
               <ul className="flex flex-col gap-px">
                 {group.items.map((item) => (
                   <li key={item.to}>
-                    <NavLink
+                    <Link
                       to={item.to}
-                      end={item.end}
-                      className={({ isActive }) =>
-                        cn(
-                          // The rail's row at touch size: 44px, 15px label, the same surface and rule.
-                          "relative mx-2 flex h-11 items-center gap-3 px-3 text-15 transition-colors duration-120 ease-standard motion-reduce:transition-none before:absolute before:inset-y-3 before:left-0 before:w-0.5",
-                          isActive ? NAV_ROW_ACTIVE : NAV_ROW_REST,
-                        )
-                      }
+                      // One active entry at a time, the same rule as the rail (routes.ts `navItemActive`).
+                      aria-current={navItemActive(item, location.pathname) ? "page" : undefined}
+                      className={cn(
+                        // The rail's row at touch size: 44px, 15px label, the same surface and rule.
+                        "relative mx-2 flex h-11 items-center gap-3 px-3 text-15 transition-colors duration-120 ease-standard motion-reduce:transition-none before:absolute before:inset-y-3 before:left-0 before:w-0.5",
+                        navItemActive(item, location.pathname) ? NAV_ROW_ACTIVE : NAV_ROW_REST,
+                      )}
                     >
                       <span aria-hidden="true" className="grid size-4 shrink-0 place-items-center [&_svg]:size-4">
                         {item.icon}
                       </span>
                       <span className="whitespace-nowrap">{item.label}</span>
-                    </NavLink>
+                    </Link>
                   </li>
                 ))}
               </ul>

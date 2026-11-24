@@ -6,8 +6,9 @@
 @import "@fontsource-variable/instrument-sans";
 @import "@fontsource-variable/geist-mono";
 
-/* The palette lives in packages/ui/src/styles/theme.css. Admin is an instrument:
-   no ambient wash, no decoration (docs/05 §2). */
+/* The palette lives in packages/ui/src/styles/theme.css. Admin is an instrument: no decoration
+   (docs/05 §2). Behind the frame sits the still ambient field (D-22): one soft Daybreak
+   luminance painted as the root background, never moving, on by AppShell (<AmbientField still>). */
 
 /* Scrollbars as hairline furniture, not chrome. The document itself never scrolls: the shell's
    regions do (packages/ui shell), so focusing a field can never shift the whole frame. */
@@ -139,6 +140,15 @@
   font-size: var(--text-13);
 }
 
+/* A sliver of a room: its shortest label, smaller and tighter, so no block is left blank. */
+.map-room[data-tiny] .map-room-name {
+  padding: 6px 4px 0;
+  font-size: var(--text-11);
+}
+.map-room[data-tiny] .map-room-status {
+  padding: 0 4px 5px;
+}
+
 /* The status line at the block's foot: empty while the room has space. */
 .map-room-status {
   position: relative;
@@ -161,11 +171,12 @@
   gap: 5px;
   font-weight: 500;
 }
+/* The words sit on the room's own state shading: the on-tint tones (theme.css). */
 .map-room-level-warn {
-  color: var(--warning);
+  color: var(--warning-on-tint);
 }
 .map-room-level-stop {
-  color: var(--destructive);
+  color: var(--destructive-on-tint);
 }
 .map-room[data-level="warn"] .map-room-level-warn,
 .map-room[data-level="block"] .map-room-level-stop {

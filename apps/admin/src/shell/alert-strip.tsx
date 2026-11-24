@@ -61,6 +61,8 @@ export function AlertNotice() {
   const top = topOpenAlert(alerts);
   const view = top ? SEVERITY_VIEW[top.severity] : null;
   const critical = top?.severity === "critical";
+  // On the critical tint the red word takes the on-tint tone (theme.css: AA on the tint in light).
+  const tone = critical ? "text-destructive-on-tint" : view?.text;
 
   const close = (refocus = true) => {
     setOpen(false);
@@ -110,13 +112,13 @@ export function AlertNotice() {
         {flash && top && flash.alertId === top.id ? (
           <span key={flash.key} aria-hidden="true" className="flash-once pointer-events-none absolute inset-0 bg-destructive/35 opacity-0" />
         ) : null}
-        <Bell aria-hidden="true" size={16} strokeWidth={1.5} className={cn("relative shrink-0", top ? view?.text : "text-muted-foreground")} />
+        <Bell aria-hidden="true" size={16} strokeWidth={1.5} className={cn("relative shrink-0", top ? tone : "text-muted-foreground")} />
         {top && view ? (
           <>
             {/* Phone: a count badge on the bell's cell. */}
             <span
               aria-hidden="true"
-              className={cn("relative grid h-5 min-w-5 place-items-center border border-current px-1 font-mono text-12 tabular-nums md:hidden", view.text)}
+              className={cn("relative grid h-5 min-w-5 place-items-center border border-current px-1 font-mono text-12 tabular-nums md:hidden", tone)}
             >
               {openAlerts.length}
             </span>
@@ -125,7 +127,7 @@ export function AlertNotice() {
                 <span className="font-mono tabular-nums">{openAlerts.length}</span> open
               </span>
               <span className="text-muted-foreground">·</span>
-              <span className={cn("flex items-center gap-1.5 font-medium", view.text)}>
+              <span className={cn("flex items-center gap-1.5 font-medium", tone)}>
                 <SignalShape state={view.state} />
                 {view.label}
               </span>

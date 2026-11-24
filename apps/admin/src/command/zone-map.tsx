@@ -68,6 +68,8 @@ export interface PlacedRoom {
   nameLines: number;
   /** Name and status shape on one row, for a block too low to stack them. */
   row: boolean;
+  /** A sliver: its shortest label at 11px with tight padding. */
+  tiny: boolean;
   /** Whether the status ("Nearly full", "Full") is said in words, or by its shape alone. */
   statusWords: boolean;
 }
@@ -239,7 +241,9 @@ function place(layout: VenueLayout, width: number, height: number): Placement {
     let label = "";
     let stacked = 0;
     let row = false;
-    for (const candidate of labelCandidates(room.name, zone?.name ?? "", firstWords)) {
+    const candidates = labelCandidates(room.name, zone?.name ?? "", firstWords);
+    let tiny = false;
+    for (const candidate of candidates) {
       const lines = nameLines(candidate, nameSize, box.width - pad);
       const maxLines = candidate === room.name ? Math.min(3, linesByHeight) : Math.min(1, linesByHeight);
       if (fit !== "xs" && lines > 0 && lines <= maxLines) {
@@ -254,6 +258,13 @@ function place(layout: VenueLayout, width: number, height: number): Placement {
         break;
       }
     }
+    // A sliver of a room: the shortest form at 11px with tight padding, so no block is blank.
+    const shortest = candidates[candidates.length - 1] ?? "";
+    if (!label && shortest && textWidth(shortest, 11) + 8 <= box.width && box.height >= 18) {
+      label = shortest;
+      stacked = 1;
+      tiny = true;
+    }
     rooms.push({
       room,
       zone,
@@ -265,6 +276,7 @@ function place(layout: VenueLayout, width: number, height: number): Placement {
       named: label !== "",
       nameLines: row ? 1 : stacked,
       row,
+      tiny,
       // "Nearly full" in words where there is room for them; the shape alone where there is not.
       statusWords: !row && box.width - 16 >= textWidth("Nearly full", 12) + 14,
     });
@@ -582,6 +594,7 @@ export const ZoneMap = memo(function ZoneMap({
                   data-room={id}
                   data-fit={p.fit}
                   data-row={p.row || undefined}
+                  data-tiny={p.tiny || undefined}
                   data-level={live?.level ?? "ok"}
                   data-selected={id === selectedId || undefined}
                   data-alert={alert}

@@ -1,11 +1,11 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { Link, Outlet, useLocation } from "react-router-dom";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { AppShell, NavRail, navItemClass } from "@synan/ui/shell";
 import { useSession } from "../access/session";
 import { DEV_TOOLS } from "../live/backend";
 import { useCommand } from "../live/context";
-import { navFor } from "../routes";
+import { navFor, navItemActive } from "../routes";
 import { AlertNotice } from "./alert-strip";
 import { ScreenBoundary } from "./screen-boundary";
 import { AdminStatusBar } from "./status-bar";
@@ -87,16 +87,20 @@ export function AdminShell() {
                 }
               : undefined
           }
-          renderLink={(item, content) => (
-            <NavLink
-              to={item.to}
-              end={item.end}
-              title={expanded ? undefined : item.label}
-              className={({ isActive }) => navItemClass(isActive, expanded)}
-            >
-              {content}
-            </NavLink>
-          )}
+          renderLink={(item, content) => {
+            // One active entry at a time (routes.ts `navItemActive`), not the router's prefix match.
+            const active = navItemActive(item, location.pathname);
+            return (
+              <Link
+                to={item.to}
+                aria-current={active ? "page" : undefined}
+                title={expanded ? undefined : item.label}
+                className={navItemClass(active, expanded)}
+              >
+                {content}
+              </Link>
+            );
+          }}
         />
         </div>
         ) : null
