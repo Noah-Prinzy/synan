@@ -1,10 +1,11 @@
 /**
- * Journey 7 (docs/07 §2.6): an offline conflict — the same pass admitted at two gates while both were
- * offline (a pass-back) — raises exactly one alert, and that alert names both scans.
+ * Journey 7 (docs/07 §2.6): an offline conflict — the same band admitted at two gates while both were
+ * offline (a pass-back), or one emailed single-use code used at two offline gates — raises exactly one
+ * alert, and that alert names both scans.
  */
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
-import { adminApi } from "../support/api.ts";
-import { bindBand, closeWorld, createWorld, registerGuest, type Gate, type World } from "../support/world.ts";
+import { adminApi, api, mailMark, uniq, waitForMail } from "../support/api.ts";
+import { bindBand, closeWorld, createWorld, invite, registerGuest, type Gate, type World } from "../support/world.ts";
 import { adminSignInSeeded, chooseConsoleEvent, phone, scannerManualEntry, scannerSignIn, verdict } from "../support/ui.ts";
 
 let w: World;
@@ -85,6 +86,44 @@ test("J7: the same band admitted at two offline entrances raises one pass-back a
     await side.getByRole("link", { name: /^Queue/ }).click();
     await expect(side.getByRole("region", { name: "Conflicts found at the last sync" })).not.toContainText("None.");
   });
+  await frontCtx.close();
+  await sideCtx.close();
+});
+
+test("J7b: one emailed single-use code admitted at two offline entrances raises one pass-reuse alert naming both scans", async ({ browser }) => {
+  const admin = await adminApi();
+  const email = `${uniq("e2e-reuse")}@synan.dev`.toLowerCase();
+  const token = await invite(w, email);
+  const mark = await mailMark();
+  await api("POST", "/invitations/rsvp", { body: { token, email, accept: true, full_name: "Remy Reuse", zone_presence_consent: false } });
+  const passMail = await waitForMail({ to: email, tag: "pass.email_qr", after: mark });
+  const code = /QR: (\S+)/.exec(passMail.text)?.[1];
+  expect(code, passMail.text).toBeTruthy();
+
+  const frontCtx = await phone(browser);
+  const sideCtx = await phone(browser);
+  const front = await scannerAt(frontCtx, w.gates.entrance);
+  const side = await scannerAt(sideCtx, w.gates.side);
+  await frontCtx.setOffline(true);
+  await sideCtx.setOffline(true);
+  await scannerManualEntry(front, code!);
+  await expect(verdict(front)).toContainText("ADMITTED");
+  await scannerManualEntry(side, code!);
+  await expect(verdict(side), "the side door has not heard of the front door's use").toContainText("ADMITTED");
+
+  const before = (await admin.call<{ items: { id: string }[] }>("GET", `/breach-alerts?event_id=${w.eventId}&limit=100`)).items.map((a) => a.id);
+  await frontCtx.setOffline(false);
+  await sideCtx.setOffline(false);
+  await expect(front.getByRole("link", { name: /^Gate: Front Door/ })).not.toContainText("queued", { timeout: 20_000 });
+  await expect(side.getByRole("link", { name: /^Gate: Side Door/ })).not.toContainText("queued", { timeout: 20_000 });
+
+  const fresh = async () => (await admin.call<{ items: { id: string; kind: string; scan_ids: string[] }[] }>("GET", `/breach-alerts?event_id=${w.eventId}&limit=100`)).items.filter((a) => !before.includes(a.id));
+  await expect.poll(async () => (await fresh()).length, { timeout: 15_000 }).toBeGreaterThan(0);
+  const conflicts = (await fresh()).filter((a) => a.kind.startsWith("offline_conflict"));
+  expect(conflicts, JSON.stringify(await fresh())).toHaveLength(1);
+  expect(conflicts[0]!.kind).toBe("offline_conflict_pass_reuse");
+  const detail = await admin.call<{ scans: { checkpoint_label: string }[] }>("GET", `/alerts/${conflicts[0]!.id}`);
+  expect(detail.scans.map((s) => s.checkpoint_label).sort()).toEqual(["Front Door", "Side Door"]);
   await frontCtx.close();
   await sideCtx.close();
 });
