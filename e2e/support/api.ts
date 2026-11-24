@@ -198,3 +198,8 @@ export async function scanAt(
   if (!r.results[0]) throw new Error(`scan rejected: ${JSON.stringify(r.rejected)}`);
   return r.results[0];
 }
+
+/** Forget the cached admin session (after the server clock moved, its tokens are no longer valid). */
+export function resetAdminCache() {
+  adminCache = null;
+}
