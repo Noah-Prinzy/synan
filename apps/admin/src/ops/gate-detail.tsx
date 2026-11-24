@@ -1,6 +1,6 @@
 /**
  * D12b · Gate detail `/gates/:id` (docs/06 §2.3). One checkpoint: its hardware, direction and
- * link state; link history for the shift; throughput by 5-minute bucket over the last hour;
+ * link state and pass-list age; link history for the shift; throughput by 5-minute bucket over the last hour;
  * results by code; the last 50 scans; who is assigned now. Actions: `Test read` (a synthetic read
  * that is never logged as attendance), `Mark for maintenance` (MOCK: this page only) and
  * `Reassign` (to the event's staff tab; staff.manage only — absent otherwise).
@@ -44,7 +44,7 @@ import { useSlice } from "../live/slice";
 import type { GateLive } from "../live/store";
 import { useGateActivity } from "./gates";
 import { maintenance, setMaintenance } from "./maintenance";
-import { CARRIER_LABEL, DIRECTION_LABEL, LINK_VIEW, LastKnown, LiveStates, clockWrong, formatScanTime, gateSignal, useLiveReady } from "./shared";
+import { CARRIER_LABEL, DIRECTION_LABEL, LINK_VIEW, LastKnown, LiveStates, allowlistStale, clockWrong, formatScanTime, gateSignal, useLiveReady } from "./shared";
 
 const POLL_MS = 5_000;
 
@@ -251,6 +251,7 @@ function GateView({ checkpoint, eventId, timeZone, back }: { checkpoint: Checkpo
                     "—"
                   ),
                 ],
+                ["Pass list", <PassList gate={gate} now={now} />],
                 [
                   "Last 15 min",
                   activity ? (
@@ -328,6 +329,23 @@ function Heartbeat({ gate, at, now }: { gate: GateLive | undefined; at: string |
   return (
     <span>
       <span className={TYPE.value}>{formatAge(now - Date.parse(at))}</span> ago
+    </span>
+  );
+}
+
+/** The age of the gate's signed pass list (allowlist), and whether it is out of date (O-05). */
+function PassList({ gate, now }: { gate: GateLive | undefined; now: number }) {
+  const issued = gate?.allowlist_issued_at ? Date.parse(gate.allowlist_issued_at) : null;
+  const stale = gate ? allowlistStale(gate) : false;
+  if (issued === null && !stale) return <span className="text-muted-foreground">—</span>;
+  return (
+    <span className={cn(stale && "text-warning")}>
+      {issued !== null ? (
+        <>
+          Issued <span className={TYPE.value}>{formatAge(now - issued)}</span> ago
+        </>
+      ) : null}
+      {stale ? (issued !== null ? " · out of date" : "Out of date") : null}
     </span>
   );
 }
