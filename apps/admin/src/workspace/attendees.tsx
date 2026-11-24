@@ -132,7 +132,7 @@ export default function WorkspaceAttendees() {
         ) : (
           <p>
             Everyone who registers, accepts an invitation or is onboarded at a kiosk appears here, with their tier, pass and
-            band. {event.listed ? "The event is listed, so people can find it and register." : "The event is invitation only: send invitations from the attendee console."}
+            band. {event.listed ? "The event is listed, so people can find it and register." : "The event is invitation only: guests appear here once they accept their invitation."}
           </p>
         )}
       </EmptyState>

@@ -3,8 +3,8 @@
  * summary. Export is an async job (P-14): starting one creates a report row, and the row
  * shows its progress in place — queued, preparing, ready — polled from GET /reports/:eventId.
  *
- * Export is a privileged action (03 §3): the API asks for the second factor. The prompt
- * belongs to sign-in, which is not built yet; the mock accepts without it.
+ * Export is a privileged action (03 §3): the API asks for the second factor, and the console
+ * prompt (access/step-up.tsx) asks for the code and retries; the mock accepts without it.
  */
 import { useEffect, useRef, useState } from "react";
 import type { ReportKind } from "@synan/contracts/enums";

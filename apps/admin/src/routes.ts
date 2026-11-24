@@ -56,8 +56,8 @@ export const SCREENS = {
     path: "/sign-in",
     code: "—",
     title: "Sign in",
-    purpose: "Password and a second factor. Privileged actions ask for the second factor again.",
-    data: "POST /auth/login · POST /auth/mfa/verify",
+    purpose: "Email and password. The second factor is asked at the first privileged action, not at sign-in.",
+    data: "POST /auth/login · GET /me/operator",
   },
   venues: {
     path: "/venues",

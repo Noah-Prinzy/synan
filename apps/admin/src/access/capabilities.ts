@@ -23,7 +23,7 @@ export const CAPABILITIES = [
   "gates.view", // D12 gate health, D12b gate detail
   "rooms.recount", // set a room's count to a headcount (D-10)
   /* response */
-  "alerts.view", // the alert strip and D10
+  "alerts.view", // the alert notice in the top bar and D10
   "alerts.acknowledge",
   "alerts.resolve",
   "scans.view", // D9 access log

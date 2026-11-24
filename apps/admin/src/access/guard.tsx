@@ -177,7 +177,8 @@ function MockSignedOut() {
           You are signed out
         </h1>
         <p className="mt-3 max-w-120 text-15 leading-relaxed text-muted-foreground">
-          Sign in again to return to the console. Signing in asks for your password and a code from your authenticator.
+          Sign in again to return to the console. Signing in asks for your password; a code from your authenticator is asked
+          only when an action needs it.
         </p>
         <div className="mt-8">
           <ActionButton
