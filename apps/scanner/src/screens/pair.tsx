@@ -1,7 +1,7 @@
 /**
  * S1 · Choose gate (docs/06 §3.2). The staff member's assignments for this shift as large
  * rows; a gate outside the shift is shown with the plain reason and cannot be chosen
- * (P-15). Scanning a printed gate code arrives in Phase 3.
+ * (P-15). Choosing by scanning a printed gate code is not built: the list is the only way.
  *
  * API mode: a signed-out device asks for the staff sign-in first (POST /auth/login), then lists
  * GET /me/assignments. The list is kept on the device, so a reload without signal still opens.

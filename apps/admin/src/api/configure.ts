@@ -436,6 +436,36 @@ export function createConfigureApi(client: ApiClient, cache: SharedCache): Confi
       return deskAttendee(eventId, registrationId);
     },
 
+    /** POST /credentials/:id/revoke (audited; a supervisor would need a fresh second factor). Revoking twice is a no-op on the server. */
+    async revokeCredential(eventId, registrationId, body) {
+      const current = await deskAttendee(eventId, registrationId);
+      if (!current.credential_id) {
+        throw new ApiFailure("CONFLICT", 409, { issues: [{ path: "revoke", message: "This registration has no pass to revoke." }] });
+      }
+      try {
+        await client.call("revoke", { params: { id: current.credential_id }, body: { reason: body.reason.trim() } });
+      } catch (error) {
+        if (error instanceof ApiFailure && error.code === "CONFLICT" && error.issues.length === 0) {
+          throw error.recode("CONFLICT", [{ path: "revoke", message: "This pass can no longer be revoked: it may have been replaced meanwhile." }]);
+        }
+        throw error;
+      }
+      return deskAttendee(eventId, registrationId);
+    },
+
+    /** PATCH /registrations/:id/tier (MFA: the client prompts; audited). The server refuses a closed event or a cancelled registration. */
+    async changeTier(eventId, registrationId, body) {
+      try {
+        await client.call("changeTier", { params: { id: registrationId }, body: { tier: body.tier, reason: body.reason.trim() } });
+      } catch (error) {
+        if (error instanceof ApiFailure && error.code === "CONFLICT" && error.issues.length === 0) {
+          throw error.recode("CONFLICT", [{ path: "tier", message: "The tier cannot change now: the event has closed or the registration was cancelled." }]);
+        }
+        throw error;
+      }
+      return deskAttendee(eventId, registrationId);
+    },
+
     /** GET /credentials/inventory: the stock, the event's bands, and this desk's own work this shift (`today`; zeros with no shift). */
     async deskStock(eventId) {
       const [all, event] = await Promise.all([client.call("inventory", {}), client.call("inventory", { query: { event_id: eventId } })]);

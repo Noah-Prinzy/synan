@@ -1,6 +1,6 @@
 /**
  * A fault in one screen must not take the chrome with it: the live pill, the alert
- * strip and the status bar stay up while the screen shows what failed.
+ * notice and the status bar stay up while the screen shows what failed.
  */
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { ERROR_COPY } from "@synan/contracts/copy";

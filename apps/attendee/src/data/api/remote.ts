@@ -134,8 +134,6 @@ export function createRemote(state: CoreState) {
       admitted: event.on_site ?? 0,
       admittedShown: event.on_site !== null,
       capacity: event.capacity ?? (detail ? detail.rooms.reduce((sum, room) => sum + room.capacity, 0) : 0),
-      // GAP: no proximity in the contract (undecided).
-      nearby: false,
       image: event.image_url ?? null,
       sessionCount: event.session_count ?? detail?.sessions.length ?? 0,
     };
@@ -473,13 +471,17 @@ export function createRemote(state: CoreState) {
       refreshMe().catch(() => null),
     ]);
     if (slug) {
-      const registration = items?.find((item) => item.event.slug === slug && item.state !== "cancelled");
+      // GET /me/registrations could not be read: the link has most likely completed the
+      // registration, so the pass screen (which reads again, and says so when it cannot) is the
+      // place, not a form that would be empty on a second device and could send it twice.
+      if (items === null) return { ok: true, next: "/pass" };
+      const registration = items.find((item) => item.event.slug === slug && item.state !== "cancelled");
       if (registration) {
         state.choose(registration.event.id);
         return { ok: true, next: "/pass" };
       }
-      // Not completed (the event closed meanwhile, or the server could not be read): the form,
-      // signed in now, finishes it with POST /registrations.
+      // Read, and not completed (the event closed meanwhile): the form, signed in now, finishes it
+      // with POST /registrations (06 A3).
     }
     return { ok: true, next };
   }

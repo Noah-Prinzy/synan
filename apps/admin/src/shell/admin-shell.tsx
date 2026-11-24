@@ -47,7 +47,7 @@ export function AdminShell() {
   const expanded = wide && preferExpanded;
   const { can } = useSession();
   const { event } = useCommand();
-  // The rail, the menu, the alert strip and the status bar are the role's own (D-23): a role
+  // The rail, the menu, the alert notice and the status bar are the role's own (D-23): a role
   // with one screen has no menu at all, and only a role that watches the floor gets its chrome.
   const groups = useMemo(() => navFor(can, event?.id ?? null), [can, event?.id]);
   const navigable = groups.reduce((n, group) => n + group.items.length, 0) > 1;

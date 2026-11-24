@@ -1,6 +1,6 @@
 /**
  * The selected event is the global context of every admin screen (docs/06 §2.2).
- * One store, opened for that event; the chrome (live pill, alert strip, status bar)
+ * One store, opened for that event; the chrome (live pill, alert notice, status bar)
  * and D1 read from it.
  *
  * The events offered are the ones the signed-in user may work (a desk clerk sees only the

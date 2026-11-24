@@ -2,7 +2,7 @@
  * The offline decision: apps/api `domain/decision.ts` (docs/01 §7) restricted to what a scanner can
  * know — the verified allowlist and this device's own scans. First failing step decides.
  *
- *   1. unknown token (no trusted allowlist, bad/expired QR, not on the list) → unknown_token  (fail closed)
+ *   1. unknown token (no trusted allowlist: none, another event's or gate's, or past its window's grace; bad/expired QR; not on the list) → unknown_token  (fail closed)
  *   2. QR at an interior gate → wristband_required; an emailed QR not named in `qr_email_hashes`
  *      (or already admitted on this device) → pass_spent
  *   3. revoked / replaced / lost band, cancelled registration → revoked; under review → suspended

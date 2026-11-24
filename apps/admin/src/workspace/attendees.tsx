@@ -3,7 +3,7 @@
  * this event in one dense table: name, email, tier, registration and credential state, band,
  * checked in, last scan in the event's zone. Search and filters live in the URL, so a filtered
  * view can be shared. Pages of 50 in the browser. A row opens the attendee: in a side panel at
- * ≥1280, in a dialog below that. The actions on an attendee belong to D7 and are shown disabled.
+ * ≥1280, in a dialog below that, with the actions the role may take on them (parts/attendee-detail).
  *
  * States: loading, error with retry, no registrations yet, no match for the filters, updating.
  */
@@ -132,7 +132,7 @@ export default function WorkspaceAttendees() {
         ) : (
           <p>
             Everyone who registers, accepts an invitation or is onboarded at a kiosk appears here, with their tier, pass and
-            band. {event.listed ? "The event is listed, so people can find it and register." : "The event is invitation only: send invitations from the attendee console."}
+            band. {event.listed ? "The event is listed, so people can find it and register." : "The event is invitation only: guests appear here once they accept their invitation."}
           </p>
         )}
       </EmptyState>

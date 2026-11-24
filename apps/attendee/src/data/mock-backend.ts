@@ -32,7 +32,6 @@ function summary(event: PortalEvent): EventSummary {
     admitted,
     admittedShown: detail.on_site !== null,
     capacity,
-    nearby: extras.nearby,
     image: extras.image ?? null,
     sessionCount: detail.sessions.length,
   };

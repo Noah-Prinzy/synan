@@ -273,6 +273,19 @@ export interface ReviewBody {
   note: string;
 }
 
+/** POST /credentials/:id/revoke (contracts `RevokeRequest`): any live pass, audited. */
+export interface RevokeBody {
+  /** 3–500 characters, for the audit log. */
+  reason: string;
+}
+
+/** PATCH /registrations/:id/tier (contracts `ChangeTier`): second factor, audited. */
+export interface ChangeTierBody {
+  tier: AttendeeTier;
+  /** 3–500 characters, for the audit log. */
+  reason: string;
+}
+
 /** What the desk shows at a glance: the bands it can hand out, and its own work today. */
 export interface DeskStock {
   /** Bands in stock, unassigned (shared across the organisation's events). */
@@ -350,6 +363,10 @@ export interface ConfigureApi {
   resendPass(eventId: string, registrationId: string): Promise<DeskAttendee>;
   /** Clear a pass under review back to active, or revoke it. Only for `suspended_review`. */
   reviewCredential(eventId: string, registrationId: string, body: ReviewBody): Promise<DeskAttendee>;
+  /** Revoke a live pass (and any band bound to it) at every gate. */
+  revokeCredential(eventId: string, registrationId: string, body: RevokeBody): Promise<DeskAttendee>;
+  /** Change the registration's tier (second factor on the real API). Frozen once the event closes. */
+  changeTier(eventId: string, registrationId: string, body: ChangeTierBody): Promise<DeskAttendee>;
   deskStock(eventId: string): Promise<DeskStock>;
 
   staff(): Promise<StaffRow[]>;
@@ -1595,6 +1612,34 @@ export function createConfigureMock(options: ConfigureOptions): ConfigureApi {
         throw new MockApiError("VALIDATION_FAILED", { note: "Write a short note on why: it goes in the audit log." });
       }
       row.credential_state = body.outcome === "clear" ? (row.checked_in ? "active" : "issued") : "revoked";
+      return deskView(row);
+    },
+
+    async revokeCredential(eventId, registrationId, body) {
+      await wait(Math.min(latency * 2, 600));
+      const { row } = deskRow(eventId, registrationId);
+      if (row.credential_state === null) throw new MockApiError("CONFLICT", { revoke: "This registration has no pass to revoke." });
+      if (row.credential_state === "revoked" || row.credential_state === "replaced") {
+        throw new MockApiError("CONFLICT", { revoke: "This pass no longer works at any gate. Someone may have revoked it already." });
+      }
+      if (body.reason.trim().length < 3) {
+        throw new MockApiError("VALIDATION_FAILED", { reason: "Write a short note on why: it goes in the audit log." });
+      }
+      row.credential_state = "revoked";
+      return deskView(row);
+    },
+
+    async changeTier(eventId, registrationId, body) {
+      await wait(Math.min(latency * 2, 600));
+      const { row, record } = deskRow(eventId, registrationId);
+      if (record.state === "closed" || record.state === "archived") {
+        throw new MockApiError("CONFLICT", { tier: "The event is closed; tiers are frozen." });
+      }
+      if (row.state === "cancelled") throw new MockApiError("CONFLICT", { tier: "The registration is cancelled." });
+      if (body.reason.trim().length < 3) {
+        throw new MockApiError("VALIDATION_FAILED", { reason: "Write a short note on why: it goes in the audit log." });
+      }
+      row.tier = body.tier;
       return deskView(row);
     },
 

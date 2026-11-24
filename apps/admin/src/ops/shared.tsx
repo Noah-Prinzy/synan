@@ -49,8 +49,16 @@ export function gateSignal(gate: GateLive): { state: SignalState; words: string 
   return { state: "ok", words: "Online" };
 }
 
+/**
+ * The gate's pass list (its signed offline allowlist) is more than 15 minutes old (O-05): offline,
+ * it would still admit known passes, each with an alert. Sent by the real API; the mock sends none.
+ */
+export function allowlistStale(gate: Pick<GateLive, "allowlist_stale">): boolean {
+  return gate.allowlist_stale === true;
+}
+
 export function isFault(gate: GateLive): boolean {
-  return gate.link_state !== "online" || clockWrong(gate) || gate.queue_depth > 0;
+  return gate.link_state !== "online" || clockWrong(gate) || gate.queue_depth > 0 || allowlistStale(gate);
 }
 
 /** Faults first: offline, then degraded, then clock or queue; then by label. */

@@ -3,6 +3,10 @@
  * large as the panel allows — 96px where the word fits on one line, 56 or 40 on a narrow
  * phone so it never breaks mid-word — the holder, the instruction, the identifier in mono.
  * Wording comes only from the contracts' scan-result copy. No interactive element.
+ *
+ * The holder's name shows only when the scan carries one (the mock). On the real API the scan
+ * outcome names nobody, by design (03 §5), so the line shows the tier alone, or is left out, and
+ * the spoken verdict skips it: never an empty slot or a placeholder.
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { SCAN_RESULT_COPY } from "@synan/contracts/copy";
@@ -25,7 +29,7 @@ const toneRule: Record<GateTone, string> = {
 };
 export const toneGlyph: Record<GateTone, string> = { green: "✓", amber: "!", red: "✕", none: "·" };
 
-const tierLabel = { VIP: "VIP", ORDINARY: "Ordinary", PRIVATE_INVITE: "Private Invitation", PUBLIC: "Public" } as const;
+export const tierLabel = { VIP: "VIP", ORDINARY: "Ordinary", PRIVATE_INVITE: "Private Invitation", PUBLIC: "Public" } as const;
 
 /** The type scale's display steps a verdict may use (docs/05 §4). */
 const STEPS = [
@@ -130,7 +134,7 @@ export function VerdictPanel({
     >
       {/* Spoken once per verdict; the visual panel below is the same content. */}
       <p aria-live="assertive" className="sr-only">
-        {copy && scan ? `${copy.label}. ${scan.name ?? ""}. ${copy.instruction}` : ""}
+        {copy && scan ? [copy.label, scan.name, copy.instruction].filter(Boolean).join(". ") : ""}
       </p>
       {/* my-auto, not justify-center: centred when it fits, scrolls from the top when not. */}
       <div aria-hidden={copy ? true : undefined} className="my-auto w-full">

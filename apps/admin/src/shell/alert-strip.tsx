@@ -19,6 +19,7 @@ import { Bell } from "lucide-react";
 import { ActionButton, cn } from "@synan/ui/components";
 import type { BreachAlert } from "@synan/contracts/rest";
 import { SignalShape, formatAge } from "@synan/ui/data";
+import { Can } from "../access/session";
 import { ALERT_KIND_LABEL, SEVERITY_VIEW, severityRank } from "../live/alert-copy";
 import { useCommand } from "../live/context";
 import { useNow } from "../live/hooks";
@@ -202,24 +203,26 @@ function AlertPanel({
                   <Age at={alert.occurred_at} />
                 </p>
                 <div className="mt-2.5 flex items-center gap-2 max-sm:flex-col max-sm:items-stretch">
-                  <ActionButton
-                    variant="quiet"
-                    size="compact"
-                    reward
-                    keepDone
-                    doneLabel="Acknowledged"
-                    action={async () => {
-                      setHeld((h) => [...h, alert]);
-                      try {
-                        await store.ack(alert.id);
-                      } finally {
-                        window.setTimeout(() => setHeld((h) => h.filter((x) => x.id !== alert.id)), 1400);
-                      }
-                    }}
-                    className="max-sm:h-11 max-sm:w-full"
-                  >
-                    Acknowledge
-                  </ActionButton>
+                  <Can I="alerts.acknowledge">
+                    <ActionButton
+                      variant="quiet"
+                      size="compact"
+                      reward
+                      keepDone
+                      doneLabel="Acknowledged"
+                      action={async () => {
+                        setHeld((h) => [...h, alert]);
+                        try {
+                          await store.ack(alert.id);
+                        } finally {
+                          window.setTimeout(() => setHeld((h) => h.filter((x) => x.id !== alert.id)), 1400);
+                        }
+                      }}
+                      className="max-sm:h-11 max-sm:w-full"
+                    >
+                      Acknowledge
+                    </ActionButton>
+                  </Can>
                   <Link
                     to={`/alerts?alert=${encodeURIComponent(alert.id)}`}
                     onClick={onNavigate}

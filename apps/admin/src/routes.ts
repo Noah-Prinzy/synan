@@ -56,8 +56,8 @@ export const SCREENS = {
     path: "/sign-in",
     code: "—",
     title: "Sign in",
-    purpose: "Password and a second factor. Privileged actions ask for the second factor again.",
-    data: "POST /auth/login · POST /auth/mfa/verify",
+    purpose: "Email and password. The second factor is asked at the first privileged action, not at sign-in.",
+    data: "POST /auth/login · GET /me/operator",
   },
   venues: {
     path: "/venues",
@@ -189,7 +189,7 @@ export const SCREENS = {
     path: "/attendees",
     code: "D7",
     title: "Attendees",
-    purpose: "With the event workspace: the event's attendee table. Without it (supervisor): attendee lookup in the selected event, read only, with clear or revoke for a pass under review. The organisation-wide console (bulk actions, change tier, audit) comes later.",
+    purpose: "With the event workspace: the event's attendee table. Without it (supervisor): attendee lookup in the selected event, read only, with clear or revoke for a pass under review. Bulk actions and invitations are not built.",
     data: "GET /attendees",
     built: true,
     need: "attendees.view",
@@ -359,12 +359,6 @@ export function mayOpen(pathname: string, can: (capability: Capability) => boole
 }
 
 /**
- * The navigation a role sees: the entries it may open; a group with nothing left is dropped.
- * `Attendees` opens the selected event's attendee table for a role with the event workspace,
- * because the event is the context of every screen (docs/06 §2.2); a role without it (the
- * supervisor) gets the attendee lookup at `/attendees`.
- */
-/**
  * Which navigation entry is active for a path: exactly one at a time. An entry is active on its
  * own path and the paths under it (Gate health on a gate's detail, Venues in the venue editor,
  * Alerts with an alert open). Inside an event workspace (`/events/:id/…`, its tabs and summary)
@@ -379,6 +373,12 @@ export function navItemActive(item: { to: string; end?: boolean }, pathname: str
   return pathname === to || pathname.startsWith(`${to}/`);
 }
 
+/**
+ * The navigation a role sees: the entries it may open; a group with nothing left is dropped.
+ * `Attendees` opens the selected event's attendee table for a role with the event workspace,
+ * because the event is the context of every screen (docs/06 §2.2); a role without it (the
+ * supervisor) gets the attendee lookup at `/attendees`.
+ */
 export function navFor(can: (capability: Capability) => boolean, eventId: string | null): NavSection[] {
   return NAV_GROUPS.map((group) => ({
     label: group.label,

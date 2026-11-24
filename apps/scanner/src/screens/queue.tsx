@@ -1,8 +1,9 @@
 /**
  * S4 · Offline queue (docs/06 §3.2, docs/01 §8): what is waiting to be sent, how old the
  * oldest is, what kind of results they are, Retry now, a hard warning when the allowlist
- * is past the fail-open window, the device clock offset (D-14), and conflicts the server
- * found at the last sync (D-13).
+ * is past the fail-open window (or past its own validity window, within the grace), one when
+ * the device holds no list it can trust, the device clock offset (D-14), and conflicts the
+ * server found at the last sync (D-13).
  */
 import { useEffect, useState } from "react";
 import { SCAN_RESULT_COPY } from "@synan/contracts/copy";
@@ -44,7 +45,10 @@ export default function Queue() {
   const byResult = new Map<ScanResult, number>();
   for (const scan of waiting) byResult.set(scan.result, (byResult.get(scan.result) ?? 0) + 1);
   // API mode with no trusted list: every offline read is refused (fail closed), nothing fails open.
-  const stale = allowlistAt !== null && now - allowlistAt > STALE_MS;
+  // A list past its validity window still decides for a while (the grace): shown as stale.
+  const pastWindow = api?.allowlistTrust === "grace";
+  const untrusted = api?.allowlistTrust === "untrusted";
+  const stale = allowlistAt !== null && (now - allowlistAt > STALE_MS || pastWindow);
   const clockFault = Math.abs(clockOffsetMs) > 120_000;
 
   return (
@@ -59,8 +63,21 @@ export default function Queue() {
       {stale && !online ? (
         <p role="alert" className="mx-4 mb-4 border border-destructive px-4 py-3 text-15 sm:mx-6">
           <span aria-hidden="true" className="mr-2 font-mono text-destructive">✕</span>
-          The pass list on this device is <span className="font-mono">{age(now - (allowlistAt ?? now))}</span> old. Known passes are
-          still let in, and each one raises an alert. Call your supervisor.
+          {pastWindow ? (
+            <>The pass list on this device is past the end of its shift window.</>
+          ) : (
+            <>
+              The pass list on this device is <span className="font-mono">{age(now - (allowlistAt ?? now))}</span> old.
+            </>
+          )}{" "}
+          Known passes are still let in, and each one raises an alert. Call your supervisor.
+        </p>
+      ) : null}
+      {untrusted && !online ? (
+        <p role="alert" className="mx-4 mb-4 border border-destructive px-4 py-3 text-15 sm:mx-6">
+          <span aria-hidden="true" className="mr-2 font-mono text-destructive">✕</span>
+          This device has no pass list it can trust: the one it holds has expired. Passes cannot be checked offline and are
+          refused. Reconnect so it can fetch a new list, and call your supervisor.
         </p>
       ) : null}
 
@@ -71,7 +88,7 @@ export default function Queue() {
         <Row label="Oldest">{oldest === null ? "—" : <span className="font-mono">{age(now - oldest)}</span>}</Row>
         <Row label="Last sent">{lastSyncAt === null ? "Not yet" : <span className="font-mono">{age(now - lastSyncAt)} ago</span>}</Row>
         <Row label="Pass list">
-          {allowlistAt === null ? "—" : <span className={`font-mono ${stale ? "text-destructive" : ""}`}>{age(now - allowlistAt)} old</span>}
+          {allowlistAt === null ? (untrusted ? <span className="text-destructive">Expired</span> : "—") : <span className={`font-mono ${stale ? "text-destructive" : ""}`}>{age(now - allowlistAt)} old</span>}
         </Row>
         <Row label="Clock offset">
           <span className={`font-mono ${clockFault ? "text-warning" : ""}`}>
