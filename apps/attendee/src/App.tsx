@@ -14,6 +14,7 @@ const PassPair = lazy(() => import("./screens/pass-pair"));
 const Agenda = lazy(() => import("./screens/agenda"));
 const Notifications = lazy(() => import("./screens/notifications"));
 const Account = lazy(() => import("./screens/account"));
+const Invite = lazy(() => import("./screens/invite"));
 /** Development only: every control in every state (never in a production build). */
 const DevControls = import.meta.env.DEV ? lazy(() => import("./screens/dev-controls")) : null;
 
@@ -47,6 +48,9 @@ export default function App() {
         <Route path="/verify" element={<Auth />} />
         {/* Where the API's emailed sign-in link lands: /auth/verify#token=…&return_to=… */}
         <Route path="/auth/verify" element={<Auth />} />
+        {/* A10. The API's emailed link is /invite#token=…; /invite/:token moves its token there. */}
+        <Route path="/invite" element={<Invite />} />
+        <Route path="/invite/:token" element={<Invite />} />
         {DevControls ? <Route path="/dev/controls" element={<DevControls />} /> : null}
         <Route path="*" element={<NotFound />} />
       </Routes>

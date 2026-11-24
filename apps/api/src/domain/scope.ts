@@ -3,8 +3,27 @@
  * shift is current when shift_start ≤ now < shift_end on the server's clock.
  */
 import type { AppContext } from "../app.js";
-import type { CheckpointRow, StaffAssignmentRow } from "../repo/types.js";
+import { sha256b64url } from "../lib/crypto.js";
+import type { CheckpointRow, Repos, StaffAssignmentRow } from "../repo/types.js";
 import type { AuthContext } from "./principal.js";
+
+/** How a scanner install is recorded against an assignment: base64url SHA-256 of its client device id (never the id itself). */
+export const scannerHash = (clientDeviceId: string) => sha256b64url(`scanner:${clientDeviceId}`);
+
+const noted = new Set<string>();
+/**
+ * Record that the assignee used this scanner install during the shift (POST /scans, REST and stream
+ * heartbeats). A scan queued under the shift may later be synced from it by whoever staffs the gate
+ * next (01 §8). Written once per process and install; the store ignores repeats and keeps at most 8.
+ */
+export async function noteScanner(repos: Repos, a: StaffAssignmentRow, clientDeviceId: string | undefined | null) {
+  if (!clientDeviceId) return;
+  const h = scannerHash(clientDeviceId);
+  const key = `${a.id}|${h}`;
+  if (noted.has(key) || (a.scanner_device_hashes ?? []).includes(h)) return;
+  await repos.staff.noteDevice(a.id, h);
+  noted.add(key);
+}
 
 export async function currentAssignments(app: AppContext, userId: string): Promise<StaffAssignmentRow[]> {
   const t = app.clock.now();

@@ -13,6 +13,7 @@ import { postEventEndpoints, reportEndpoints, staffEndpoints } from "./staff.js"
 import { venueEndpoints } from "./venue.js";
 import { webhookEndpoints } from "./webhooks.js";
 import { deviceEndpoints } from "./devices.js";
+import { occupancyEndpoints } from "./occupancy.js";
 
 export * from "./endpoint.js";
 export * from "./auth.js";
@@ -25,6 +26,7 @@ export * from "./staff.js";
 export * from "./me.js";
 export * from "./webhooks.js";
 export * from "./devices.js";
+export * from "./occupancy.js";
 
 /** The complete endpoint registry, keyed by a stable operation name. */
 export const endpoints = {
@@ -41,6 +43,7 @@ export const endpoints = {
   ...dataRequestEndpoints,
   ...webhookEndpoints,
   ...deviceEndpoints,
+  ...occupancyEndpoints,
 } as const satisfies Record<string, EndpointDef>;
 
 export type EndpointName = keyof typeof endpoints;

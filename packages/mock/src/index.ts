@@ -24,3 +24,4 @@ export {
   type RealtimeClient,
 } from "./realtime";
 export { SCENARIO_NAMES, SCENARIOS, type ScenarioName, type ScenarioContext } from "./scenarios";
+export { DEMO_INVITATIONS, DEMO_INVITED_EMAIL, createInvitationDesk, type InvitationDesk, type InvitationPreview, type RsvpAnswer, type RsvpBody } from "./invitations";

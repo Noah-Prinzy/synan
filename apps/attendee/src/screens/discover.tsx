@@ -112,7 +112,7 @@ export function Featured({ event }: { event: EventSummary }) {
         </Cell>
         <Cell label="Programme" index={3}>
           <p className="text-17">
-            <span className="font-mono">{event.sessionCount}</span> sessions
+            <span className="font-mono">{event.sessionCount}</span> {event.sessionCount === 1 ? "session" : "sessions"}
           </p>
           <Link to={`/events/${event.slug}#schedule`} className="mt-1 inline-flex min-h-11 items-center text-13 underline underline-offset-4">
             See the schedule
@@ -197,7 +197,7 @@ export function EventCard({ event, index }: { event: EventSummary; index: number
             </div>
           ) : (
             <p className="text-13 text-muted-foreground">
-              <span className="font-mono">{event.sessionCount}</span> sessions · capacity{" "}
+              <span className="font-mono">{event.sessionCount}</span> {event.sessionCount === 1 ? "session" : "sessions"} · capacity{" "}
               <span className="font-mono">{event.capacity.toLocaleString("en-GB")}</span>
             </p>
           )}

@@ -10,7 +10,7 @@
  * cycle (it references credentials).
  */
 import { sql } from "drizzle-orm";
-import { index, jsonb, pgSchema, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, index, jsonb, pgSchema, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { users } from "./people";
 
 const tstz = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
@@ -40,11 +40,45 @@ export const attendees = piiVault.table(
     updated_at: tstz("updated_at").notNull().defaultNow(),
     /** Set by erasure: identifying columns are nulled, the row stays so registrations keep integrity. */
     erased_at: tstz("erased_at"),
+    /** Optional phone number (0030): an AES-256-GCM envelope like `email`; scrubbed by erasure. */
+    phone: text("phone"),
   },
   (t) => [
     uniqueIndex("attendees_email_hash_uq")
       .on(t.email_hash)
       .where(sql`${t.email_hash} IS NOT NULL`),
     index("attendees_user_idx").on(t.user_id),
+    check("attendees_phone_encrypted", sql`${t.phone} IS NULL OR ${t.phone} ~ '^ev1\\.[A-Za-z0-9_-]{1,32}\\.[A-Za-z0-9_-]{16}\\.[A-Za-z0-9_-]{22,}$'`),
+  ],
+);
+
+/**
+ * A self-service registration waiting for its emailed link to be redeemed (0028). Created by the
+ * public `POST /users/register`; completed (and deleted) when the link is redeemed on any device;
+ * deleted unused once the link has expired. `answers_enc` is an AES-256-GCM envelope of the JSON
+ * answers (profile values, phone), bound to this row and column; write and read it only through
+ * src/pending-registrations.ts. Forced row-level security: system scope only.
+ */
+export const pending_registrations = piiVault.table(
+  "pending_registrations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** auth_links.token_hash of the emailed link this registration completes with. */
+    link_token_hash: text("link_token_hash").notNull(),
+    attendee_id: uuid("attendee_id")
+      .notNull()
+      .references(() => attendees.id),
+    /** public.events.id (no FK across the vault boundary). */
+    event_id: uuid("event_id").notNull(),
+    zone_presence_consent: boolean("zone_presence_consent").notNull(),
+    answers_enc: text("answers_enc").notNull(),
+    expires_at: tstz("expires_at").notNull(),
+    created_at: tstz("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("pending_registrations_link_uq").on(t.link_token_hash),
+    index("pending_registrations_expiry_idx").on(t.expires_at),
+    check("pending_registrations_link_hash", sql`${t.link_token_hash} ~ '^[A-Za-z0-9_-]{43}$'`),
+    check("pending_registrations_answers_encrypted", sql`${t.answers_enc} ~ '^ev1\\.[A-Za-z0-9_-]{1,32}\\.[A-Za-z0-9_-]{16}\\.[A-Za-z0-9_-]{22,}$'`),
   ],
 );

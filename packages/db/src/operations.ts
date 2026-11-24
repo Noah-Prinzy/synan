@@ -161,13 +161,18 @@ export async function authenticateDevice(db: DbOrTx, token: string): Promise<Dev
 /** A device heartbeat: updates the device and its checkpoint's gate-health fields. */
 export async function recordHeartbeat(
   db: DbOrTx,
-  i: { deviceId: string; checkpointId?: string | null; clockOffsetMs?: number | null; queueDepth?: number | null; appVersion?: string | null; ip?: string | null; now?: Date },
+  i: {
+    deviceId: string; checkpointId?: string | null; clockOffsetMs?: number | null; queueDepth?: number | null; appVersion?: string | null; ip?: string | null; now?: Date;
+    /** `issued_at` of the allowlist the device holds (0029); null/absent keeps the last one reported. */
+    allowlistIssuedAt?: Date | null;
+  },
 ): Promise<"ok" | "unknown_device" | "not_active"> {
   const x = (
     await rows(
       db,
       sql`select * from public.device_heartbeat(${i.deviceId}::uuid, ${i.checkpointId ?? null}::uuid, ${i.clockOffsetMs ?? null}::integer,
-            ${i.queueDepth ?? null}::integer, ${i.appVersion ?? null}, ${i.ip ?? null}::inet, ${tsOrNow(i.now)})`,
+            ${i.queueDepth ?? null}::integer, ${i.appVersion ?? null}, ${i.ip ?? null}::inet, ${tsOrNow(i.now)},
+            ${i.allowlistIssuedAt ? i.allowlistIssuedAt.toISOString() : null}::timestamptz)`,
     )
   )[0]!;
   return x.status as "ok" | "unknown_device" | "not_active";
@@ -190,6 +195,10 @@ export interface GateHealthRow {
   staff_on_duty: number;
   /** checkpoints.position_jsonb: where the gate sits on the venue grid; null when not placed. */
   position: CheckpointPosition | null;
+  /** Oldest allowlist `issued_at` among the gate's active devices heard from in the last 15 minutes (0029). */
+  allowlist_issued_at: Date | null;
+  /** That allowlist is more than 15 minutes old. */
+  allowlist_stale: boolean;
 }
 /** Gate health for a venue (06 D12), faults first. Pass the event for last-scan and throughput figures. */
 export async function gateHealth(db: DbOrTx, venueId: string, opts: { eventId?: string | null; now?: Date } = {}): Promise<GateHealthRow[]> {
@@ -200,6 +209,7 @@ export async function gateHealth(db: DbOrTx, venueId: string, opts: { eventId?: 
     clock_fault: Boolean(x.clock_fault), queue_depth: numOrNull(x.queue_depth), last_scan_at: date(x.last_scan_at),
     scans_last_15m: num(x.scans_last_15m), staff_on_duty: num(x.staff_on_duty),
     position: x.position == null ? null : json<CheckpointPosition>(x.position),
+    allowlist_issued_at: date(x.allowlist_issued_at), allowlist_stale: Boolean(x.allowlist_stale),
   }));
 }
 

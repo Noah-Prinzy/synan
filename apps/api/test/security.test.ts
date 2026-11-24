@@ -307,6 +307,46 @@ describe("#4 public telemetry and on_site reveal nothing below k", () => {
     expect(pubSnap.data.rooms.find((r) => r.room_id === h.seed.rooms.boardroom)).toMatchObject({ occupancy: null, level: "ok" });
   });
 
+  it("no public frame or sequence of frames lets a suppressed room's count be derived from the totals", async () => {
+    type Frame = { type: string; data: { rooms: { room_id: string; occupancy: number | null }[]; zones: { zone_id: string; occupancy: number | null }[]; totals?: { on_site: number | null; in_rooms: number | null } } };
+    const frames: Frame[] = [];
+    const sub = h.app.ctx.telemetry.subscribe(h.seed.eventId, "public", (m) => frames.push(m as unknown as Frame));
+    for (const m of sub.catchUp) frames.push(m as unknown as Frame);
+    try {
+      // Enough people in the Auditorium to be shown; two in the Expo Hall (same zone), below k.
+      for (let i = 0; i < 6; i++) {
+        const p = await addAttendee(h, "VIP");
+        await post(h, [scan(h, h.seed.checkpoints.auditorium, band(p.uid), { direction: "in" })], { deviceId: `aud${i}` });
+      }
+      for (let i = 0; i < 2; i++) {
+        const p = await addAttendee(h, "VIP");
+        await post(h, [scan(h, h.seed.checkpoints.expo, band(p.uid))], { deviceId: `expo${i}` });
+      }
+      await sleep(400);
+      const full = h.app.ctx.telemetry.snapshot(h.seed.eventId, "full");
+      if (full.type !== "occupancy.snapshot") throw new Error();
+      const press = full.data.rooms.find((r) => r.room_id === h.seed.rooms.expo)!.occupancy!;
+      expect(press).toBeGreaterThan(0);
+      expect(press).toBeLessThan(h.app.ctx.config.kAnon);
+      // Replay the public stream as a viewer would and check every state it ever showed.
+      const rooms = new Map<string, number | null>();
+      const zones = new Map<string, number | null>();
+      const shown = (m: Map<string, number | null>) => [...m.values()].reduce<number>((n, v) => n + (v ?? 0), 0);
+      for (const f of [...frames, h.app.ctx.telemetry.snapshot(h.seed.eventId, "public") as unknown as Frame]) {
+        if (f.type === "occupancy.snapshot") (rooms.clear(), zones.clear());
+        for (const r of f.data.rooms) rooms.set(r.room_id, r.occupancy);
+        for (const z of f.data.zones) zones.set(z.zone_id, z.occupancy);
+        if (!f.data.totals) continue;
+        // A total is either hidden or exactly the sum of what is shown: it adds nothing to subtract.
+        if (f.data.totals.in_rooms !== null) expect(f.data.totals.in_rooms).toBe(shown(rooms));
+        if (f.data.totals.on_site !== null) expect(f.data.totals.on_site).toBe(shown(zones));
+        expect(rooms.get(h.seed.rooms.expo) ?? null).toBeNull();
+      }
+    } finally {
+      sub.unsubscribe();
+    }
+  });
+
   it("on_site minus the visible public zones is never a suppressed count", async () => {
     for (let i = 0; i < 6; i++) {
       const p = await addAttendee(h, "ORDINARY");

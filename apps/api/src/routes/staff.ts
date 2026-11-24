@@ -18,7 +18,7 @@ import { ContractError } from "@synan/contracts/errors";
 import { endpoints } from "@synan/contracts/rest";
 import type { AppContext } from "../app.js";
 import { BRAND } from "../brand.js";
-import { currentAssignments, deskEventIds } from "../domain/scope.js";
+import { currentAssignments, deskEventIds, noteScanner } from "../domain/scope.js";
 import { mount } from "../http/route.js";
 import { hashPassword, newTotpSecret, verifyTotp } from "../lib/crypto.js";
 import type { StaffAssignmentRow, UserRow } from "../repo/types.js";
@@ -42,6 +42,17 @@ const offsetCursor = (c: string | undefined) => {
   if (!Number.isInteger(n) || n < 0) throw invalid("query.cursor", "invalid cursor");
   return n;
 };
+
+/** The event a shift works: its own, else the venue's published or live event overlapping it (live first, then earliest). */
+export async function shiftEvent(app: AppContext, a: StaffAssignmentRow, venueId: string) {
+  if (a.event_id) return app.repos.events.byId(a.event_id);
+  const candidates = (await app.repos.events.listAll({ limit: 1000 })).filter(
+    (e) => e.venue_id === venueId && (e.state === "published" || e.state === "live") && e.starts_at && e.ends_at
+      && e.starts_at.getTime() < a.shift_end.getTime() && a.shift_start.getTime() < e.ends_at.getTime(),
+  );
+  candidates.sort((p, q) => (p.state === "live" ? 0 : 1) - (q.state === "live" ? 0 : 1) || p.starts_at!.getTime() - q.starts_at!.getTime());
+  return candidates[0] ?? null;
+}
 
 export function staffRoutes(x: Express, app: AppContext) {
   const audit = (actor: string, action: string, target: string, meta: Record<string, unknown> = {}) => app.audit.append({ actorId: actor, action, target, meta });
@@ -125,8 +136,11 @@ export function staffRoutes(x: Express, app: AppContext) {
     if (!u) throw new ContractError("UNAUTHENTICATED");
     const shift = (await currentAssignments(app, u.id))[0] ?? null;
     const cp = shift ? await app.repos.venues.checkpoint(shift.checkpoint_id) : null;
+    const shiftEv = shift && cp ? await shiftEvent(app, shift, cp.venue_id) : null;
+    const shiftLabel = shift ? [cp?.label, shiftEv?.title].filter((s): s is string => !!s).join(" · ") || null : null;
     return {
       id: u.id, email: u.email, role: u.role, mfa_enrolled: u.mfa_enrolled_at !== null, mfa_fresh: app.auth.isMfaFresh(ctx!),
+      display_name: u.display_name || null, shift_label: shiftLabel,
       current_shift: shift ? { ...assignmentDto(shift), checkpoint_label: cp?.label ?? "" } : null,
       // The token's role decides access; report that one (a role change applies at the next refresh).
       capabilities: capabilitiesOf(ctx!.role ?? u.role),
@@ -144,11 +158,31 @@ export function staffRoutes(x: Express, app: AppContext) {
     return staffDto({ ...u, role: body.role });
   });
 
+  // The scanner's gate picker (06 S1): shifts not yet over and not handed over, each with its gate and
+  // event, so pairing needs no other call. A shift without an event works the venue's event that is
+  // published or live and overlaps the shift (the live one first, then the earliest).
   mount(x, app, endpoints.myAssignments, async ({ ctx }) => {
     const now = app.clock.now();
-    const mine = (await app.repos.staff.assignmentsFor(ctx!.sub)).filter((a) => a.shift_end.getTime() > now);
+    const mine = (await app.repos.staff.assignmentsFor(ctx!.sub)).filter((a) => a.shift_end.getTime() > now && !a.handed_over_at);
     mine.sort((a, b) => a.shift_start.getTime() - b.shift_start.getTime());
-    return { items: mine.map(assignmentDto) };
+    const items = [];
+    for (const a of mine) {
+      const cp = await app.repos.venues.checkpoint(a.checkpoint_id);
+      if (!cp) continue;
+      const zone = await app.repos.venues.zone(cp.zone_id);
+      const room = cp.room_id ? await app.repos.venues.room(cp.room_id) : null;
+      const event = await shiftEvent(app, a, cp.venue_id);
+      items.push({
+        ...assignmentDto(a),
+        event_id: event?.id ?? null,
+        checkpoint: {
+          id: cp.id, label: cp.label, perimeter: cp.perimeter_bool, direction: cp.direction,
+          zone_id: cp.zone_id, zone_name: zone?.name ?? "", room_id: cp.room_id, room_name: room?.name ?? null,
+        },
+        event: event ? { id: event.id, title: event.title } : null,
+      });
+    }
+    return { items };
   });
 
   mount(x, app, endpoints.handover, async ({ params, ctx }) => {
@@ -175,8 +209,8 @@ export function staffRoutes(x: Express, app: AppContext) {
   mount(x, app, endpoints.gateHeartbeat, async ({ body, ctx, ip }) => {
     const now = app.clock.now();
     const channel = `${endpoints.gateHeartbeat.method} ${endpoints.gateHeartbeat.path}`;
-    const mine = (await currentAssignments(app, ctx!.sub)).some((a) => a.checkpoint_id === body.checkpoint_id);
-    if (!mine) {
+    const shift = (await currentAssignments(app, ctx!.sub)).find((a) => a.checkpoint_id === body.checkpoint_id);
+    if (!shift) {
       // A scanner heartbeating for a gate its user is not staffing now (03 §8.2, assignment check).
       await app.scannerTrust.refused({ reason: "not_assigned", channel, ip, userId: ctx!.sub, checkpointId: body.checkpoint_id });
       throw new ContractError("CHECKPOINT_NOT_ASSIGNED");
@@ -186,11 +220,16 @@ export function staffRoutes(x: Express, app: AppContext) {
     const r = await app.gates.phoneHeartbeat({
       userId: ctx!.sub, venueId: cp.venue_id, checkpointId: cp.id, clientDeviceId: body.device_id,
       clockOffsetMs: body.clock_offset_ms, queueDepth: body.queue_depth, online: body.online,
+      allowlistIssuedAt: body.allowlist_issued_at ? new Date(body.allowlist_issued_at) : null,
     });
     if (r !== "ok") {
       await app.scannerTrust.refused({ reason: "scanner_retired", channel, ip, userId: ctx!.sub, checkpointId: cp.id });
       throw new ContractError("FORBIDDEN", "This scanner has been retired.");
     }
+    // The scanner install worked this shift: a queued scan of the shift may later sync from it (A1).
+    await noteScanner(app.repos, shift, body.device_id);
+    const event = await shiftEvent(app, shift, cp.venue_id);
+    await app.gates.allowlistReported({ eventId: event?.id ?? null, checkpointId: cp.id, roomId: cp.room_id, issuedAt: body.allowlist_issued_at ? new Date(body.allowlist_issued_at) : null });
     return { server_time: new Date(now).toISOString() };
   });
 

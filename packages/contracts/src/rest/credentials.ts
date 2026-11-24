@@ -40,6 +40,32 @@ export const Inventory = z.object({
   by_chip_profile: z.record(z.string(), z.number().int()),
   /** Additive, with `event_id` (06 D6.5): the event's credentials by state, every state present. */
   credentials: z.record(CredentialState, z.number().int()).optional(),
+  /**
+   * Additive, with `event_id`: the event's latest wristband actions, newest first (at most 20), from
+   * the audit log — ids and band hints only, never a name. `bound`: a stock band bound to a pass;
+   * `replaced`: a band swapped for another; `lost`: marked lost (by the desk, or `reported_lost` by
+   * its holder); `retired`: taken out of service when swapped as damaged.
+   */
+  recent: z
+    .array(
+      z.object({
+        at: IsoDateTime,
+        action: z.enum(["bound", "replaced", "lost", "reported_lost", "retired"]),
+        carrier_id: Id,
+        credential_id: Id.nullable(),
+        band_hint: z.string(),
+      }),
+    )
+    .optional(),
+  /**
+   * Additive, with `event_id`: the caller's own desk work in their current shift for this event
+   * (since its start); null when they have no current shift. `replaced` counts band swaps, lost or
+   * damaged; `resent` counts passes resent.
+   */
+  today: z
+    .object({ /** Start of the shift counted (always sent by the server). */ since: IsoDateTime.optional(), bound: z.number().int().min(0), replaced: z.number().int().min(0), resent: z.number().int().min(0) })
+    .nullable()
+    .optional(),
 });
 
 export const RevokeRequest = z.object({ reason: z.string().min(3).max(500) });

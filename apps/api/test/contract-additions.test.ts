@@ -69,8 +69,9 @@ describe("telemetry totals", () => {
     await tick();
     expect((full.filter((m) => m.type === "occupancy.delta").at(-1)!.data as { totals: unknown }).totals).toEqual({ on_site: 4, in_rooms: 2 });
     expect(pub.filter((m) => m.type === "occupancy.delta")).toHaveLength(0);
-    hub.update(eventId, [{ room_id: room, zone_id: zone, occupancy: 6, capacity: 50, level: "ok" }], [], 7);
+    hub.update(eventId, [{ room_id: room, zone_id: zone, occupancy: 6, capacity: 50, level: "ok" }], [{ zone_id: zone, occupancy: 7 }], 7);
     await tick();
+    // Public totals add up only the rooms and zones shown (O-08): here everything is shown.
     expect((pub.filter((m) => m.type === "occupancy.delta").at(-1)!.data as { totals: unknown }).totals).toEqual({ on_site: 7, in_rooms: 6 });
     expect((hub.snapshot(eventId, "public").data as { totals: unknown }).totals).toEqual({ on_site: 7, in_rooms: 6 });
     hub.close();

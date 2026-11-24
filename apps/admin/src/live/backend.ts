@@ -1,21 +1,28 @@
 /**
- * The admin's one backend instance. Today: the mock (docs/02 §8). When the API lands,
- * this file is where transport switches — `api` becomes a fetch client and `connect`
- * a WebSocket client; nothing that imports them changes.
+ * The admin's one backend instance (docs/02 §8). Which one is decided at build time:
  *
- * Development-only URL parameters (ignored in a production build):
+ *   VITE_API_URL unset   the mock (live/mock-backend.ts), exactly as before.
+ *   VITE_API_URL=<url>   the real API (src/api), e.g. VITE_API_URL=http://127.0.0.1:5180.
+ *
+ * Each side is loaded with a dynamic import behind a condition Vite replaces with a constant, so a
+ * build carries one of them and not the other. Everything else imports `api`, `configure`,
+ * `connect` and `clock` from here and does not know which it got; only sign-in, the second factor
+ * and the development tools ask `mode`.
+ *
+ * Development-only URL parameters (mock only; ignored in a production build):
  *   ?venue=large        Nexus Hall's 60-room build (the performance test)
  *   ?live=none          no event is live (the D1 empty state)
  *   ?slow=1             REST takes 2.5 s (loading state)
  *   ?fail=1             the first layout load fails (error state)
  *   ?ambient=0          no background traffic
  *   ?scenario=<name>    play a named scenario on load;  &loop=1 to repeat it
- *   ?fps=1              show the frame-time sampler
+ *   ?fps=1              show the frame-time sampler (also on the real API)
  *   ?setup=fresh        no organisation or venues yet (D0 first run, empty venue list)
  *   ?as=<role>          sign in as admin, organiser, supervisor, desk_clerk, security_staff, speaker or crew
  */
-import { DEMO_NOW, MockClock } from "@synan/mock";
-import { createCommandMock, SESSION_ROLES, type SessionRole } from "@synan/mock/command";
+import type { MockClock } from "@synan/mock";
+import type { CommandApi, CommandMock, ConfigureApi } from "@synan/mock/command";
+import type { AdminAuth } from "../api";
 import type { LiveTransport } from "./transport";
 
 /**
@@ -23,6 +30,12 @@ import type { LiveTransport } from "./transport";
  * measure production React with the scenario switcher. Never set for a shipped build.
  */
 export const DEV_TOOLS = import.meta.env.DEV || import.meta.env.VITE_SYNAN_DEVTOOLS === "1";
+
+/** The real API's origin, or null on the mock. */
+export const API_URL: string | null = import.meta.env.VITE_API_URL ? String(import.meta.env.VITE_API_URL) : null;
+
+/** `api`: signing in, the second factor and the server's capabilities are real; the mock's personas are gone. */
+export const mode: "mock" | "api" = import.meta.env.VITE_API_URL ? "api" : "mock";
 
 const params = new URLSearchParams(DEV_TOOLS ? window.location.search : "");
 
@@ -39,29 +52,25 @@ export const devParams = {
   freshSetup: params.get("setup") === "fresh",
 };
 
-export const clock = new MockClock(DEMO_NOW);
-
 const DEV_ROLE_KEY = "synan.admin.dev-role";
 
 /**
- * Development only: the role to sign in as (?as=supervisor, or the last role picked in the
- * dev tools). A production build always starts from the real session.
+ * Development only, mock only: the role to sign in as (?as=supervisor, or the last role picked in
+ * the dev tools). A production build always starts from the real session.
  */
-function devRole(): SessionRole | undefined {
-  if (!DEV_TOOLS) return undefined;
-  let wanted = params.get("as");
-  if (!wanted) {
-    try {
-      wanted = window.localStorage.getItem(DEV_ROLE_KEY);
-    } catch {
-      wanted = null;
-    }
+function devRole(): string | null {
+  if (!DEV_TOOLS) return null;
+  const wanted = params.get("as");
+  if (wanted) return wanted;
+  try {
+    return window.localStorage.getItem(DEV_ROLE_KEY);
+  } catch {
+    return null;
   }
-  return SESSION_ROLES.find((role) => role === wanted);
 }
 
 /** Development only: keep the previewed role across reloads. */
-export function rememberDevRole(role: SessionRole): void {
+export function rememberDevRole(role: string): void {
   if (!DEV_TOOLS) return;
   try {
     if (role === "admin") window.localStorage.removeItem(DEV_ROLE_KEY);
@@ -71,23 +80,54 @@ export function rememberDevRole(role: SessionRole): void {
   }
 }
 
-export const backend = createCommandMock({
-  clock,
-  venueSize: devParams.venue,
-  noLiveEvent: devParams.noLive,
-  latencyMs: devParams.slow ? 2500 : 300,
-  failFirstLoad: devParams.fail,
-  freshOrganization: devParams.freshSetup,
-  role: devRole(),
-});
+interface Backend {
+  api: CommandApi;
+  configure: ConfigureApi;
+  /**
+   * The screens read only `now()`. On the real API it is server time (GET /time offset), not a
+   * MockClock; the type stays MockClock so the desk's mock keeps compiling until it moves over.
+   */
+  clock: MockClock;
+  connect(eventId: string): LiveTransport | null;
+  /** Real API only: sign-in, the second-factor prompt, sign-out from the server. */
+  auth: AdminAuth | null;
+  /** Mock only: personas, scenarios and link control for the development tools. */
+  mock: CommandMock | null;
+}
 
-export const api = backend.api;
+async function load(): Promise<Backend> {
+  if (import.meta.env.VITE_API_URL) {
+    const { createRealBackend } = await import("../api");
+    const real = createRealBackend(String(import.meta.env.VITE_API_URL), {
+      debug: DEV_TOOLS ? (message, detail) => console.debug(message, detail ?? "") : undefined,
+    });
+    return {
+      api: real.api,
+      configure: real.configure,
+      clock: real.clock as unknown as MockClock,
+      connect: real.connect,
+      auth: real.auth,
+      mock: null,
+    };
+  }
+  const { createMockBackend } = await import("./mock-backend");
+  const mock = createMockBackend({ ...devParams, wantedRole: devRole() });
+  return { ...mock, auth: null };
+}
+
+const chosen = await load();
+
+export const api: CommandApi = chosen.api;
 
 /** The configure side: first run, venues, events, the wizard and the event workspace. */
-export const configure = backend.configure;
+export const configure: ConfigureApi = chosen.configure;
 
-export function connect(eventId: string): LiveTransport | null {
-  const transport = backend.realtimeFor(eventId);
-  if (transport && devParams.ambient) backend.serverFor(eventId)?.startAmbient();
-  return transport;
-}
+export const clock: MockClock = chosen.clock;
+
+export const connect: (eventId: string) => LiveTransport | null = chosen.connect;
+
+/** Real API only (null on the mock). */
+export const auth: AdminAuth | null = chosen.auth;
+
+/** Mock only (null on the real API): the development tools' handle on the mock server. */
+export const mockBackend: CommandMock | null = chosen.mock;

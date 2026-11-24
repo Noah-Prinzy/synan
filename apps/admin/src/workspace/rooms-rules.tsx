@@ -32,6 +32,7 @@ import {
   useDocumentTitle,
   useResource,
 } from "../kit";
+import { useCan } from "../access/session";
 import { clock, configure } from "../live/backend";
 import { useLeaveGuard } from "../venues/editor/use-leave-guard";
 import { ReadOnlyNote, eventRooms, useWorkspaceEvent } from "./parts/context";
@@ -50,6 +51,7 @@ export default function WorkspaceRoomsRules() {
   const { event, venue, readOnly, tabPrimary, reload: reloadEvent } = useWorkspaceEvent();
   useDocumentTitle(`Rooms & rules · ${event.title || "Untitled event"}`);
   const ruleSet = useResource(() => configure.accessRules(event.id), [event.id]);
+  const canEditVenues = useCan()("venues.edit");
 
   const venueData = venue.status === "ready" ? venue.data : null;
   const rooms = useMemo(() => eventRooms(event, venueData), [event, venueData]);
@@ -258,7 +260,7 @@ export default function WorkspaceRoomsRules() {
                 Settings
               </Link>
               ; the rooms themselves are drawn in the{" "}
-              {event.venue_id ? (
+              {event.venue_id && canEditVenues ? (
                 <Link to={`/venues/${event.venue_id}`} className={linkClass}>
                   venue editor
                 </Link>

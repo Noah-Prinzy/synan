@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { SCAN_RESULT_COPY } from "@synan/contracts/copy";
 import { ResultChip } from "@synan/ui/data";
 import { ActionButton } from "@synan/ui/components";
-import { UNDO_WINDOW_MS, undo, useScanner } from "../data/store";
+import { undo, undoDeadline, useScanner } from "../data/store";
 
 function time(ms: number): string {
   return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
@@ -19,7 +19,10 @@ export default function Recent() {
 
   // Re-render each second while an undo window is open, so the button leaves on time.
   const [now, setNow] = useState(() => Date.now());
-  const anyUndoable = list.some((scan) => scan.result === "admitted" && !scan.undone && now - scan.at < UNDO_WINDOW_MS);
+  // Offered only while it can succeed: 60 s on the mock; API mode, the runtime's deadline (own
+  // admission, own shift at this gate, inside the server's window).
+  const until = (scan: (typeof list)[number]) => undoDeadline(scan);
+  const anyUndoable = list.some((scan) => (until(scan) ?? 0) > now);
   useEffect(() => {
     if (!anyUndoable) return;
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -37,7 +40,8 @@ export default function Recent() {
       ) : (
         <ul className="border-t border-border">
           {list.map((scan) => {
-            const undoable = scan.result === "admitted" && !scan.undone && now - scan.at < UNDO_WINDOW_MS;
+            const deadline = until(scan);
+            const undoable = deadline !== null && now < deadline;
             return (
               <li key={scan.id} className="border-b border-border px-4 py-3 sm:px-6">
                 <div className="flex min-h-10 items-center gap-3">
@@ -58,19 +62,25 @@ export default function Recent() {
                       <span aria-hidden="true" className="size-1.5 bg-destructive" />
                       Not sent
                     </p>
+                  ) : scan.heldBack ? (
+                    <p className="mt-1 flex items-center justify-end gap-1.5 text-13 text-muted-foreground" title="Undone before it was sent. Kept on this device.">
+                      <span aria-hidden="true" className="size-1.5 bg-muted-foreground" />
+                      Not sent
+                    </p>
                   ) : (
                     <p className={`mt-1 flex items-center justify-end gap-1.5 text-13 ${scan.synced ? "text-muted-foreground" : "text-warning"}`}>
                       <span aria-hidden="true" className={`size-1.5 ${scan.synced ? "bg-muted-foreground" : "bg-warning"}`} />
-                      {scan.synced ? "Sent" : "Waiting"}
+                      {scan.synced ? (scan.lateSynced ? "Sent late" : "Sent") : "Waiting"}
                     </p>
                   )}
                 </div>
                 </div>
+                {scan.undoNote ? <p className="mt-1 text-13 text-muted-foreground">{scan.undoNote}</p> : null}
                 {/* UndoStrip: for 60 s after an admission, in case it was a mistake. */}
                 {undoable ? (
                   <div className="mt-2 flex items-center justify-between gap-3">
                     <p className="text-13 text-muted-foreground">
-                      Let in by mistake? <span className="font-mono">{Math.ceil((UNDO_WINDOW_MS - (now - scan.at)) / 1000)} s</span>
+                      Let in by mistake? <span className="font-mono">{Math.ceil(((deadline ?? now) - now) / 1000)} s</span>
                     </p>
                     <ActionButton
                       action={() => undo(scan.id)}

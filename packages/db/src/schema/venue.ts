@@ -297,11 +297,16 @@ export const events = pgTable(
     published_at: tstz("published_at"),
     /** The operator who last changed the event, its rooms, sessions or access rules. */
     updated_by: uuid("updated_by").references((): AnyPgColumn => users.id),
+    /** Organiser contact shown to invitees (a name and an address chosen for the event; 0032). */
+    contact_name: text("contact_name"),
+    contact_email: text("contact_email"),
     created_at: createdAt(),
     updated_at: updatedAt(),
   },
   (t) => [
     uniqueIndex("events_slug_uq").on(t.slug),
+    check("events_contact_name_len", sql`char_length(${t.contact_name}) BETWEEN 1 AND 200`),
+    check("events_contact_email_shape", sql`char_length(${t.contact_email}) <= 254 AND ${t.contact_email} LIKE '%_@_%'`),
     index("events_venue_idx").on(t.venue_id),
     index("events_state_idx").on(t.state, t.starts_at),
     index("events_updated_idx").on(t.updated_at),

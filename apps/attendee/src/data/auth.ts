@@ -27,11 +27,6 @@ export async function verifyToken(token: string, next: string): Promise<VerifyOu
   return outcome;
 }
 
-/** PATCH /users/:id/profile (full_name). The session keeps the new name. */
-export function updateName(name: string): Promise<void> {
-  return backend.updateName(name);
-}
-
 export function signOut(): void {
   backend.signOut();
   if (backend.mode === "api") clearResources();

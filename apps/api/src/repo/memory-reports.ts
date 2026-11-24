@@ -254,6 +254,7 @@ export function memoryReports(t: MemoryTables, audit?: (e: { actor_id: string | 
       for (const [k, s] of t.scans) if (s.event_id === eventId) t.scans.delete(k);
       for (const k of [...t.scansByIdem.keys()]) if (k.startsWith(`${eventId}:`)) t.scansByIdem.delete(k);
       for (const k of [...t.ephemeralIds.keys()]) if (k.startsWith(`${eventId}:`)) t.ephemeralIds.delete(k);
+      t.scanVoids = t.scanVoids.filter((v) => v.event_id !== eventId); // correction records go with the scans
       t.purgedEvents.set(eventId, new Date());
       audit?.({ actor_id: actorId, action: "event.purge", target: `event:${eventId}`, meta_jsonb: {}, at: new Date() });
     },

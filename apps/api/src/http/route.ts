@@ -1,7 +1,8 @@
 /**
  * Mounts a contract endpoint on Express. Every request passes, in order:
  *   bearer verification → rate limit (signed in: per subject; public sign-in endpoints: per IP,
- *   failures only; anonymous calls to protected endpoints: per IP) → RBAC (def.access)
+ *   failures only; anonymous calls to protected endpoints: per IP; `public` reads: every call, per
+ *   IP or subject) → RBAC (def.access)
  *   → MFA freshness (def.mfa) → Zod validation of params, query, body → handler
  *   → response validated against def.response (outside production) → JSON.
  */
@@ -117,6 +118,10 @@ export function mount<E extends EndpointDef>(express: Express, app: AppContext, 
         } else {
           rl(ipKey, ipLimit, 60_000); // anonymous call to a protected endpoint
         }
+      }
+      if (def.rateLimit === "public") {
+        // Anonymous reads: every call counts, per address; a signed-in caller per subject.
+        rl(ctx ? `sub:${ctx.sub}:${def.path}` : `ip:${ip}:${def.path}`, app.config.publicReadsPerMin, 60_000);
       }
       if (authError) throw authError;
       if (!allowed(def, ctx)) throw new ContractError(ctx ? "FORBIDDEN" : "UNAUTHENTICATED");

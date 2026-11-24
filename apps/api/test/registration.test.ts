@@ -32,6 +32,7 @@ describe("slice 3 · Ordinary self-registration with email verification", () => 
   let token: string;
   let reg: Registration;
 
+  let passMailsBefore = 0;
   it("register answers 202 and sends a sign-in link; no registration exists until the address is proved", async () => {
     const r = await h.call("POST", "/users/register", {
       body: { email, full_name: "New Comer", event_slug: h.seed.publishedEventSlug, profile: {}, zone_presence_consent: false },
@@ -39,9 +40,11 @@ describe("slice 3 · Ordinary self-registration with email verification", () => 
     expect(r.status).toBe(202);
     expect(r.body).toEqual({ accepted: true, verification_sent: true });
     const att = await h.app.ctx.repos.attendees.byEmail(email);
-    expect(att?.full_name).toBe("New Comer");
+    expect(att?.full_name).toBeNull(); // the answers wait with the link (pending registration)
     expect(await h.app.ctx.repos.registrations.forAttendee(att!.id)).toHaveLength(0);
-    token = await signIn(email);
+    passMailsBefore = h.mailer.outbox.length;
+    token = await signIn(email); // redeeming the link completes the pending registration
+    expect((await h.app.ctx.repos.attendees.byEmail(email))?.full_name).toBe("New Comer");
   });
 
   it("an unlisted, draft or unknown event answers 404, exactly like a missing slug", async () => {
@@ -57,7 +60,8 @@ describe("slice 3 · Ordinary self-registration with email verification", () => 
   });
 
   it("the verified attendee registers: Ordinary, confirmed, consent recorded separately, credential issued, pass sent", async () => {
-    const before = h.mailer.outbox.length;
+    // The old second call (POST /registrations after the link) adopts the registration the link completed.
+    const before = passMailsBefore;
     const r = await h.call<Registration>("POST", "/registrations", { token, body: { event_id: h.seed.publishedEventId, zone_presence_consent: false } });
     expect(r.status).toBe(201);
     reg = r.body;

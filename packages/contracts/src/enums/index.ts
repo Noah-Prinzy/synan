@@ -130,7 +130,8 @@ export const GateTone = z.enum(["green", "amber", "red", "none"]);
 export type GateTone = z.infer<typeof GateTone>;
 
 /** `occupancy_adjustments.reason` (02 §4.4). */
-export const OccupancyAdjustmentReason = z.enum(["session_end", "recount", "sync_conflict"]);
+/** `scan_undo` (additive): the count correction written when a scanner undoes a mistaken admission. */
+export const OccupancyAdjustmentReason = z.enum(["session_end", "recount", "sync_conflict", "scan_undo"]);
 export type OccupancyAdjustmentReason = z.infer<typeof OccupancyAdjustmentReason>;
 
 /* ------------------------------------------------------------------ alerts */
@@ -161,6 +162,7 @@ export const AlertKind = z.enum([
   "rogue_scanner", // scanner outside assignment/shift
   "stale_allowlist", // offline fail-open on a stale allowlist
   "reconciliation_fault", // occupancy would have gone negative
+  "band_reported_lost", // the holder reported their wristband lost (low; the desk binds a new one)
 ]);
 export type AlertKind = z.infer<typeof AlertKind>;
 export const ALERT_KIND_VALUES = AlertKind.options;

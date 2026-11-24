@@ -37,6 +37,16 @@ export interface Config {
    * Online scans are always judged at server receipt time.
    */
   offlineSyncGraceS: number;
+  /**
+   * Scans that name the assignment they were made under (offline queue) may be synced this long after
+   * that assignment ended or was handed over — by its maker, or by another staff member now on shift
+   * at the same checkpoint on the same scanner (01 §8). Bounded; default 12 hours.
+   */
+  offlineLateSyncS: number;
+  /** A refresh token presented again this soon after its exchange, by the same client, is re-issued instead of ending the session (0029). */
+  refreshReuseGraceS: number;
+  /** How long after a scan its scanner may undo a mistaken admission (06 S3). */
+  scanUndoWindowS: number;
   /** Repository implementation: in-memory maps, or @synan/db on an in-process PGlite. */
   /**
    * Repository: in-memory maps (no encryption); @synan/db on an in-process PGlite (dev/tests, dev keys
@@ -70,6 +80,11 @@ export interface Config {
   checkpointScansPerMin: number;
   /** POST /me/credential/resend: emails of an attendee's own pass, per attendee per hour (strict; it mails a live credential). */
   selfResendPerHour: number;
+  /**
+   * Endpoints with the `public` rate-limit bucket (anonymous reads such as GET /events/:id/occupancy):
+   * calls per minute per caller address (signed in: per subject), every call counting.
+   */
+  publicReadsPerMin: number;
   /** Validate every response against its contract (on outside production). */
   /** Absolute origin of this API, for signed report download links. */
   publicApiOrigin: string;
@@ -131,11 +146,15 @@ export function validateConfig(c: Config): Config {
   range("QR_LEEWAY_S", c.qrLeewayS, 0, 30);
   range("K_ANON", c.kAnon, 1, 1000);
   range("OFFLINE_SYNC_GRACE_S", c.offlineSyncGraceS, 0, 24 * 3600);
+  range("OFFLINE_LATE_SYNC_S", c.offlineLateSyncS, 0, 48 * 3600);
+  range("REFRESH_REUSE_GRACE_S", c.refreshReuseGraceS, 0, 30);
+  range("SCAN_UNDO_WINDOW_S", c.scanUndoWindowS, 0, 600);
   range("RATE_AUTH_PER_MIN", c.rateLimits.authPerMin, 1, 1_000_000);
   range("RATE_SCAN_PER_MIN", c.rateLimits.scanPerMin, 1, 10_000_000);
   range("RATE_RESEND_PER_HOUR", c.rateLimits.resendPerHour, 1, 1_000_000);
   range("RATE_CHECKPOINT_SCANS_PER_MIN", c.checkpointScansPerMin, 60, 1_000_000);
   range("RATE_SELF_RESEND_PER_HOUR", c.selfResendPerHour, 1, 100);
+  range("RATE_PUBLIC_PER_MIN", c.publicReadsPerMin, 1, 1_000_000);
   range("REPORT_LINK_TTL_S", c.reportLinkTtlS, 30, 3600);
   // At most half the outbox claim lease (@synan/db EMAIL_CLAIM_LEASE_SECONDS = 120 s): a send still in
   // flight when its lease runs out can be claimed and sent again by another worker.
@@ -182,6 +201,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: readonly 
     qrLeewayS: int(env, "QR_LEEWAY_S", 5),
     kAnon: int(env, "K_ANON", 5),
     offlineSyncGraceS: int(env, "OFFLINE_SYNC_GRACE_S", 3600),
+    offlineLateSyncS: int(env, "OFFLINE_LATE_SYNC_S", 12 * 3600),
+    refreshReuseGraceS: int(env, "REFRESH_REUSE_GRACE_S", 10),
+    scanUndoWindowS: int(env, "SCAN_UNDO_WINDOW_S", 60),
     repo: env.REPO === "postgres" ? "postgres" : env.REPO === "pglite" || argv.includes("--repo=pglite") ? "pglite" : "memory",
     databaseUrl: env.DATABASE_URL || null,
     databaseVaultUrl: env.DATABASE_VAULT_URL || null,
@@ -198,6 +220,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: readonly 
     },
     checkpointScansPerMin: int(env, "RATE_CHECKPOINT_SCANS_PER_MIN", 3000),
     selfResendPerHour: int(env, "RATE_SELF_RESEND_PER_HOUR", 3),
+    publicReadsPerMin: int(env, "RATE_PUBLIC_PER_MIN", 120),
     publicApiOrigin: env.API_PUBLIC_ORIGIN ?? "http://127.0.0.1:5180",
     reportStorageDir: env.REPORT_STORAGE_DIR ?? join(tmpdir(), "synan-reports"),
     reportLinkTtlS: int(env, "REPORT_LINK_TTL_S", 600),

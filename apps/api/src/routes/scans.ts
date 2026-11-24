@@ -3,7 +3,9 @@ import { ContractError } from "@synan/contracts/errors";
 import { endpoints, type BreachAlert } from "@synan/contracts/rest";
 import type { AppContext } from "../app.js";
 import { toAlertDto } from "../domain/alerts.js";
+import { hint } from "../domain/credential-service.js";
 import type { AuthContext } from "../domain/principal.js";
+import { nfcIdentifier } from "../domain/scan-service.js";
 import { mount } from "../http/route.js";
 import type { BreachAlertRow, ScanRow } from "../repo/types.js";
 
@@ -22,7 +24,42 @@ const scanDto = (s: ScanRow, withPerson = false) => ({
   received_at: s.received_at.toISOString(),
   clock_offset_ms: s.clock_offset_ms,
   offline: s.offline_bool,
+  corrected_at: new Date(s.occurred_at.getTime() + s.clock_offset_ms).toISOString(),
 });
+
+/** GET /scans counts matching scans up to this many; beyond it `total` is a lower bound. */
+const LOG_COUNT_CAP = 10_000;
+
+/**
+ * The event's credentials a log search names (GET /scans `q`): a credential id, a credential
+ * reference (22 characters), a band's UID (hex), or a band hint's last four characters. Never a name.
+ */
+async function credentialsMatching(app: AppContext, eventId: string, raw: string): Promise<string[]> {
+  const q = raw.replace(/^band\s*/i, "").replace(/[•\s]/g, "");
+  const regs = new Set((await app.repos.registrations.forEvent(eventId)).map((r) => r.id));
+  const ofEvent = (c: { registration_id: string | null } | null) => !!c && c.registration_id !== null && regs.has(c.registration_id);
+  const out = new Set<string>();
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(q)) {
+    const c = await app.repos.credentials.byId(q.toLowerCase());
+    if (c && ofEvent(c)) out.add(c.id);
+  }
+  if (/^[A-Za-z0-9_-]{22}$/.test(q)) {
+    const c = await app.repos.credentials.byTokenHash(q);
+    if (c && ofEvent(c)) out.add(c.id);
+  }
+  if (/^[0-9A-Fa-f]{8,32}$/.test(q)) {
+    const band = await app.repos.carriers.byIdentifier("nfc", nfcIdentifier(q));
+    const c = band?.credential_id ? await app.repos.credentials.byId(band.credential_id) : null;
+    if (c && ofEvent(c)) out.add(c.id);
+  }
+  if (/^[A-Za-z0-9_-]{4}$/.test(q)) {
+    const creds = await app.repos.credentials.forRegistrations([...regs]);
+    for (const band of await app.repos.carriers.forCredentials(creds.map((c) => c.id))) {
+      if (band.kind === "nfc" && band.credential_id && band.identifier?.endsWith(q)) out.add(band.credential_id);
+    }
+  }
+  return [...out];
+}
 
 /**
  * Checkpoints a non-operator may see alerts for: the ones they are assigned to right now (03 §4, §8.2
@@ -43,15 +80,96 @@ function forStaff(a: BreachAlert): BreachAlert {
 export function scanRoutes(x: Express, app: AppContext) {
   mount(x, app, endpoints.postScans, async ({ body, ctx }) => app.scans.ingest(ctx!, body));
 
-  mount(x, app, endpoints.listScans, async ({ query }) => {
+  // 06 S3 `Undo`: the scanner's own admission, within the window; a correction record, never a delete.
+  mount(x, app, endpoints.undoScan, async ({ params, body, ctx }) => app.scans.undo(ctx!, body.event_id, params.id, body.reason));
+
+  mount(x, app, endpoints.listScans, async ({ query, ctx }) => {
+    const checkpointIds = query.checkpoint_ids ? [...new Set([...query.checkpoint_ids, ...(query.checkpoint_id ? [query.checkpoint_id] : [])])] : undefined;
+    let ephemeralIds: string[] | undefined;
+    if (query.q) {
+      // One pass's scans is a per-person movement view: the audited access-history lookup's rules
+      // (03 §5, §7) — operators only, written to the audit log, and still no per-person id per record.
+      if (ctx!.role !== "admin" && ctx!.role !== "organiser") throw new ContractError("FORBIDDEN", "Searching the log for one pass is for admins and organisers.");
+      const event = await app.repos.events.byId(query.event_id);
+      if (!event) throw new ContractError("NOT_FOUND");
+      const found = await credentialsMatching(app, event.id, query.q);
+      ephemeralIds = [];
+      for (const c of found) {
+        const eph = await app.repos.ephemeralIds.find(event.id, c);
+        if (eph) ephemeralIds.push(eph);
+      }
+      if (found.length) {
+        await app.audit.append({
+          actorId: ctx!.sub, action: "credential.access_history", target: `event:${event.id}`,
+          meta: { event_id: event.id, via: "scan_log_search", credential_ids: found, cursor: query.cursor ?? null },
+        });
+      }
+    }
+    const filter = { checkpointIds, result: query.result, ephemeralIds };
     const rows = await app.repos.scans.page(query.event_id, {
-      checkpointId: query.checkpoint_id,
-      result: query.result,
+      checkpointId: checkpointIds ? undefined : query.checkpoint_id,
+      ...filter,
       limit: query.limit + 1,
       before: query.cursor,
     });
     const page = rows.slice(0, query.limit);
-    return { items: page.map((s) => scanDto(s)), next_cursor: rows.length > query.limit ? page[page.length - 1]!.id : null };
+    const stats = await app.repos.scans.logStats(query.event_id, { ...filter, checkpointIds: checkpointIds ?? (query.checkpoint_id ? [query.checkpoint_id] : undefined), cap: LOG_COUNT_CAP });
+    return {
+      items: page.map((s) => scanDto(s)),
+      next_cursor: rows.length > query.limit ? page[page.length - 1]!.id : null,
+      total: stats.total,
+      total_exact: stats.exact,
+      oldest_at: stats.oldest_at?.toISOString() ?? null,
+    };
+  });
+
+  // The alert detail sheet (06 D10): the alert with its gate, room, scans, credential and history.
+  mount(x, app, endpoints.getAlert, async ({ params }) => {
+    const a = await app.repos.alerts.byId(params.id);
+    if (!a) throw new ContractError("NOT_FOUND");
+    const cp = a.checkpoint_id ? await app.repos.venues.checkpoint(a.checkpoint_id) : null;
+    const roomId = a.room_id ?? cp?.room_id ?? null;
+    const room = roomId ? await app.repos.venues.room(roomId) : null;
+    const capacity = room ? ((await app.repos.events.rooms(a.event_id)).find((r) => r.room_id === room.id)?.capacity_override ?? room.capacity) : 0;
+    const labels = new Map<string, string>();
+    const scans = [];
+    for (const id of a.scan_ids) {
+      const s = await app.repos.scans.byId(a.event_id, id);
+      if (!s) continue; // purged with the event's scans (03 §6)
+      if (!labels.has(s.checkpoint_id)) labels.set(s.checkpoint_id, (await app.repos.venues.checkpoint(s.checkpoint_id))?.label ?? "");
+      scans.push({ ...scanDto(s), checkpoint_label: labels.get(s.checkpoint_id)! });
+    }
+    scans.sort((p, q) => p.corrected_at.localeCompare(q.corrected_at));
+    let credential = null;
+    if (a.credential_id) {
+      const c = await app.repos.credentials.byId(a.credential_id);
+      if (c) {
+        const reg = c.registration_id ? await app.repos.registrations.byId(c.registration_id) : null;
+        const band = (await app.repos.carriers.forCredential(c.id)).find((k) => k.kind === "nfc" && (k.state === "assigned" || k.state === "bound" || k.state === "active"));
+        credential = { id: c.id, registration_id: c.registration_id, state: c.state, tier: reg?.tier ?? null, band_hint: band ? hint(band) : null };
+      }
+    }
+    const entries = (await app.repos.audit.find({ actions: ["alert.ack", "alert.resolve"], targets: [`alert:${a.id}`], limit: 20 })).reverse();
+    const names = new Map<string, string | null>();
+    const history = [];
+    for (const h of entries) {
+      if (h.actor_id && !names.has(h.actor_id)) {
+        const u = await app.repos.users.byId(h.actor_id);
+        names.set(h.actor_id, u ? u.display_name || u.email : null);
+      }
+      history.push({
+        action: h.action === "alert.ack" ? ("acked" as const) : ("resolved" as const), at: h.at.toISOString(), actor_id: h.actor_id,
+        actor_name: h.actor_id ? (names.get(h.actor_id) ?? null) : null, note: typeof h.meta_jsonb.note === "string" ? h.meta_jsonb.note : null,
+      });
+    }
+    return {
+      alert: toAlertDto(a),
+      room: room ? { id: room.id, name: room.name, capacity } : null,
+      checkpoint: cp ? { id: cp.id, label: cp.label, perimeter: cp.perimeter_bool, room_id: cp.room_id } : null,
+      scans,
+      credential,
+      history,
+    };
   });
 
   // The audited access-history lookup of one credential (03 §5, §7): the only per-person movement view.
@@ -128,6 +246,30 @@ export function scanRoutes(x: Express, app: AppContext) {
     const event = await app.repos.events.byId(query.event_id);
     if (!event) throw new ContractError("NOT_FOUND");
     return { items: await app.gates.health(event) };
+  });
+
+  // One gate's per-minute throughput (06 D12, D12b) from the per-gate rollups (D-16): counts only.
+  mount(x, app, endpoints.checkpointActivity, async ({ params, query }) => {
+    const cp = await app.repos.venues.checkpoint(params.id);
+    const event = await app.repos.events.byId(query.event_id);
+    if (!cp || !event || event.venue_id !== cp.venue_id) throw new ContractError("NOT_FOUND");
+    const current = Math.floor(app.clock.now() / 60_000) * 60_000;
+    const from = current - (query.minutes - 1) * 60_000;
+    const rows = (await app.repos.rollups.gateRates(event.id)).filter((r) => r.checkpoint_id === cp.id && r.minute_start.getTime() >= from && r.minute_start.getTime() <= current);
+    const by = new Map(rows.map((r) => [r.minute_start.getTime(), r]));
+    const byResult: Record<string, number> = {};
+    for (const r of rows) for (const [k, n] of Object.entries(r.by_result_jsonb)) byResult[k] = (byResult[k] ?? 0) + n;
+    return {
+      checkpoint_id: cp.id,
+      event_id: event.id,
+      from: new Date(from).toISOString(),
+      minutes: Array.from({ length: query.minutes }, (_, i) => {
+        const t = from + i * 60_000;
+        const r = by.get(t);
+        return { at: new Date(t).toISOString(), scans: r?.scans ?? 0, admitted: r?.admitted ?? 0, denied: r?.denied ?? 0 };
+      }),
+      by_result: byResult,
+    };
   });
 }
 

@@ -16,6 +16,11 @@ export function memoryGateHealth(t: MemoryTables, venueId: string, eventId: stri
       const hb = t.checkpointHealth.get(c.id) ?? null;
       const age = hb ? Math.floor((at - hb.at.getTime()) / 1000) : null;
       const depths = [...t.devices.values()].filter((d) => d.checkpoint_id === c.id && d.state === "active" && d.last_queue_depth !== null).map((d) => d.last_queue_depth!);
+      // 0029: the oldest allowlist among active devices heard from in the last 15 minutes.
+      const lists = [...t.devices.values()]
+        .filter((d) => d.checkpoint_id === c.id && d.state === "active" && d.allowlist_issued_at && d.last_heartbeat_at && d.last_heartbeat_at.getTime() > at - 15 * 60_000)
+        .map((d) => d.allowlist_issued_at!.getTime());
+      const allowlist = lists.length ? new Date(Math.min(...lists)) : null;
       const scans = eventId ? [...t.scans.values()].filter((s) => s.event_id === eventId && s.checkpoint_id === c.id) : [];
       const times = scans.map(corrected);
       return {
@@ -30,6 +35,8 @@ export function memoryGateHealth(t: MemoryTables, venueId: string, eventId: stri
           (a) => a.checkpoint_id === c.id && a.shift_start.getTime() <= at && at < a.shift_end.getTime() && (!a.handed_over_at || a.handed_over_at.getTime() > at),
         ).length,
         position: c.position_jsonb ? structuredClone(c.position_jsonb) : null,
+        allowlist_issued_at: allowlist,
+        allowlist_stale: allowlist !== null && allowlist.getTime() < at - 15 * 60_000,
       };
     });
   const down = (r: GateHealthDbRow) => (r.link_state === "online" ? 0 : 1);

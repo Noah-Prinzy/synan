@@ -55,8 +55,19 @@ export function meRoutes(x: Express, app: AppContext) {
   mount(x, app, endpoints.mySessions, async ({ ctx }) => {
     const items = [];
     for (const r of await confirmedEvents(ctx!.sub)) {
+      const e = await app.repos.events.byId(r.event_id);
+      if (!e) continue;
+      // Each item says which event and room it is in, with the room's capacity in force for the event.
+      const eventRooms = await app.repos.events.rooms(e.id);
+      const override = new Map(eventRooms.map((x) => [x.room_id, x.capacity_override]));
+      const rooms = new Map((await app.repos.venues.roomsByIds(eventRooms.map((x) => x.room_id))).map((x) => [x.id, x]));
       for (const s of await app.repos.events.sessions(r.event_id)) {
-        items.push({ id: s.id, event_id: s.event_id, room_id: s.room_id, title: s.title, starts_at: s.starts_at.toISOString(), ends_at: s.ends_at.toISOString() });
+        const room = rooms.get(s.room_id);
+        items.push({
+          id: s.id, event_id: s.event_id, room_id: s.room_id, title: s.title, starts_at: s.starts_at.toISOString(), ends_at: s.ends_at.toISOString(),
+          event_slug: e.slug, event_title: e.title, event_timezone: e.timezone,
+          ...(room ? { room_name: room.name, room_capacity: override.get(room.id) ?? room.capacity } : {}),
+        });
       }
     }
     items.sort((a, b) => a.starts_at.localeCompare(b.starts_at));
@@ -127,6 +138,7 @@ export function meRoutes(x: Express, app: AppContext) {
     if (!r) throw new ContractError("NOT_FOUND");
     if (r.state !== "requested" && r.state !== "in_progress") throw new ContractError("CONFLICT", "This request is already closed.");
     if (r.kind === "erasure") {
+      // Also deletes the attendee's pending self-service registrations (SQL: erase_attendee, 0031).
       await app.repos.dataRequests.erase(r, ctx!.sub, new Date(app.clock.now()));
       await app.audit.append({ actorId: ctx!.sub, action: "data_request.process", target: `data_request:${r.id}`, meta: { kind: r.kind } });
     } else {

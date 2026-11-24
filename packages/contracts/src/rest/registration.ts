@@ -5,6 +5,7 @@ import { AttendeeTier, CredentialState, InvitationState, RegistrationState } fro
 import { ErrorCode } from "../errors/index.js";
 import { Carrier } from "./credentials.js";
 import { endpoint, IdParam, OPERATORS, PUBLIC, type Access } from "./endpoint.js";
+import { ProfileField } from "./events.js";
 
 /** One refused item of a batch request (`index` into the request array). A batch never fails as a whole for one bad item. */
 export const BatchItemRejection = z.object({ index: z.number().int().min(0), code: ErrorCode, message: z.string() });
@@ -20,7 +21,14 @@ export const RegisterUserRequest = z.object({
   profile: ProfileValues.default({}),
   /** Separate, unticked-by-default consent row (03 §5). */
   zone_presence_consent: z.boolean(),
+  /** Additive: optional phone number, held encrypted in the identity vault. */
+  phone: z.string().trim().regex(/^\+?[0-9 ()-]{6,24}$/).optional(),
 });
+/**
+ * The same answer for a known and an unknown address. The registration is kept pending, tied to the
+ * emailed link, and completed when the link is redeemed (on any device); unused, it expires with the
+ * link and is deleted.
+ */
 export const RegisterUserAccepted = z.object({ accepted: z.literal(true), verification_sent: z.boolean() });
 
 export const UpdateProfile = z.object({
@@ -58,10 +66,21 @@ export const RegistrationRow = Registration.extend({
   band_hint: z.string().nullable().optional(),
   /** First admission at the event; null until checked in. */
   checked_in_at: IsoDateTime.nullable().optional(),
+  /** Additive: the pass has no live band and its last band is `lost` (reported by the attendee or the desk). */
+  band_lost: z.boolean().optional(),
+  /**
+   * Additive: the band to act on — the live band's carrier id, else (when `band_lost`) the lost band's,
+   * which `POST /carriers/:id/rebind` accepts to bind a replacement; null when the pass never had one.
+   */
+  carrier_id: Id.nullable().optional(),
+  /** Additive: when the pass email last went out (the newest emailed code); null when never, or no address. */
+  pass_sent_at: IsoDateTime.nullable().optional(),
 });
+export type RegistrationRow = z.infer<typeof RegistrationRow>;
 /**
  * Filters (06 D6.4): `q` matches name or email (operators), `credential` the credential state,
- * `unbound=true` registrations with no band bound.
+ * `unbound=true` registrations with no band bound, `band_lost=true` those whose band was reported or
+ * marked lost and not yet replaced (the desk's queue; `false`: all others).
  */
 export const EventRegistrationsQuery = PageQuery.extend({
   tier: AttendeeTier.optional(),
@@ -69,6 +88,7 @@ export const EventRegistrationsQuery = PageQuery.extend({
   q: z.string().trim().min(1).max(100).optional(),
   credential: CredentialState.optional(),
   unbound: z.stringbool().optional(),
+  band_lost: z.stringbool().optional(),
 });
 
 export const ChangeTier = z.object({ tier: AttendeeTier, reason: z.string().min(3).max(500) });
@@ -85,7 +105,8 @@ export const InvitationRow = z.object({
   expires_at: IsoDateTime,
   redeemed_at: IsoDateTime.nullable(),
 });
-export const InvitationTokenParam = z.object({ token: z.string().min(16).max(512) });
+export const InvitationToken = z.string().min(16).max(512);
+export const InvitationTokenParam = z.object({ token: InvitationToken });
 export const RsvpRequest = z.object({
   /**
    * The address the invitation was sent to. The link is bound to a hash of it (03 §2): a forwarded
@@ -93,10 +114,45 @@ export const RsvpRequest = z.object({
    */
   email: Email,
   accept: z.boolean(),
-  full_name: z.string().min(1).max(200),
+  /**
+   * Required when accepting (VALIDATION_FAILED `body.full_name` otherwise); not needed to decline.
+   * On accept it becomes the attendee's name. (Was required in every request; now optional.)
+   */
+  full_name: z.string().trim().min(1).max(200).optional(),
   profile: ProfileValues.default({}),
   zone_presence_consent: z.boolean(),
 });
+/** POST /invitations/rsvp: the reply with the link's token in the body, never in the request line. */
+export const RsvpWithTokenRequest = RsvpRequest.extend({ token: InvitationToken });
+/** POST /invitations/read: the token travels in the body. */
+export const ReadInvitationRequest = z.object({ token: InvitationToken });
+/**
+ * What an open invitation shows before the reply (Private Invitation, 01 §4). Never the invited
+ * address, and nothing that confirms or denies one. Unknown, used, declined and withdrawn links all
+ * answer LINK_INVALID, exactly like the reply; one past its reply-by time (or whose event is no
+ * longer open) LINK_EXPIRED.
+ */
+export const InvitationPreview = z.object({
+  event: z.object({
+    id: Id,
+    slug: Slug,
+    title: z.string(),
+    starts_at: IsoDateTime.nullable(),
+    ends_at: IsoDateTime.nullable(),
+    timezone: z.string(),
+    venue_name: z.string().nullable(),
+    city: z.string().nullable(),
+  }),
+  /** Who invites: the event's contact name when the organiser set one, else the organisation's name. */
+  host: z.string().nullable(),
+  /** The organiser contact chosen for the event (never an operator's login address by default); null when none was set. */
+  contact: z.object({ name: z.string().nullable(), email: Email.nullable() }).nullable(),
+  /** Reply by this time; the link stops working then. */
+  expires_at: IsoDateTime,
+  /** The event's own questions, asked when accepting. */
+  fields: z.array(ProfileField),
+});
+export type InvitationPreview = z.infer<typeof InvitationPreview>;
 
 export const AttendeeRow = z.object({
   id: Id,
@@ -134,7 +190,18 @@ export const registrationEndpoints = {
   eventRegistrations: endpoint({ method: "GET", path: "/events/:id/registrations", access: ["admin", "organiser", "supervisor", "desk_clerk"], params: IdParam, query: EventRegistrationsQuery, response: pageOf(RegistrationRow).extend({ total: z.number().int().min(0).optional() }) }),
   changeTier: endpoint({ method: "PATCH", path: "/registrations/:id/tier", access: OPERATORS, mfa: true, audited: true, params: IdParam, body: ChangeTier, response: Registration }),
   createInvitations: endpoint({ method: "POST", path: "/invitations", access: OPERATORS, audited: true, body: CreateInvitations, response: z.object({ items: z.array(InvitationRow), rejected: z.array(BatchItemRejection) }), status: 201 }),
+  /** @deprecated The token sits in the request line here; use `rsvpWithToken` (POST /invitations/rsvp). Kept working. */
   rsvp: endpoint({ method: "POST", path: "/invitations/:token/rsvp", access: PUBLIC, rateLimit: "auth", params: InvitationTokenParam, body: RsvpRequest, response: z.object({ registration: Registration.nullable() }) }),
+  /** Addition: the reply with the token in the body (same rules and answers as `rsvp`). */
+  rsvpWithToken: endpoint({ method: "POST", path: "/invitations/rsvp", access: PUBLIC, rateLimit: "auth", body: RsvpWithTokenRequest, response: z.object({ registration: Registration.nullable() }) }),
+  /** Addition: read an open invitation before replying (token in the body; every call counts per address). */
+  readInvitation: endpoint({ method: "POST", path: "/invitations/read", access: PUBLIC, rateLimit: "public", body: ReadInvitationRequest, response: InvitationPreview }),
+  /**
+   * Addition: one registration as its list row (GET /events/:id/registrations), for the desk and
+   * operators. A desk clerk only within the events of their current desk assignment (404 otherwise),
+   * without the check-in time.
+   */
+  getRegistration: endpoint({ method: "GET", path: "/registrations/:id", access: ["admin", "organiser", "supervisor", "desk_clerk"], params: IdParam, response: RegistrationRow }),
   /** Not in 02 §5: Public-tier kiosk registration (O-10). Proposed addition. */
   kioskRegister: endpoint({ method: "POST", path: "/kiosk/registrations", access: ["admin", "organiser", "security_staff"], audited: true, body: KioskRegistrationRequest, response: KioskRegistration, status: 201 }),
   listAttendees: endpoint({ method: "GET", path: "/attendees", access: ["admin", "organiser", "supervisor"], query: PageQuery.extend({ q: z.string().max(100).optional(), event_id: Id.optional() }), response: pageOf(AttendeeRow) }),

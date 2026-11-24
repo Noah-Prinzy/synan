@@ -1,14 +1,18 @@
 /**
- * A6 view model: the attendee's sessions (GET /me/sessions) grouped Now · Next · Later
- * · Earlier against the source's clock, with each room's live count (public telemetry).
+ * A6 view model: the attendee's sessions (GET /me/sessions, which names each one's event and room)
+ * grouped Now · Next · Later · Earlier against the source's clock. Each room's live count comes
+ * from data/occupancy (GET /events/:id/occupancy), read by the screen.
  */
 import { backend } from "./backend";
+import type { RoomNow } from "./occupancy";
 
 export interface AgendaSession {
   id: string;
+  eventId: string;
   eventSlug: string;
   eventTitle: string;
   timezone: string;
+  roomId: string;
   room: string;
   title: string;
   startsAt: string;
@@ -16,7 +20,6 @@ export interface AgendaSession {
   /** Local calendar day, for day labels. */
   day: string;
   capacity: number;
-  admitted: number | null;
 }
 
 export type AgendaGroup = "NOW" | "NEXT" | "LATER" | "EARLIER";
@@ -51,14 +54,20 @@ export function groupAgenda(sessions: AgendaSession[], now: number = backend.now
     .map((group) => ({ group, sessions: groups[group] }));
 }
 
-export function getSpaceLeft(session: AgendaSession): {
+/** "Places left" from the room's live count. A withheld count (under the minimum crowd size) means room to spare. */
+export function getSpaceLeft(
+  session: AgendaSession,
+  room: RoomNow,
+): {
   count: number | null;
   label: string;
   tone: "warning" | "destructive" | "muted";
 } {
-  if (session.admitted === null) return { count: null, label: "Not open yet", tone: "muted" };
-  const spaceLeft = Math.max(0, session.capacity - session.admitted);
+  if (room.kind === "closed") return { count: null, label: "Not open yet", tone: "muted" };
+  if (room.kind === "hidden") return { count: null, label: "Places available", tone: "muted" };
+  const capacity = session.capacity || room.capacity;
+  const spaceLeft = Math.max(0, capacity - room.occupancy);
   if (spaceLeft === 0) return { count: 0, label: "Full", tone: "destructive" };
-  if (spaceLeft <= session.capacity * 0.15) return { count: spaceLeft, label: `Nearly full · ${spaceLeft} ${spaceLeft === 1 ? "place" : "places"} left`, tone: "warning" };
+  if (spaceLeft <= capacity * 0.15) return { count: spaceLeft, label: `Nearly full · ${spaceLeft} ${spaceLeft === 1 ? "place" : "places"} left`, tone: "warning" };
   return { count: spaceLeft, label: `${spaceLeft} places left`, tone: "muted" };
 }

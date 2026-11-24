@@ -25,13 +25,13 @@ const passEvent = portal.passEvent().detail;
 export const EVENT = { id: passEvent.id, title: passEvent.title };
 
 export type Gate = MockGate & {
-  /** NOT IN CONTRACTS as one object: GET /me/assignments returns checkpoint + shift. */
+  /** The shift at this gate, in device time (API mode: from the GET /me/assignments item). */
   shift: { starts: string; ends: string; now: boolean };
   roomName: string | null;
-  /** API mode only (data/api/runtime.ts): what the checkpoint and the assignment say. */
+  /** API mode only (data/api/runtime.ts): what the assignment, its checkpoint and its event say. */
   api?: {
     eventId: string;
-    venueId: string;
+    eventTitle: string;
     zoneId: string;
     direction: "in" | "out" | "both";
     assignmentId: string;

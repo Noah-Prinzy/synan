@@ -226,11 +226,11 @@ describe("enforcement is on (migration 0008)", () => {
       "select conname, convalidated from pg_constraint where conname ~ '_(encrypted|format)$' order by 1",
     );
     expect(r.map((x) => x.conname)).toEqual([
-      "attendees_email_encrypted", "attendees_email_hash_format", "attendees_full_name_encrypted", "attendees_profile_encrypted",
+      "attendees_email_encrypted", "attendees_email_hash_format", "attendees_full_name_encrypted", "attendees_phone_encrypted", "attendees_profile_encrypted",
       "auth_links_email_hash_format", "auth_links_token_hash_format", "auth_sessions_token_hash_format", "carrier_desk_codes_hash_format",
       "carriers_identifier_format", "credentials_token_hash_format", "credentials_zone_state_format", "devices_token_hash_format",
       "email_outbox_content_encrypted", "email_outbox_to_encrypted", "invitations_email_hash_format",
-      "invitations_token_hash_format", "report_schedules_recipients_encrypted", "signing_keys_private_key_encrypted", "signing_keys_qr_kid_format",
+      "invitations_token_hash_format", "pending_registrations_answers_encrypted", "report_schedules_recipients_encrypted", "signing_keys_private_key_encrypted", "signing_keys_qr_kid_format",
       "user_invites_token_hash_format", "users_email_encrypted", "users_mfa_pending_encrypted", "users_mfa_secret_encrypted", "webhook_endpoints_secret_encrypted", "ws_tickets_ticket_hash_format",
     ]);
     expect(r.every((x) => x.convalidated)).toBe(true);

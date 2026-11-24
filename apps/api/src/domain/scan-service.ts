@@ -10,7 +10,10 @@
  *     decision and ordering. The device time is kept as a record; a large gap raises `clock_skew`.
  *   - offline scans keep their corrected time (occurred_at + clock_offset_ms), but never later
  *     than receipt (a future time is clamped to receipt and raises `clock_skew`), and must arrive
- *     within OFFLINE_SYNC_GRACE_S of the end of the shift they were taken in.
+ *     within OFFLINE_SYNC_GRACE_S of the end of the shift they were taken in. A queued scan that names
+ *     its assignment (`assignment_id`) is judged against that assignment instead: covered up to its
+ *     handover or end, accepted within OFFLINE_LATE_SYNC_S after it, from its holder or from the
+ *     scanner install it was made on by whoever staffs the gate now (see lateSyncRefusal).
  *   The stored clock_offset_ms is the offset the server applied, so occurred_at + clock_offset_ms
  *   (the database's generated corrected_at) is always the time the scan was judged and ordered at.
  *
@@ -21,7 +24,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { ContractError, type ErrorCode } from "@synan/contracts/errors";
 import type { AttendeeTier, ScanResult } from "@synan/contracts/enums";
-import type { ScanBatchRequest, ScanBatchResponse, ScanOutcome, ScanRejection, ScanSubmission } from "@synan/contracts/rest";
+import type { ScanBatchRequest, ScanBatchResponse, ScanOutcome, ScanRejection, ScanSubmission, UndoScanResult } from "@synan/contracts/rest";
 import { canonicalJson } from "./audit.js";
 import type { AuditService } from "./audit.js";
 import type { AlertService } from "./alerts.js";
@@ -44,7 +47,8 @@ import { sha256b64url } from "../lib/crypto.js";
 import type { Clock } from "../lib/clock.js";
 import { KeyedMutex } from "../lib/mutex.js";
 import { EventEmitter } from "node:events";
-import type { CarrierRow, CheckpointRow, CredentialRow, EventRow, OccupancyAdjustmentRow, Repos, ScanRow } from "../repo/types.js";
+import type { CarrierRow, CheckpointRow, CredentialRow, EventRow, OccupancyAdjustmentRow, Repos, ScanRow, StaffAssignmentRow } from "../repo/types.js";
+import { noteScanner, scannerHash } from "./scope.js";
 import type { TelemetryHub } from "../realtime/telemetry-hub.js";
 import { MinuteBuckets } from "../http/rate-limit.js";
 
@@ -89,6 +93,10 @@ interface Accepted {
   at: number;
   /** Device clock disagrees with the server beyond CLOCK_FAULT_MS. */
   skewMs: number | null;
+  /** Who made the scan (the named assignment's holder for a stranded queued scan); null for a fixed reader. */
+  staffUserId: string | null;
+  /** Accepted under its named assignment after that assignment ended or was handed over. */
+  lateSynced: boolean;
 }
 
 export class ScanService {
@@ -108,7 +116,7 @@ export class ScanService {
     private readonly audit: AuditService,
     private readonly telemetry: TelemetryHub,
     private readonly clock: Clock,
-    private readonly opts: { offlineSyncGraceMs: number; checkpointScansPerMin?: number } = { offlineSyncGraceMs: 3600_000 },
+    private readonly opts: { offlineSyncGraceMs: number; checkpointScansPerMin?: number; offlineLateSyncMs?: number; undoWindowMs?: number } = { offlineSyncGraceMs: 3600_000 },
     private readonly notes: NotificationService | null = null,
   ) {}
 
@@ -199,9 +207,12 @@ export class ScanService {
     // Rebuild from the append-only log (derivability, 02 §4.4): scans and adjustments merged in time order.
     const checkpoints = new Map((event.venue_id ? await this.repos.venues.checkpointsOfVenue(event.venue_id) : []).map((c) => [c.id, c]));
     type Step = { at: number; scan?: ScanRow; adj?: OccupancyAdjustmentRow };
+    // An undone scan is replayed as if it had not happened (06 S3). Its `scan_undo` count corrections
+    // exist for the SQL derivations, which still see the scan; here they would count it twice.
+    const voided = new Set((await this.repos.scans.voids(eventId)).map((v) => v.scan_id));
     const steps: Step[] = [
-      ...(await this.repos.scans.forEvent(eventId)).map((s) => ({ at: s.occurred_at.getTime() + s.clock_offset_ms, scan: s })),
-      ...(await this.repos.occupancy.adjustments(eventId)).map((a) => ({ at: a.at.getTime(), adj: a })),
+      ...(await this.repos.scans.forEvent(eventId)).filter((s) => !voided.has(s.id)).map((s) => ({ at: s.occurred_at.getTime() + s.clock_offset_ms, scan: s })),
+      ...(await this.repos.occupancy.adjustments(eventId)).filter((a) => a.reason !== "scan_undo").map((a) => ({ at: a.at.getTime(), adj: a })),
     ].sort((a, b) => a.at - b.at);
     const sample = () => {
       samples.onSite.push(proj.zoneOf.size);
@@ -223,7 +234,7 @@ export class ScanService {
       if (isPassage(s.result)) {
         proj.lastPassage.set(`${eph}|${cp.id}`, at);
         if (s.result === "admitted") this.applyMovement(proj, eph, cp, s.direction, at, null, s.id);
-        else this.notePresence(proj, eph, cp, s.id);
+        else this.notePresence(proj, eph, cp, s.id, at);
         if (s.carrier_kind === "qr_email" && s.direction === "in" && !proj.emailRedeemScan.has(eph)) proj.emailRedeemScan.set(eph, s.id);
       } else if (isDenial(s.result)) proj.recordDenial(eph, at);
     }
@@ -232,11 +243,11 @@ export class ScanService {
   }
 
   /** An `already_inside` passage: the holder is in this zone (and, at a perimeter, inside it). */
-  private notePresence(proj: OccupancyProjection, eph: string, cp: CheckpointRow, scanId: string) {
+  private notePresence(proj: OccupancyProjection, eph: string, cp: CheckpointRow, scanId: string, atMs: number) {
     proj.zoneOf.set(eph, cp.zone_id);
     if (cp.perimeter_bool && !proj.perimeterOf.has(eph)) {
       proj.perimeterOf.set(eph, cp.zone_id);
-      proj.perimeterEntry.set(eph, { checkpointId: cp.id, scanId });
+      proj.perimeterEntry.set(eph, { checkpointId: cp.id, scanId, atMs });
     }
   }
 
@@ -270,7 +281,7 @@ export class ScanService {
     if (direction === "in") {
       proj.zoneOf.set(eph, cp.zone_id);
       if (cp.perimeter_bool) {
-        if (!proj.perimeterOf.has(eph)) proj.perimeterEntry.set(eph, { checkpointId: cp.id, scanId });
+        if (!proj.perimeterOf.has(eph)) proj.perimeterEntry.set(eph, { checkpointId: cp.id, scanId, atMs });
         proj.perimeterOf.set(eph, cp.zone_id);
       }
       if (cp.room_id && proj.rooms.has(cp.room_id)) {
@@ -434,6 +445,8 @@ export class ScanService {
     const rogue = new Map<string, { checkpointId: string; why: string }>();
     const accepted: Accepted[] = [];
     const seenInBatch = new Map<string, string>();
+    const named_ = new Map<string, StaffAssignmentRow | null>();
+    const lateSyncs = new Map<string, { count: number; byMaker: boolean; checkpointId: string }>();
 
     const reject = (s: ScanSubmission, code: ErrorCode, message: string) => rejected.push({ idem_key: s.idem_key, code, message });
 
@@ -486,6 +499,32 @@ export class ScanService {
         at = Math.min(rawAt, receivedAt);
       }
 
+      // A queued scan that names the assignment it was made under (01 §8, A1): counted after its maker
+      // signed out or handed over, from the maker or from the scanner install it was made on.
+      if (principal.kind !== "device" && s.offline && s.assignment_id) {
+        const named = await this.namedAssignment(named_, s.assignment_id);
+        const why = await this.lateSyncRefusal(named, s, cp, event.id, at, receivedAt, principal.sub, assignments as StaffAssignmentRow[], req.device_id);
+        if (why) {
+          reject(s, why.code, why.message);
+          rogue.set(`${cp.id}|${why.rogue}`, { checkpointId: cp.id, why: why.rogue });
+          continue;
+        }
+        const coverEnd = Math.min(named!.shift_end.getTime(), named!.handed_over_at?.getTime() ?? Infinity);
+        if (!this.gateLoad.take(cp.id, at, this.cpLimit, receivedAt)) {
+          reject(s, "RATE_LIMITED", "This checkpoint is over its per-minute scan limit; keep the scan queued and resend it.");
+          rogue.set(`${cp.id}|flood`, { checkpointId: cp.id, why: `over the checkpoint scan limit of ${this.cpLimit} per minute` });
+          continue;
+        }
+        const lateSynced = receivedAt >= coverEnd;
+        if (lateSynced || named!.user_id !== principal.sub) {
+          const n = lateSyncs.get(named!.id) ?? { count: 0, byMaker: named!.user_id === principal.sub, checkpointId: cp.id };
+          n.count++;
+          lateSyncs.set(named!.id, n);
+        }
+        accepted.push({ s, i, cp, at, skewMs, staffUserId: named!.user_id, lateSynced });
+        continue;
+      }
+
       // Authorisation (03 §4): assigned to this checkpoint, inside the shift, synced in time.
       const mine = assignments.filter((a) => a.checkpoint_id === cp.id);
       if (mine.length === 0) {
@@ -510,17 +549,29 @@ export class ScanService {
         rogue.set(`${cp.id}|flood`, { checkpointId: cp.id, why: `over the checkpoint scan limit of ${this.cpLimit} per minute` });
         continue;
       }
-      accepted.push({ s, i, cp, at, skewMs });
+      accepted.push({ s, i, cp, at, skewMs, staffUserId, lateSynced: false });
+      // The install this person is scanning with now is recorded under the shift (A1).
+      if (principal.kind !== "device") {
+        const current = mine.find((a) => a.shift_start.getTime() <= receivedAt && receivedAt < a.shift_end.getTime() && !a.handed_over_at);
+        if (current) await noteScanner(this.repos, current, req.device_id);
+      }
     }
 
     for (const { checkpointId, why } of rogue.values()) await this.rogueAlert(event.id, checkpointId, deviceId, why, receivedAt);
+    // Every stranded or late batch is on the record: who sent it, for whose shift, how many (no tokens, no people).
+    for (const [assignmentId, n] of lateSyncs) {
+      await this.audit.append({
+        actorId: principal.sub, action: "scan.late_sync", target: `staff_assignment:${assignmentId}`,
+        meta: { event_id: event.id, checkpoint_id: n.checkpointId, scans: n.count, by_maker: n.byMaker, scanner: scannerHash(req.device_id) },
+      });
+    }
 
     const proj = await this.projection(event.id);
     const changed = new Set<string>();
     const zonesBefore = new Map(proj.allZones().map((z) => [z.zone_id, z.occupancy]));
     accepted.sort((a, b) => a.at - b.at || a.i - b.i);
     for (const item of accepted) {
-      const out = await this.applyOne(event, item, receivedAt, deviceId, staffUserId, proj, changed);
+      const out = await this.applyOne(event, item, receivedAt, deviceId, item.staffUserId, proj, changed);
       results.set(item.s.idem_key, out);
       // `/stream/scans`: no credential, no person, only what the gate showed.
       this.events.emit("scan", { scan_id: out.scan_id, event_id: event.id, checkpoint_id: item.cp.id, result: out.result, carrier_kind: out.carrier_kind, tier: out.tier, corrected_at: out.corrected_at, offline: item.s.offline });
@@ -537,6 +588,44 @@ export class ScanService {
       rejected,
       server_time: new Date(this.clock.now()).toISOString(),
     };
+  }
+
+  private async namedAssignment(cache: Map<string, StaffAssignmentRow | null>, id: string) {
+    if (!cache.has(id)) cache.set(id, await this.repos.staff.byId(id));
+    return cache.get(id) ?? null;
+  }
+
+  /**
+   * Why a queued scan that names its assignment may not be counted, or null when it may (A1). The
+   * trust rule: the scan was made under a real assignment of this gate (and this event) whose shift
+   * covered the scan's judged time (shift start to handover or shift end), it arrives within the
+   * bounded late window after that, and it is sent either by the assignment's own holder, or by a
+   * staff member on shift at this gate now, from a scanner install the holder used under that
+   * assignment (recorded from the holder's own authenticated scans and heartbeats). The usual
+   * idempotency, clock and back-dating rules still apply: `at` is never later than receipt.
+   */
+  private async lateSyncRefusal(
+    named: StaffAssignmentRow | null, s: ScanSubmission, cp: CheckpointRow, eventId: string, at: number, receivedAt: number,
+    submitter: string, submitterAssignments: StaffAssignmentRow[], clientDeviceId: string,
+  ): Promise<{ code: ErrorCode; message: string; rogue: string } | null> {
+    if (!named || named.checkpoint_id !== cp.id || (named.event_id != null && named.event_id !== eventId)) {
+      return { code: "CHECKPOINT_NOT_ASSIGNED", message: "The named assignment is not for this checkpoint and event.", rogue: "named assignment does not match" };
+    }
+    const coverEnd = Math.min(named.shift_end.getTime(), named.handed_over_at?.getTime() ?? Infinity);
+    if (at < named.shift_start.getTime() || at >= coverEnd) {
+      return { code: "OUTSIDE_SHIFT", message: "The named assignment did not cover the time of this scan.", rogue: "scan outside the named shift" };
+    }
+    if (receivedAt >= coverEnd + (this.opts.offlineLateSyncMs ?? this.opts.offlineSyncGraceMs)) {
+      return { code: "OUTSIDE_SHIFT", message: "Offline scans must be synced within the late-sync window after the shift.", rogue: "synced after late-sync window" };
+    }
+    if (named.user_id === submitter) return null;
+    const onShiftHere = submitterAssignments.some(
+      (a) => a.checkpoint_id === cp.id && a.shift_start.getTime() <= receivedAt && receivedAt < a.shift_end.getTime() && !a.handed_over_at,
+    );
+    if (!onShiftHere || !(named.scanner_device_hashes ?? []).includes(scannerHash(clientDeviceId))) {
+      return { code: "CHECKPOINT_NOT_ASSIGNED", message: "Another person's queued scans sync only from the scanner they were made on, by staff on shift at this gate.", rogue: "late sync from another scanner" };
+    }
+    return null;
   }
 
   private async checkpointOf(cache: Map<string, CheckpointRow | null>, id: string) {
@@ -574,7 +663,7 @@ export class ScanService {
 
   private async applyOne(
     event: EventRow,
-    { s, cp, at, skewMs }: Accepted,
+    { s, cp, at, skewMs, lateSynced }: Accepted,
     receivedAt: number,
     deviceId: string,
     staffUserId: string | null,
@@ -645,6 +734,8 @@ export class ScanService {
     // A scan older than the room's last recount is already in that headcount: no capacity judgement.
     const roomForDecision = room && !proj.beforeAnchor(room.id, at) ? room : undefined;
     const perimeterZone = proj.perimeterOf.get(eph);
+    // "Last in 4m ago" (A7): the zone entry at a perimeter gate, the room entry at an interior gate.
+    const lastInMs = cp.perimeter_bool ? (proj.perimeterEntry.get(eph)?.atMs ?? null) : (proj.lastMoveAt.get(eph) ?? null);
     const decision = decide({
       token: r.token,
       credentialState: credential?.state ?? null,
@@ -769,7 +860,7 @@ export class ScanService {
           pendingAlerts.push({ spec: { kind: "reconciliation_fault", severity: "low", detail: "Occupancy would have gone negative; clamped to 0" }, credentialId: null });
         }
       } else {
-        this.notePresence(proj, eph, cp, scanId);
+        this.notePresence(proj, eph, cp, scanId, at);
       }
       if (conflictAdjustRoom && proj.rooms.has(conflictAdjustRoom)) {
         proj.add(conflictAdjustRoom, 1);
@@ -841,6 +932,19 @@ export class ScanService {
       corrected_at: new Date(at).toISOString(),
       replayed: false,
       alert_ids: alertIds,
+      ...(recorded === "already_inside" ? { last_in_at: lastInMs !== null ? new Date(lastInMs).toISOString() : null } : {}),
+      // The verdict's room chips at a perimeter gate (A7): ids only, from the same rules as the decision.
+      ...(recorded === "admitted" && cp.perimeter_bool && r.subject
+        ? {
+            permitted_room_ids: [...proj.rooms.keys()].filter((roomId) =>
+              evaluateAccess(
+                rules.map((x) => ({ subject_kind: x.subject_kind, subject: x.subject, room_id: x.room_id, window_start: x.window_start?.getTime() ?? null, window_end: x.window_end?.getTime() ?? null, effect: x.effect })),
+                r.subject!, roomId, at,
+              ),
+            ).sort(),
+          }
+        : {}),
+      ...(lateSynced ? { late_synced: true } : {}),
     };
     this.outcomeCache.set(scanId, outcome);
     return outcome;
@@ -859,6 +963,85 @@ export class ScanService {
   }
 
   /* --------------------------------------------------------- operator actions */
+
+  /**
+   * Undo a mistaken admission (06 S3): the caller's own `admitted` entry scan, at a gate they are
+   * staffing now, within the undo window (default 60 s) of the scan's judged time. Writes a
+   * correction record (scan_voids; the scan itself stays), then rebuilds the event's projection
+   * without that scan, so room counts, presence, anti-passback and the debounce read as if it had not
+   * happened. The count change is also written as `scan_undo` adjustments, so the SQL derivations
+   * (which still see the scan) agree. Idempotent: a second undo returns the first one. Audited.
+   */
+  async undo(actor: AuthContext, eventIdIn: string, scanId: string, reason: string | undefined): Promise<UndoScanResult> {
+    const event = await this.repos.events.byId(eventIdIn);
+    if (!event) throw new ContractError("NOT_FOUND", "event not found");
+    return this.mutex.run(event.id, async () => {
+      const scan = await this.repos.scans.byId(event.id, scanId);
+      // Another person's scan answers like a missing one.
+      if (!scan || scan.staff_user_id !== actor.sub) throw new ContractError("NOT_FOUND");
+      const cp = await this.repos.venues.checkpoint(scan.checkpoint_id);
+      const prior = (await this.repos.scans.voids(event.id)).find((v) => v.scan_id === scan.id);
+      if (prior) {
+        const proj = await this.projection(event.id);
+        return {
+          scan_id: scan.id, event_id: event.id, undone_at: prior.voided_at.toISOString(), replayed: true,
+          room_id: cp?.room_id ?? null, occupancy: cp?.room_id && proj.rooms.has(cp.room_id) ? proj.count(cp.room_id) : null,
+        };
+      }
+      if (scan.result !== "admitted" || scan.direction !== "in" || scan.ephemeral_id === null || !cp) {
+        throw new ContractError("CONFLICT", "Only an admission can be undone.");
+      }
+      const now = this.clock.now();
+      const mine = await this.repos.staff.assignmentsFor(actor.sub);
+      if (!mine.some((a) => a.checkpoint_id === cp.id && a.shift_start.getTime() <= now && now < a.shift_end.getTime() && !a.handed_over_at)) {
+        throw new ContractError("CHECKPOINT_NOT_ASSIGNED", "Undo works only at the gate you are staffing now.");
+      }
+      const scannedAt = scan.occurred_at.getTime() + scan.clock_offset_ms;
+      if (now - scannedAt > (this.opts.undoWindowMs ?? 60_000)) throw new ContractError("CONFLICT", "The undo window for this scan has passed.");
+
+      const before = await this.projection(event.id);
+      const countsBefore = new Map([...before.rooms.keys()].map((id) => [id, before.count(id)]));
+      const zonesBefore = new Map(before.allZones().map((z) => [z.zone_id, z.occupancy]));
+      const at = new Date(now);
+      if ((await this.repos.scans.insertVoid({ id: randomUUID(), event_id: event.id, scan_id: scan.id, voided_by: actor.sub, reason: reason?.trim() || null, voided_at: at })) === "duplicate") {
+        throw new ContractError("CONFLICT", "This scan is being undone already.");
+      }
+      // Rebuild from the log without the scan; publish what changed.
+      const { proj } = await this.replay(event, []);
+      this.projections.set(event.id, Promise.resolve(proj));
+      this.figureCache.delete(event.id);
+      const corrections: { room_id: string; delta: number }[] = [];
+      for (const [roomId, n] of countsBefore) {
+        const delta = proj.count(roomId) - n;
+        if (delta === 0) continue;
+        corrections.push({ room_id: roomId, delta });
+        await this.repos.occupancy.insertAdjustment({
+          id: randomUUID(), event_id: event.id, room_id: roomId, delta, set_to: null, reason: "scan_undo",
+          actor_id: actor.sub, note: `undo of scan ${scan.id}`, at,
+        });
+      }
+      const zoneChanges = proj.allZones().filter((z) => zonesBefore.get(z.zone_id) !== z.occupancy);
+      this.telemetry.update(event.id, corrections.map((c) => proj.roomView(c.room_id)), zoneChanges, proj.zoneOf.size);
+
+      // The pass's bookkeeping: perimeter state, and a first check-in that this scan was.
+      const credentialId = await this.repos.ephemeralIds.credentialFor(event.id, scan.ephemeral_id);
+      const credential = credentialId ? await this.repos.credentials.byId(credentialId) : null;
+      if (credential) {
+        const perimeterNow = proj.perimeterOf.get(scan.ephemeral_id);
+        const zone = perimeterNow !== undefined ? `INSIDE_${perimeterNow}` : "OUTSIDE";
+        if (zone !== credential.zone_state) await this.repos.credentials.update(credential.id, { zone_state: zone });
+        if (credential.registration_id) await this.repos.registrations.clearCheckedIn(credential.registration_id, new Date(scannedAt));
+      }
+      await this.audit.append({
+        actorId: actor.sub, action: "scan.undo", target: `scan:${scan.id}`,
+        meta: { event_id: event.id, checkpoint_id: cp.id, corrections, reason_length: reason?.trim().length ?? 0 },
+      });
+      return {
+        scan_id: scan.id, event_id: event.id, undone_at: at.toISOString(), replayed: false,
+        room_id: cp.room_id, occupancy: cp.room_id && proj.rooms.has(cp.room_id) ? proj.count(cp.room_id) : null,
+      };
+    });
+  }
 
   /**
    * Manual recount (D-10): an anchor. The room's count becomes the headcount; scans from before it no

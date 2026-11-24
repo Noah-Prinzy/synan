@@ -3,13 +3,14 @@
  * in contract shapes, mapped to the screens' view models. This is the behaviour the portal has
  * always had; data/backend.ts selects it when VITE_API_URL is unset.
  */
-import { DEMO_DESK_CODES, delay, hint, type PortalCodeBatch, type PortalEvent } from "@synan/mock";
-import type { Backend, BindResult, Session } from "./backend";
+import { DEMO_DESK_CODES, DEMO_INVITATIONS, DEMO_INVITED_EMAIL, delay, hint, type PortalCodeBatch, type PortalEvent } from "@synan/mock";
+import type { Backend, BindResult, Profile, Session } from "./backend";
 import type { AgendaSession } from "./agenda";
 import type { EventDetail, EventSummary } from "./events";
+import type { OccupancyView } from "./occupancy";
 import type { Pass } from "./pass";
 import { dayKey } from "./format";
-import { applyDevParams, clock, portal, realtime } from "./mock";
+import { applyDevParams, clock, invitations, portal, realtime } from "./mock";
 import { displayState, hasBand, notifySession, toField, viewState } from "./shared";
 
 /* ---------------------------------------------------------------- events (A1, A2) */
@@ -19,6 +20,7 @@ function summary(event: PortalEvent): EventSummary {
   const capacity = event.detail.rooms.reduce((sum, room) => sum + room.capacity, 0);
   const admitted = detail.on_site ?? 0;
   return {
+    id: detail.id,
     slug: detail.slug,
     title: detail.title,
     startsAt: detail.starts_at,
@@ -51,7 +53,6 @@ function getEventDetail(slug: string | undefined): EventDetail | null {
   if (!event) return null;
   const { detail } = event;
   const rooms = new Map(detail.rooms.map((room) => [room.room_id, room]));
-  const live = new Map(portal.occupancy(detail.id).map((room) => [room.room_id, room]));
   const time = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: detail.timezone });
   const day = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: detail.timezone });
   const registration = portal.registration(detail.id);
@@ -69,17 +70,27 @@ function getEventDetail(slug: string | undefined): EventDetail | null {
         return {
           id: session.id,
           day: day.format(new Date(session.starts_at)),
+          roomId: session.room_id,
           room: room?.name ?? "",
           title: session.title,
           startsIso: session.starts_at,
           endsIso: session.ends_at,
           startsAt: time.format(new Date(session.starts_at)),
           endsAt: time.format(new Date(session.ends_at)),
-          occupancy: live.get(session.room_id)?.occupancy ?? 0,
           capacity: room?.capacity ?? 0,
         };
       }),
   };
+}
+
+/** GET /events/:id/occupancy in the public scope: the fixture's counts, present only while live. */
+function getOccupancy(eventId: string): OccupancyView | null {
+  const event = portal.world.events.find((item) => item.detail.id === eventId);
+  if (!event) return null;
+  const live = event.detail.state === "live";
+  const rooms: OccupancyView["rooms"] = {};
+  if (live) for (const room of portal.occupancy(eventId)) rooms[room.room_id] = { occupancy: room.occupancy, capacity: room.capacity };
+  return { live, rooms, onSite: live ? event.detail.on_site : null, maxAgeS: 5 };
 }
 
 /* ---------------------------------------------------------------- session (A9) */
@@ -87,16 +98,19 @@ function getEventDetail(slug: string | undefined): EventDetail | null {
 const STORAGE_KEY = "syn.session";
 const MAGIC_PREFIX = "syn-magic-";
 
-function readSession(): Session | null {
+/** The mock keeps the phone with the session; the API holds it in the identity vault. */
+type MockSession = Session & { phone?: string };
+
+function readSession(): MockSession | null {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    return stored ? (JSON.parse(stored) as Session) : null;
+    return stored ? (JSON.parse(stored) as MockSession) : null;
   } catch {
     return null;
   }
 }
 
-function writeSession(session: Session | null): void {
+function writeSession(session: MockSession | null): void {
   if (session) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
   } else {
@@ -109,6 +123,26 @@ function writeSession(session: Session | null): void {
 
 const CREDENTIAL_STATES = ["READY", "NOT YET BOUND", "UNDER REVIEW", "REVOKED", "REPLACED"] as const;
 
+/** Set when the band is reported lost, cleared when a band is bound (the store keeps no such flag). */
+const LOST_KEY = "synan.mock.band-lost";
+
+function bandLostFlag(): boolean {
+  try {
+    return localStorage.getItem(LOST_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setBandLost(lost: boolean): void {
+  try {
+    if (lost) localStorage.setItem(LOST_KEY, "1");
+    else localStorage.removeItem(LOST_KEY);
+  } catch {
+    /* storage blocked */
+  }
+}
+
 /**
  * The attendee's pass. `preview` (from ?state=) forces a display state so every state can be
  * reviewed in the mock build.
@@ -119,7 +153,8 @@ function getPass(preview: string | null): Pass {
   const uid = portal.bandUid();
   const forced = CREDENTIAL_STATES.find((item) => item === preview);
   return {
-    holder: portal.holderName,
+    // The name as edited on the Account screen (GET /me in the API), else the demo holder.
+    holder: readSession()?.name || portal.holderName,
     tier: credential.tier,
     eventId: credential.event_id,
     event: {
@@ -131,6 +166,7 @@ function getPass(preview: string | null): Pass {
     },
     state: forced ?? displayState(credential.state, hasBand(credential)),
     band: uid ? { uid, hint: hint(uid) } : null,
+    bandLost: !uid && bandLostFlag(),
     nearestDesk: portal.nearestDesk,
   };
 }
@@ -163,7 +199,10 @@ function getCodes(): PortalCodeBatch {
 
 function bind(binding: { via: "desk_code"; code: string } | { via: "nfc"; uid: string }): BindResult {
   const outcome = portal.bind(binding.via === "desk_code" ? { via: "desk_code", code: binding.code.trim().toUpperCase() } : binding);
-  if (outcome.ok) return { ok: true, band: { uid: outcome.uid } };
+  if (outcome.ok) {
+    setBandLost(false);
+    return { ok: true, band: { uid: outcome.uid } };
+  }
   return { ok: false, reason: outcome.code === "CONFLICT" ? "already_bound" : "unknown_band" };
 }
 
@@ -172,27 +211,40 @@ function bind(binding: { via: "desk_code"; code: string } | { via: "nfc"; uid: s
 function mySessions(): AgendaSession[] {
   const event = portal.passEvent();
   const rooms = new Map(event.detail.rooms.map((room) => [room.room_id, room]));
-  const live = new Map(portal.occupancy(event.detail.id).map((room) => [room.room_id, room]));
   return portal.sessions().map((session) => ({
     id: session.id,
+    eventId: event.detail.id,
     eventSlug: event.detail.slug,
     eventTitle: event.detail.title,
     timezone: event.detail.timezone,
+    roomId: session.room_id,
     room: rooms.get(session.room_id)?.name ?? "",
     title: session.title,
     startsAt: session.starts_at,
     endsAt: session.ends_at,
     day: dayKey(session.starts_at, event.detail.timezone),
     capacity: rooms.get(session.room_id)?.capacity ?? 0,
-    admitted: live.get(session.room_id)?.occupancy ?? null,
   }));
 }
 
 /* ---------------------------------------------------------------- the source */
 
+function profile(): Profile {
+  const current = readSession();
+  const digits = current?.phone?.replace(/\D/g, "") ?? "";
+  return {
+    name: current?.name || portal.holderName,
+    email: current?.email ?? "",
+    phoneMasked: digits ? `••••• ${digits.slice(-4)}` : null,
+  };
+}
+
 export const mockBackend: Backend = {
   mode: "mock",
-  applyDevParams,
+  applyDevParams(search) {
+    if (new URLSearchParams(search).get("reset") === "1") setBandLost(false);
+    applyDevParams(search);
+  },
 
   now: () => clock.now(),
   subscribeClock: (listener) => clock.subscribe(listener),
@@ -201,6 +253,7 @@ export const mockBackend: Backend = {
 
   getEvents,
   getEventDetail,
+  getOccupancy,
 
   loadRegistration: (slug) => ({
     // Self-service registration is for listed, open events only.
@@ -217,6 +270,47 @@ export const mockBackend: Backend = {
   },
   emailedLinkFor: (email, next) => `/verify?token=${MAGIC_PREFIX}${encodeURIComponent(email)}&next=${encodeURIComponent(next)}`,
 
+  readInvitation: (token) => {
+    // POST /invitations/read: a used, declined, withdrawn or unknown link is refused at once, an
+    // expired one says so. The as-API demo token keeps the case of an open link with nothing to show.
+    const preview = invitations.preview(token);
+    if (!preview) return token === DEMO_INVITATIONS.asApi ? { ok: true, preview: null } : { ok: false, reason: "invalid" };
+    if (Date.parse(preview.expires_at) <= clock.now()) return { ok: false, reason: "expired" };
+    const { event } = preview;
+    return {
+      ok: true,
+      preview: {
+        event: {
+          title: event.title,
+          startsAt: event.starts_at,
+          endsAt: event.ends_at,
+          timezone: event.timezone,
+          venue: event.venue,
+          city: event.city ?? "",
+        },
+        host: preview.host,
+        contact: preview.contact,
+        expiresAt: preview.expires_at,
+        fields: preview.fields.map(toField),
+      },
+    };
+  },
+  async rsvp(token, reply) {
+    await delay(700);
+    if (!navigator.onLine) return { ok: false, reason: "offline" };
+    const answer = invitations.rsvp(token, {
+      email: reply.email,
+      accept: reply.accept,
+      full_name: reply.name,
+      profile: reply.accept ? reply.answers : {},
+      zone_presence_consent: reply.accept && reply.zoneConsent,
+    });
+    if (answer.ok) return { ok: true, reply: reply.accept ? "accepted" : "declined" };
+    const reason = { LINK_INVALID: "invalid", LINK_EXPIRED: "expired", CONFLICT: "registered", INTERNAL: "error" } as const;
+    return { ok: false, reason: reason[answer.code] };
+  },
+  devInvitedEmail: DEMO_INVITED_EMAIL,
+
   readSession,
   async requestSignInLink() {
     // The session starts only when the link is opened (/verify), never when it is requested.
@@ -231,16 +325,27 @@ export const mockBackend: Backend = {
     }
     return { ok: false, problem: token.startsWith("syn-expired-") ? "expired" : "invalid" };
   },
-  async updateName(name) {
+  signOut: () => writeSession(null),
+
+  loadProfile: profile,
+  async updateProfile(change) {
     const current = readSession();
     if (!current) throw new Error("signed out");
     await delay(500);
-    writeSession({ ...current, name: name.trim() });
+    const name = change.name?.trim();
+    const phone = change.phone?.trim();
+    writeSession({ ...current, ...(name ? { name } : {}), ...(phone ? { phone } : {}) });
+    return profile();
   },
-  signOut: () => writeSession(null),
 
   peekPass: (preview) => getPass(preview),
   loadPass: () => ({ pass: getPass(null) }),
+  // The demo attendee holds one pass.
+  passChoices() {
+    const { detail } = portal.passEvent();
+    return [{ eventId: detail.id, title: detail.title, startsAt: detail.starts_at, timezone: detail.timezone }];
+  },
+  selectPass() {},
   initialCodes: getCodes,
   getCodes,
   async emailPassCopy() {
@@ -249,7 +354,12 @@ export const mockBackend: Backend = {
     if (typeof navigator !== "undefined" && !navigator.onLine) throw new Error("offline");
   },
   async reportLostBand() {
+    await delay(500);
+    if (typeof navigator !== "undefined" && !navigator.onLine) throw new Error("offline");
+    const had = portal.bandUid() !== null;
+    if (had) setBandLost(true);
     portal.reportLostBand();
+    return { markedLost: had };
   },
   watchPass: (onState) =>
     realtime.subscribe("/stream/me", (message) => {

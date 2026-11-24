@@ -69,6 +69,8 @@ export interface RotateResult {
   attendee_id: string | null;
   mfa_at: Date | null;
   expires_at: Date | null;
+  /** True when an already-exchanged token was exchanged again inside the grace window (0029). */
+  reissued: boolean;
 }
 
 /** New refresh lifetime by holder kind, chosen inside the database (operators/staff vs attendees). */
@@ -82,22 +84,29 @@ export interface RefreshTtl {
  * by the holder kind of the presented token, in the same locked step — no lookup first).
  * On `reuse_detected` the whole family has already been revoked (committed with your
  * transaction — do not roll it back).
+ *
+ * `graceSeconds` (default 0, off): a token presented again within this many seconds of its exchange,
+ * by the same client (user agent and IP prefix recorded at the exchange), while the token it was
+ * exchanged for is unused, is re-issued (`reissued: true`) instead of revoking the family; the unused
+ * token is superseded and counts as reuse if presented later. Pass the same `userAgent` and `ip` on
+ * every exchange for the comparison to mean anything.
  */
 export async function rotateSession(
   db: Db,
-  i: SessionContext & { tokenHash: string; newTokenHash: string; now?: Date } & (
+  i: SessionContext & { tokenHash: string; newTokenHash: string; now?: Date; graceSeconds?: number } & (
       | { expiresAt: Date; ttl?: never }
       | { ttl: RefreshTtl; expiresAt?: never }
     ),
 ): Promise<RotateResult> {
+  const grace = sql`make_interval(secs => ${Math.max(0, i.graceSeconds ?? 0)})`;
   const r = await rows<Record<string, unknown>>(
     db,
     i.ttl
       ? sql`select * from public.auth_rotate_session_by_kind(${i.tokenHash}, ${i.newTokenHash},
           make_interval(secs => ${i.ttl.userSeconds}), make_interval(secs => ${i.ttl.attendeeSeconds}),
-          ${i.userAgent ?? null}, ${i.ip ?? null}::inet, ${ts(i.now)})`
+          ${i.userAgent ?? null}, ${i.ip ?? null}::inet, ${ts(i.now)}, ${grace})`
       : sql`select * from public.auth_rotate_session(${i.tokenHash}, ${i.newTokenHash}, ${i.expiresAt!.toISOString()}::timestamptz,
-          ${i.userAgent ?? null}, ${i.ip ?? null}::inet, ${ts(i.now)})`,
+          ${i.userAgent ?? null}, ${i.ip ?? null}::inet, ${ts(i.now)}, ${grace})`,
   );
   const x = r[0]!;
   return {
@@ -108,6 +117,7 @@ export async function rotateSession(
     attendee_id: (x.attendee_id as string | null) ?? null,
     mfa_at: toDate(x.mfa_at),
     expires_at: toDate(x.expires_at),
+    reissued: x.reissued === true,
   };
 }
 

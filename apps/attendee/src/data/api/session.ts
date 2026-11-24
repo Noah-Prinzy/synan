@@ -16,10 +16,10 @@ export type StoredSession = {
   access_expires_at: string;
   refresh_token: string;
   refresh_expires_at: string;
-  /** Principal.sub: the attendee's id (used for PATCH /users/:id/profile). */
+  /** Principal.sub: the attendee's own id; keys what is kept on the device to this person. */
   sub: string;
   email: string;
-  /** Not served by the API (there is no GET /me); known when this device registered, or after an edit. */
+  /** The name on file (GET /me), kept so the pass shows it offline; null until first read. */
   name: string | null;
 };
 

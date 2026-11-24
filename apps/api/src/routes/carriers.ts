@@ -10,23 +10,27 @@
  *   wrong guesses are limited per attendee.
  */
 import type { Express } from "express";
-import { ContractError } from "@synan/contracts/errors";
+import { BAND_ERROR_COPY, ContractError } from "@synan/contracts/errors";
 import { endpoints } from "@synan/contracts/rest";
 import { CREDENTIAL_STATE_VALUES } from "@synan/contracts/enums";
 import type { AppContext } from "../app.js";
-import { carrierDto, credentialRef } from "../domain/credential-service.js";
-import { currentCheckpoints, deskEventIds, mayWorkDeskFor } from "../domain/scope.js";
+import { carrierDto, credentialRef, hint } from "../domain/credential-service.js";
+import { currentAssignments, currentCheckpoints, deskEventIds, mayWorkDeskFor } from "../domain/scope.js";
 import { nfcIdentifier } from "../domain/scan-service.js";
 import { mount } from "../http/route.js";
 import { NOTE } from "../domain/notifications.js";
 import type { BindStatus, CredentialRow } from "../repo/types.js";
 
 const invalid = (path: string, message: string) => new ContractError("VALIDATION_FAILED", message, [{ path, message }]);
+/** Audit actions on a band (written by the store's bind, rebind and replacement steps) → the inventory's `recent` words. */
+const RECENT_ACTION: Record<string, "bound" | "replaced" | "lost" | "reported_lost" | "retired"> = {
+  "carrier.bind": "bound", "carrier.rebind": "replaced", "carrier.mark_lost": "lost", "carrier.report_lost": "reported_lost", "carrier.mark_retired": "retired",
+};
 
 function bindError(status: BindStatus | string, path: string): ContractError {
   switch (status) {
     case "unknown_carrier":
-      return invalid(path, "this band is not known: import it first");
+      return invalid(path, BAND_ERROR_COPY.unknown_band.message);
     case "not_in_stock":
       return new ContractError("CONFLICT", "This band is already in use.");
     case "credential_has_carrier":
@@ -65,8 +69,39 @@ export function carrierRoutes(x: Express, app: AppContext) {
     const regs = (await app.repos.registrations.forEvent(e.id)).map((r) => r.id);
     const creds = await app.repos.credentials.forRegistrations(regs);
     const credentials = Object.fromEntries(CREDENTIAL_STATE_VALUES.map((s) => [s, creds.filter((c) => c.state === s).length])) as Record<(typeof CREDENTIAL_STATE_VALUES)[number], number>;
-    return { ...(await app.repos.carriers.inventory(creds.map((c) => c.id))), credentials };
+    // Every band this event's passes ever had (lost and retired ones too): the audit targets to read.
+    const bands = new Map((await app.repos.carriers.forCredentials(creds.map((c) => c.id))).filter((c) => c.kind === "nfc").map((c) => [`carrier:${c.id}`, c]));
+    const recent = (await app.repos.audit.find({ actions: Object.keys(RECENT_ACTION), targets: [...bands.keys()], limit: 20 })).map((a) => {
+      const band = bands.get(a.target)!;
+      const credentialId = typeof a.meta_jsonb.credential_id === "string" ? a.meta_jsonb.credential_id : band.credential_id;
+      return { at: a.at.toISOString(), action: RECENT_ACTION[a.action]!, carrier_id: band.id, credential_id: credentialId, band_hint: hint(band) };
+    });
+    return { ...(await app.repos.carriers.inventory(creds.map((c) => c.id))), credentials, recent, today: await deskShift(ctx!.sub, e, [...bands.keys(), ...creds.map((c) => `credential:${c.id}`)]) };
   });
+
+  /** The caller's own desk work on this event since their current shift began (null without one). */
+  const deskShift = async (userId: string, e: { id: string; venue_id: string | null }, targets: string[]) => {
+    let shift = null;
+    for (const a of await currentAssignments(app, userId)) {
+      if (a.handed_over_at) continue;
+      const cp = await app.repos.venues.checkpoint(a.checkpoint_id);
+      if (!cp?.perimeter_bool || (a.event_id ? a.event_id !== e.id : cp.venue_id !== e.venue_id)) continue;
+      if (!shift || a.shift_start < shift.shift_start) shift = a;
+    }
+    if (!shift) return null;
+    const work = await app.repos.audit.find({
+      actions: ["carrier.bind", "carrier.replace_lost", "carrier.replace_damaged", "credential.resend"],
+      targets, actorId: userId, since: shift.shift_start, limit: 10_000,
+    });
+    // A lost-band replacement also binds its new band: count it once, as a replacement.
+    const replacedInto = new Set(work.filter((a) => a.action === "carrier.replace_lost").map((a) => `carrier:${String(a.meta_jsonb.new_carrier_id)}`));
+    return {
+      since: shift.shift_start.toISOString(),
+      bound: work.filter((a) => a.action === "carrier.bind" && !replacedInto.has(a.target)).length,
+      replaced: work.filter((a) => a.action === "carrier.replace_lost" || a.action === "carrier.replace_damaged").length,
+      resent: work.filter((a) => a.action === "credential.resend").length,
+    };
+  };
 
   mount(x, app, endpoints.importCarriers, async ({ body, ctx }) => {
     const byHash = new Map<string, string>();
@@ -106,6 +141,23 @@ export function carrierRoutes(x: Express, app: AppContext) {
       if (!e || !(await mayWorkDeskFor(app, ctx!, e))) throw new ContractError("NOT_FOUND");
     }
     const newIdentifier = nfcIdentifier(body.identifier);
+    if (body.disposition === "lost" && old.state === "lost") {
+      // Already lost — reported by its holder (the pass is kept, 01 §5.3), or this replacement already
+      // ran. Idempotent: bind the new band to the holder's current pass, or answer the band already
+      // bound there by an earlier identical request.
+      const current = cred.registration_id ? await app.repos.credentials.forRegistration(cred.registration_id) : cred;
+      if (!current) throw new ContractError("NOT_FOUND");
+      const live = (await app.repos.carriers.forCredential(current.id)).find((c) => c.kind === "nfc" && (c.state === "assigned" || c.state === "bound" || c.state === "active"));
+      if (live) {
+        if (live.identifier === newIdentifier) return carrierDto(live);
+        throw bindError("credential_has_carrier", "body.identifier");
+      }
+      const r = await app.repos.carriers.bind({ identifier: newIdentifier, credentialId: current.id, actorId: ctx!.sub, now: now() });
+      if (r.status !== "bound") throw bindError(r.status, "body.identifier");
+      await audit(ctx!.sub, "carrier.replace_lost", `credential:${current.id}`, { reason: body.reason, old_carrier_id: old.id, new_carrier_id: r.carrier_id, already_lost: true });
+      await app.notifications.forCredential(current.id, NOTE.bandBound);
+      return carrierDto((await app.repos.carriers.forCredential(current.id)).find((c) => c.id === r.carrier_id)!);
+    }
     if (body.disposition === "damaged") {
       const r = await app.repos.carriers.rebind({ credentialId: cred.id, newIdentifier, disposition: "retired", actorId: ctx!.sub, now: now() });
       if (r.status !== "rebound") throw bindError(r.status, "body.identifier");

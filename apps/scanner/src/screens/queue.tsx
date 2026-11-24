@@ -93,6 +93,39 @@ export default function Queue() {
         </ul>
       ) : null}
 
+      {api && (api.earlier.waiting > 0 || api.earlier.held > 0 || api.earlier.sentLate > 0) ? (
+        <section aria-labelledby="earlier" className="border-b border-border px-4 py-5 sm:px-6">
+          <h2 id="earlier" className="text-17 font-medium">From an earlier shift</h2>
+          <p className="mt-1 text-15 text-muted-foreground">
+            {api.earlier.waiting + api.earlier.held > 0
+              ? api.earlier.canSend
+                ? "Scans another staff member made on this device. They count for their shift and are sent from here now that you are on shift at their gate."
+                : "Scans another staff member made on this device. They stay here and are sent when staff on shift at their gate sign in on this device."
+              : "Scans another staff member made on this device. The server has them."}
+          </p>
+          <dl className="mt-3 border-t border-border">
+            {api.earlier.waiting > 0 ? (
+              <div className="flex min-h-12 items-center justify-between gap-4 border-b border-border py-2">
+                <dt className="text-15 text-muted-foreground">Waiting</dt>
+                <dd className="font-mono text-17">{api.earlier.waiting}</dd>
+              </div>
+            ) : null}
+            {api.earlier.held > 0 ? (
+              <div className="flex min-h-12 items-center justify-between gap-4 border-b border-border py-2">
+                <dt className="text-15 text-muted-foreground">Refused for now, kept</dt>
+                <dd className="font-mono text-17">{api.earlier.held}</dd>
+              </div>
+            ) : null}
+            {api.earlier.sentLate > 0 ? (
+              <div className="flex min-h-12 items-center justify-between gap-4 border-b border-border py-2">
+                <dt className="text-15 text-muted-foreground">Sent after their shift</dt>
+                <dd className="font-mono text-17">{api.earlier.sentLate}</dd>
+              </div>
+            ) : null}
+          </dl>
+        </section>
+      ) : null}
+
       <div className="px-4 py-5 sm:px-6">
         <ActionButton
           variant="primary"

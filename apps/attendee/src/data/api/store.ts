@@ -1,21 +1,17 @@
 /** What the API source keeps on the device, and the state its two halves share. Zod-free. */
 import type { Notification, PortalCodeBatch } from "@synan/contracts/rest";
+import type { PassChoice } from "../backend";
 import type { Pass } from "../pass";
 import type { SessionStore } from "./session";
 
 export const PASS_KEY = "synan.api.pass";
 export const CODES_KEY = "synan.api.codes";
-export const PENDING_KEY = "synan.api.pending-registration";
-
-/** A registration sent with POST /users/register, finished (POST /registrations) once the emailed link is opened. */
-export type Pending = {
-  slug: string;
-  email: string;
-  name: string;
-  profile: Record<string, string | string[]>;
-  zoneConsent: boolean;
-  at: number;
-};
+/** Every pass this person holds (GET /me/registrations), for the pass screen's switch. */
+export const CHOICES_KEY = "synan.api.passes";
+/** The event whose pass this person chose to show; absent: the API's current pass. */
+export const CHOSEN_KEY = "synan.api.pass-choice";
+/** Written by earlier builds (answers kept until the emailed link was opened); removed on sight. */
+export const LEGACY_PENDING_KEY = "synan.api.pending-registration";
 
 /** Kept per person: a pass or codes are only ever shown to the account they were fetched for. */
 export type Kept<T> = { sub: string; value: T; offset?: number; eventId?: string };
@@ -45,6 +41,13 @@ export interface CoreState {
   readonly session: SessionStore;
   pass(): Pass | null;
   setPass(pass: Pass | null): void;
+  /** A pass loaded earlier in this page's life, for switching back without a wait. */
+  knownPass(eventId: string): Pass | null;
+  choices(): PassChoice[];
+  setChoices(choices: PassChoice[]): void;
+  /** The event the person chose to show, or null for the API's current pass. */
+  chosen(): string | null;
+  choose(eventId: string | null): void;
   notifications(): Notification[] | null;
   setNotifications(items: Notification[] | null): void;
   keepCodes(batch: PortalCodeBatch, offsetMs: number, eventId: string): void;

@@ -15,8 +15,8 @@ import { ActionButton, Button, RewardMoment, buttonClass, cn } from "@synan/ui/c
 import { ResultChip, SignalShape, StatusDot, formatAge, formatClock, formatNumber, formatOffset } from "@synan/ui/data";
 import type { GateDetail, OpsScan, TestRead } from "@synan/mock/command";
 import { Can } from "../access/session";
-import { EmptyState, ErrorState, KeyValues, LoadingState, PageHeader, SectionHead, TIER_LABEL, formatStamp, linkClass, useDocumentTitle, useResource } from "../kit";
-import { api, configure } from "../live/backend";
+import { EmptyState, ErrorState, errorCode, KeyValues, LoadingState, PageHeader, SectionHead, TIER_LABEL, formatStamp, linkClass, useDocumentTitle, useResource } from "../kit";
+import { api, configure, mode } from "../live/backend";
 import { useCommand } from "../live/context";
 import { useNow } from "../live/hooks";
 import { useSlice } from "../live/slice";
@@ -80,7 +80,7 @@ function GateView({ checkpoint, eventId, timeZone, back }: { checkpoint: Checkpo
   const assignments = useResource(() => configure.assignments(eventId), [eventId]);
   const { byId } = useGateActivity(eventId);
   const activity = byId?.get(checkpoint.id);
-  const [test, setTest] = useState<{ result: TestRead | null; failed: boolean } | null>(null);
+  const [test, setTest] = useState<TestState | null>(null);
 
   const reload = detail.reload;
   useEffect(() => {
@@ -119,7 +119,25 @@ function GateView({ checkpoint, eventId, timeZone, back }: { checkpoint: Checkpo
           </span>
         }
         actions={
-          <>
+          // The header keeps its action box at full width; on a phone the buttons wrap inside the screen.
+          <span className="flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-2">
+            {mode === "api" ? (
+              // The real API has no test read yet (index.ts ★): say so calmly, no "No answer" alarm.
+              <Button
+                variant="secondary"
+                size="compact"
+                onClick={() => {
+                  setTest(null);
+                  api.testRead(eventId, checkpoint.id).then(
+                    (result) => setTest({ result, failed: false }),
+                    (error: unknown) =>
+                      setTest(errorCode(error) === "NOT_IMPLEMENTED" ? { result: null, failed: false, unavailable: true } : { result: null, failed: true }),
+                  );
+                }}
+              >
+                Test read
+              </Button>
+            ) : (
             <ActionButton
               variant="quiet"
               size="compact"
@@ -139,6 +157,7 @@ function GateView({ checkpoint, eventId, timeZone, back }: { checkpoint: Checkpo
             >
               Test read
             </ActionButton>
+            )}
             <Button
               variant="secondary"
               size="compact"
@@ -152,7 +171,7 @@ function GateView({ checkpoint, eventId, timeZone, back }: { checkpoint: Checkpo
                 Reassign
               </Link>
             </Can>
-          </>
+          </span>
         }
       />
       <LastKnown />
@@ -214,7 +233,17 @@ function GateView({ checkpoint, eventId, timeZone, back }: { checkpoint: Checkpo
 
 /* ------------------------------------------------------------------ parts */
 
-function TestReadLine({ test, gate }: { test: { result: TestRead | null; failed: boolean }; gate: GateLive | undefined }) {
+type TestState = { result: TestRead | null; failed: boolean; unavailable?: boolean };
+
+function TestReadLine({ test, gate }: { test: TestState; gate: GateLive | undefined }) {
+  if (test.unavailable) {
+    return (
+      <p role="status" className="flex items-center gap-2 border-b border-border px-4 py-2 text-12 text-muted-foreground sm:px-6">
+        <SignalShape state="idle" />
+        Test read is not available yet. To check this gate now, scan a test band or pass at it and watch it arrive in the last scans below.
+      </p>
+    );
+  }
   if (test.failed || !test.result) {
     return (
       <p role="alert" className="flex items-center gap-2 border-b border-border px-4 py-2 text-12 text-destructive sm:px-6">
@@ -282,7 +311,7 @@ function ThroughputChart({ detail, timeZone }: { detail: GateDetail; timeZone: s
                   style={{ transform: `scaleY(${count / max})` }}
                 />
                 <span className="sr-only">
-                  {formatClock(start, timeZone, { seconds: false })} to {formatClock(start + bucket_ms, timeZone, { seconds: false })}: {count} scans
+                  {formatClock(start, timeZone, { seconds: false })} to {formatClock(start + bucket_ms, timeZone, { seconds: false })}: {count} {count === 1 ? "scan" : "scans"}
                   {i === last ? " so far" : ""}
                 </span>
               </li>

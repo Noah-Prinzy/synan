@@ -66,6 +66,32 @@ export const ERROR_COPY = {
   INTERNAL: { status: 500, title: "Something went wrong", message: "An unexpected error occurred. Try again." },
 } as const satisfies Readonly<Record<ErrorCode, ErrorCopy>>;
 
+/**
+ * A request that got no answer from the server at all, so there is no error code to look up:
+ * `offline` when the device reports itself offline, `network` otherwise (unreachable, timed out, or
+ * refused by the browser). `status` is 0: nothing came back.
+ */
+export const FAILURE_COPY = {
+  offline: { status: 0, title: "You are offline", message: "This needs a connection. It will work again when you are back online." },
+  network: { status: 0, title: "Server not reachable", message: "The server did not answer. Check the connection and try again." },
+} as const satisfies Readonly<Record<"offline" | "network", ErrorCopy>>;
+export type FailureKind = keyof typeof FAILURE_COPY;
+
+/**
+ * Field messages the API sends for a wristband it cannot bind or swap (POST /carriers/bind,
+ * /carriers/:id/rebind, /me/credential/bind, /kiosk/registrations). The API puts `message` in the
+ * error's field issue; screens may show `title` above it.
+ */
+export const BAND_ERROR_COPY = {
+  unknown_band: { title: "Band not known", message: "This band is not known: import it first." },
+  not_in_stock: { title: "Band not in stock", message: "This band is not in stock. Use a band from the box." },
+  band_in_use: { title: "Band already in use", message: "This band is already in use. Keep it aside and take a fresh band from the box." },
+  pass_has_band: { title: "Already has a band", message: "This pass already has a band. Replace it instead." },
+  pass_not_usable: { title: "Pass cannot take a band", message: "This pass is revoked or under review." },
+  no_band_to_replace: { title: "No band to replace", message: "This pass has no band to replace. Bind a band instead." },
+} as const satisfies Readonly<Record<string, { title: string; message: string }>>;
+export type BandErrorKind = keyof typeof BAND_ERROR_COPY;
+
 /* ------------------------------------------------------------ scan results */
 
 export interface ScanResultCopy {
@@ -120,6 +146,7 @@ export const ALERT_KIND_COPY = {
   rogue_scanner: { label: "Scanner refused", description: "A scanner tried a gate or time it is not assigned to." },
   stale_allowlist: { label: "Stale allowlist", description: "An offline gate admitted on an allowlist more than 15 minutes old." },
   reconciliation_fault: { label: "Count corrected", description: "Occupancy would have gone below zero and was clamped." },
+  band_reported_lost: { label: "Wristband reported lost", description: "A wristband was reported lost by its holder. Gates now refuse it; the desk can bind a new one." },
 } as const satisfies Record<AlertKind, { label: string; description: string }>;
 
 /** Labels for the five reports (01 §10) and the export formats. */

@@ -78,6 +78,7 @@ describe("migrations", () => {
     expect(r).toEqual([
       { relname: "attendees", relrowsecurity: true, relforcerowsecurity: true },
       { relname: "ephemeral_ids", relrowsecurity: true, relforcerowsecurity: true },
+      { relname: "pending_registrations", relrowsecurity: true, relforcerowsecurity: true },
     ]);
   });
 });

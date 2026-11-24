@@ -410,6 +410,8 @@ export class OpsLog {
         return "Fires when an offline gate admits on an allowlist more than 15 minutes old.";
       case "reconciliation_fault":
         return "Fires when a room's count would have gone below zero. It was held at zero; a recount puts it right.";
+      case "band_reported_lost":
+        return "Fires when a holder reports their wristband lost. Gates refuse the band from then on; the desk binds a new one, and the pass in the app keeps working.";
     }
   }
 }

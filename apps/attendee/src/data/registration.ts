@@ -46,7 +46,13 @@ export function emailedLinkFor(email: string, next: string): string | null {
 }
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const phonePattern = /^\+?[0-9 ()-]{7,}$/;
+/** The contract's own bound (RegisterUserRequest.phone allows 6–24), kept at 7 for a usable number. */
+const phonePattern = /^\+?[0-9 ()-]{7,24}$/;
+
+/** A phone number the API accepts, or blank. */
+export function isPhone(phone: string): boolean {
+  return phonePattern.test(phone.trim());
+}
 
 export function validateIdentity(
   draft: RegistrationDraft,

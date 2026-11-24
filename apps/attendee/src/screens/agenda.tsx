@@ -5,6 +5,7 @@ import { buttonClass } from "@synan/ui/components";
 import { loadAgenda, getSpaceLeft, type AgendaGroupItem, type AgendaSession } from "../data/agenda";
 import { dayKey, formatLongDay, formatTime } from "../data/format";
 import { now } from "../data/live";
+import { roomNow, useOccupancy, type OccupancyView } from "../data/occupancy";
 import { useResource } from "../data/resource";
 import { PageHeader, PageShell, RuledRow } from "../components/page";
 import { ErrorState, OfflineState, SkeletonCells, StateBlock } from "../components/states";
@@ -22,6 +23,12 @@ export default function Agenda() {
   }, []);
 
   const agenda = useResource("agenda", loadAgenda);
+  // Live room counts for the events still ahead (an ended session shows none).
+  const eventIds =
+    agenda.status === "ready"
+      ? agenda.data.filter((group) => group.group !== "EARLIER").flatMap((group) => group.sessions.map((session) => session.eventId))
+      : [];
+  const occupancy = useOccupancy(eventIds);
 
   return (
     <PageShell bleed>
@@ -48,13 +55,21 @@ export default function Agenda() {
           Sessions appear here once you're registered for an event.
         </StateBlock>
       ) : (
-        agenda.data.map((group, index) => <AgendaGroup key={group.group} group={group} index={index} />)
+        agenda.data.map((group, index) => <AgendaGroup key={group.group} group={group} index={index} occupancy={occupancy} />)
       )}
     </PageShell>
   );
 }
 
-function AgendaGroup({ group, index }: { group: AgendaGroupItem; index: number }) {
+function AgendaGroup({
+  group,
+  index,
+  occupancy,
+}: {
+  group: AgendaGroupItem;
+  index: number;
+  occupancy: (eventId: string) => OccupancyView | null;
+}) {
   const isNow = group.group === "NOW";
   const earlier = group.group === "EARLIER";
   const today = group.sessions[0] ? dayKey(new Date(now()).toISOString(), group.sessions[0].timezone) : "";
@@ -73,7 +88,7 @@ function AgendaGroup({ group, index }: { group: AgendaGroupItem; index: number }
                     {formatLongDay(session.startsAt, session.timezone)}
                   </p>
                 ) : null}
-                <AgendaRow session={session} isNow={isNow} muted={earlier} />
+                <AgendaRow session={session} isNow={isNow} muted={earlier} occupancy={occupancy(session.eventId)} />
               </li>
             );
           })}
@@ -83,8 +98,18 @@ function AgendaGroup({ group, index }: { group: AgendaGroupItem; index: number }
   );
 }
 
-function AgendaRow({ session, isNow, muted }: { session: AgendaSession; isNow: boolean; muted: boolean }) {
-  const spaceLeft = getSpaceLeft(session);
+function AgendaRow({
+  session,
+  isNow,
+  muted,
+  occupancy,
+}: {
+  session: AgendaSession;
+  isNow: boolean;
+  muted: boolean;
+  occupancy: OccupancyView | null;
+}) {
+  const spaceLeft = getSpaceLeft(session, roomNow(occupancy, session.roomId));
   return (
     <Link
       to={`/events/${session.eventSlug}#session-${session.id}`}
@@ -96,8 +121,8 @@ function AgendaRow({ session, isNow, muted }: { session: AgendaSession; isNow: b
         <p className="text-15 text-muted-foreground">
           <span className="font-mono">
             {formatTime(session.startsAt, session.timezone)}–{formatTime(session.endsAt, session.timezone)}
-          </span>{" "}
-          · {session.room}
+          </span>
+          {session.room ? <> · {session.room}</> : null}
         </p>
         <p className="mt-1 text-17 sm:truncate">{session.title}</p>
       </div>

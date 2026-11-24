@@ -53,11 +53,8 @@ export interface CommandEvent {
   timezone: string;
 }
 
-/**
- * The roles a signed-in user can hold (docs/01 §3, D-23). `supervisor` and `desk_clerk` are
- * not in the contracts' `Role` yet; when they land this becomes `Role`.
- */
-export type SessionRole = Role | "supervisor" | "desk_clerk";
+/** The roles a signed-in user can hold (docs/01 §3, D-23): the contracts' `Role`. */
+export type SessionRole = Role;
 
 /** The mock's sign-in personas, one per role, so every console view can be previewed. */
 export const SESSION_ROLES: readonly SessionRole[] = [

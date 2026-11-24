@@ -33,6 +33,11 @@ export class ChannelHub<M> {
     private readonly ringSize = 1000,
   ) {}
 
+  /** Connected subscribers (a producer may skip work nobody would receive). */
+  get subscribers(): number {
+    return this.subs.size;
+  }
+
   publish(type: string, data: unknown, meta: M) {
     const e: HubEvent<M> = { id: `${this.bootId}.${++this.seq}`, type, at: new Date(this.clock.now()).toISOString(), data, meta };
     this.ring.push(e);

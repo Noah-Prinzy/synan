@@ -3,6 +3,7 @@ import { Id } from "../common.js";
 import type { Role } from "../enums/index.js";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+export type RateLimitBucket = "auth" | "scan" | "resend" | "public";
 
 /**
  * Who may call an endpoint.
@@ -27,8 +28,11 @@ export interface EndpointDef<
   mfa?: boolean;
   /** Written to the hash-chained audit log. */
   audited?: boolean;
-  /** Rate-limit bucket applied by the API. */
-  rateLimit?: "auth" | "scan" | "resend";
+  /**
+   * Rate-limit bucket applied by the API. `public`: every call counts against the caller's address
+   * (signed in: the subject), for anonymous reads.
+   */
+  rateLimit?: RateLimitBucket;
   params: P;
   query: Q;
   body: B;
@@ -52,7 +56,7 @@ export function endpoint<
   access: readonly Access[];
   mfa?: boolean;
   audited?: boolean;
-  rateLimit?: "auth" | "scan" | "resend";
+  rateLimit?: RateLimitBucket;
   params?: P;
   query?: Q;
   body?: B;

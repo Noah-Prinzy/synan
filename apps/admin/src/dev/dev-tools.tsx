@@ -3,13 +3,19 @@
  * breach" in one click), link control for the degraded states, venue size for the
  * performance test, and the frame sampler. Loaded lazily under import.meta.env.DEV,
  * so none of it ships in a production build.
+ *
+ * On the real API (VITE_API_URL) the mock-only tools are gone: no personas (the role is the
+ * signed-in account's, from GET /me/operator), no scenarios, link control or page states.
+ * What is left: which server, who is signed in, and the frame sampler.
  */
 import { useEffect, useState } from "react";
 import type { ScenarioName } from "@synan/mock";
-import { backend, devParams } from "../live/backend";
+import { API_URL, devParams, mockBackend } from "../live/backend";
 import { useCommand } from "../live/context";
 import { useSlice, useSliceValue } from "../live/slice";
+import { useSession } from "../access/session";
 import { sampler, type PerfReport } from "./fps";
+import { RolePicker } from "./role-switcher";
 
 const SCENARIOS: { name: ScenarioName; what: string }[] = [
   { name: "doors_open", what: "40 scans/s for 10 s" },
@@ -35,13 +41,14 @@ function reloadWith(changes: Record<string, string | null>): void {
 
 export default function DevTools() {
   const { event, store } = useCommand();
+  const { user, role, roleLabel } = useSession();
   const load = useSlice(store.load);
   const linkStatus = useSliceValue(store.link, (l) => l.status);
   const [open, setOpen] = useState(false);
   const [fps, setFps] = useState(devParams.fps);
   const [looping, setLooping] = useState<ScenarioName | null>(null);
   const [played, setPlayed] = useState<string | null>(null);
-  const server = event && load.status === "ready" ? backend.serverFor(event.id) : null;
+  const server = event && load.status === "ready" ? (mockBackend?.serverFor(event.id) ?? null) : null;
   const [ambient, setAmbient] = useState(devParams.ambient);
 
   // ?scenario=…&loop=1 plays once the event is live on screen.
@@ -77,19 +84,37 @@ export default function DevTools() {
         title="Development tools — not part of the product"
         className="fixed right-2 bottom-8 z-50 border border-dashed border-foreground/30 bg-background px-2 py-0.5 font-mono text-11 tracking-[0.12em] text-muted-foreground hover:text-foreground"
       >
-        DEV{played ? ` · ${played}` : ""}
+        DEV{role && role !== "admin" ? ` · ${roleLabel.toLowerCase()}` : ""}
+        {played ? ` · ${played}` : ""}
       </button>
       {fps ? <FpsOverlay /> : null}
       {open ? (
         <div
           role="dialog"
           aria-label="Development tools"
-          className="fixed right-2 bottom-15 z-50 w-96 border border-dashed border-foreground/30 bg-popover text-12 text-foreground"
+          className="fixed right-2 bottom-15 z-50 max-h-[calc(100dvh-5rem)] w-96 max-w-[calc(100vw-1rem)] overflow-y-auto border border-dashed border-foreground/30 bg-popover text-12 text-foreground"
         >
           <header className="flex items-center justify-between border-b border-border px-3 py-2">
             <span className="font-medium">Development tools</span>
             <span className="text-11 text-muted-foreground">not in production builds</span>
           </header>
+          {!mockBackend ? (
+            <div className="border-b border-border px-3 py-2 text-11 text-muted-foreground">
+              <p>
+                Real API · <span className="font-mono text-foreground">{API_URL}</span>
+              </p>
+              <p className="mt-1">
+                Signed in as <span className="text-foreground">{user?.email ?? "—"}</span> · {roleLabel || "no role"} (from the server). Personas,
+                scenarios and link control are mock-only.
+              </p>
+            </div>
+          ) : null}
+          {mockBackend ? (
+          <>
+          <div className="border-b border-border px-3 py-2">
+            <p className="mb-1.5 text-11 text-muted-foreground">View the console as · signed in as {user?.name ?? "—"}</p>
+            <RolePicker onPicked={() => setOpen(false)} />
+          </div>
           <div className="border-b border-border px-3 py-2">
             <p className="mb-1.5 text-11 text-muted-foreground">Scenarios · {event?.title ?? "no event"}</p>
             <div className="grid grid-cols-2 gap-1">
@@ -135,9 +160,13 @@ export default function DevTools() {
               ))}
             </div>
           </div>
+          </>
+          ) : null}
           <div className="border-b border-border px-3 py-2">
-            <p className="mb-1.5 text-11 text-muted-foreground">Page states (reload)</p>
+            <p className="mb-1.5 text-11 text-muted-foreground">{mockBackend ? "Page states (reload)" : "Measure"}</p>
             <div className="grid grid-cols-2 gap-1">
+              {mockBackend ? (
+              <>
               <button type="button" className={button} onClick={() => reloadWith({ venue: devParams.venue === "large" ? null : "large" })}>
                 {devParams.venue === "large" ? "Standard venue (24)" : "60-room venue"}
               </button>
@@ -157,6 +186,8 @@ export default function DevTools() {
               >
                 Reset all
               </button>
+              </>
+              ) : null}
               <button
                 type="button"
                 className={button}
@@ -169,7 +200,7 @@ export default function DevTools() {
             </div>
           </div>
           <p className="px-3 py-2 text-11 text-muted-foreground">
-            URL: ?venue=large · ?live=none · ?slow=1 · ?fail=1 · ?ambient=0 · ?scenario=name&amp;loop=1 · ?fps=1
+            {mockBackend ? "URL: ?as=role · ?venue=large · ?live=none · ?slow=1 · ?fail=1 · ?ambient=0 · ?scenario=name&loop=1 · ?fps=1" : "URL: ?fps=1"}
           </p>
         </div>
       ) : null}

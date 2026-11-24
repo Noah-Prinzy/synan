@@ -1,6 +1,6 @@
 /**
  * The only supported way to write and read encrypted columns:
- *   pii_vault.attendees.email, .full_name, .profile_jsonb (+ email_hash blind index)
+ *   pii_vault.attendees.email, .full_name, .phone, .profile_jsonb (+ email_hash blind index)
  *   users.mfa_secret_enc
  *   signing_keys.private_key_enc
  *
@@ -29,6 +29,8 @@ export interface AttendeeIdentityInput {
   email?: string | null;
   full_name?: string | null;
   profile?: Record<string, unknown>;
+  /** Optional phone (0030), encrypted like the email. */
+  phone?: string | null;
 }
 
 export interface AttendeeIdentity {
@@ -37,6 +39,8 @@ export interface AttendeeIdentity {
   email: string | null;
   full_name: string | null;
   profile: Record<string, unknown>;
+  /** Decrypted phone (0030); null when none is on file. */
+  phone: string | null;
   created_at: Date;
   updated_at: Date;
   erased_at: Date | null;
@@ -44,13 +48,16 @@ export interface AttendeeIdentity {
 
 /** Encrypted column values for one attendee row (pure; used by the helpers and by bulk seeding). */
 export function encryptAttendeeColumns(cipher: Cipher, id: string, input: Omit<AttendeeIdentityInput, "id" | "user_id">) {
-  const out: { email?: string | null; email_hash?: string | null; full_name?: string | null; profile_jsonb?: Record<string, unknown> } = {};
+  const out: { email?: string | null; email_hash?: string | null; full_name?: string | null; phone?: string | null; profile_jsonb?: Record<string, unknown> } = {};
   if (input.email !== undefined) {
     out.email = input.email === null ? null : cipher.encrypt(input.email, ctx("pii_vault.attendees", "email", id));
     out.email_hash = input.email === null ? null : cipher.blindIndex(input.email);
   }
   if (input.full_name !== undefined) {
     out.full_name = input.full_name === null ? null : cipher.encrypt(input.full_name, ctx("pii_vault.attendees", "full_name", id));
+  }
+  if (input.phone !== undefined) {
+    out.phone = input.phone === null ? null : cipher.encrypt(input.phone, ctx("pii_vault.attendees", "phone", id));
   }
   if (input.profile !== undefined) {
     out.profile_jsonb =
@@ -79,6 +86,7 @@ export function decryptAttendeeRow(cipher: Cipher, row: typeof attendees.$inferS
     email: row.email === null ? null : cipher.decrypt(row.email, ctx("pii_vault.attendees", "email", row.id)),
     full_name: row.full_name === null ? null : cipher.decrypt(row.full_name, ctx("pii_vault.attendees", "full_name", row.id)),
     profile,
+    phone: row.phone == null ? null : cipher.decrypt(row.phone, ctx("pii_vault.attendees", "phone", row.id)),
     created_at: row.created_at,
     updated_at: row.updated_at,
     erased_at: row.erased_at,
@@ -95,7 +103,7 @@ export async function createAttendee(db: Db, cipher: Cipher, input: AttendeeIden
   const values = {
     id,
     user_id: input.user_id ?? null,
-    ...encryptAttendeeColumns(cipher, id, { email: input.email ?? null, full_name: input.full_name ?? null, profile: input.profile ?? {} }),
+    ...encryptAttendeeColumns(cipher, id, { email: input.email ?? null, full_name: input.full_name ?? null, profile: input.profile ?? {}, ...(input.phone != null ? { phone: input.phone } : {}) }),
   };
   const run = async (tx: Db) => {
     await setVaultScope(tx, "system");
@@ -272,6 +280,7 @@ interface Target {
 const TARGETS: Target[] = [
   { name: "attendees.email", table: "pii_vault.attendees", column: "email", jsonb: false, vault: true },
   { name: "attendees.full_name", table: "pii_vault.attendees", column: "full_name", jsonb: false, vault: true },
+  { name: "attendees.phone", table: "pii_vault.attendees", column: "phone", jsonb: false, vault: true },
   { name: "attendees.profile_jsonb", table: "pii_vault.attendees", column: "profile_jsonb", jsonb: true, vault: true },
   { name: "users.email", table: "users", column: "email", jsonb: false, vault: false, userEmail: true },
   { name: "users.mfa_secret_enc", table: "users", column: "mfa_secret_enc", jsonb: false, vault: false },

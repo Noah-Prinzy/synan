@@ -7,8 +7,10 @@ import { z } from "zod";
 import { ERROR_COPY } from "../copy/index.js";
 
 export {
+  BAND_ERROR_COPY,
   DENY_RESULTS,
   ERROR_COPY,
+  FAILURE_COPY,
   GATE_TONE_VALUES,
   SCAN_RESULT_COPY,
   SCAN_RESULT_TONE,

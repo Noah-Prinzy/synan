@@ -118,6 +118,11 @@ import {
   rotateSession,
   setMfaSecret,
   startSession,
+  scan_voids,
+  createPendingRegistration,
+  takePendingRegistration,
+  cleanupPendingRegistrations,
+  deletePendingRegistrationsOf,
   type AnyDb,
   type AttendeeIdentity,
   type Cipher,
@@ -178,7 +183,7 @@ const toDataRequest = (r: typeof data_requests.$inferSelect) => ({
 });
 const toAssignment = (a: typeof staff_assignments.$inferSelect) => ({
   id: a.id, user_id: a.user_id, checkpoint_id: a.checkpoint_id, shift_start: a.shift_start, shift_end: a.shift_end,
-  event_id: a.event_id, handed_over_at: a.handed_over_at,
+  event_id: a.event_id, handed_over_at: a.handed_over_at, scanner_device_hashes: a.scanner_device_hashes ?? [],
 });
 
 /** `72 hours`, `3 days 00:00:00`, `72:00:00` → hours. */
@@ -201,6 +206,7 @@ const toAttendee = (a: AttendeeIdentity): AttendeeRow => ({
   email: a.email,
   full_name: a.full_name,
   profile_jsonb: a.profile,
+  phone: a.phone,
 });
 const toRoom = (r: typeof rooms.$inferSelect): RoomRow => ({
   id: r.id,
@@ -252,8 +258,10 @@ const toEvent = (r: typeof events.$inferSelect): EventRow => ({
   access_rules_version: r.access_rules_version,
   revocation_epoch: r.revocation_epoch,
   closed_at: r.closed_at,
+  contact_name: r.contact_name,
+  contact_email: r.contact_email,
 });
-const toZone = (z: typeof zones.$inferSelect) => ({
+const toZone =(z: typeof zones.$inferSelect) => ({
   id: z.id, venue_id: z.venue_id, name: z.name, floor: z.floor, geometry_jsonb: z.geometry_jsonb ?? null, sort_order: z.sort_order,
 });
 const toRegistration = (r: typeof registrations.$inferSelect) => ({
@@ -439,6 +447,25 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
     notifications: drizzleNotifications(db),
     exportedFiles: drizzleExportedFiles(db),
     transaction,
+    // pii_vault.pending_registrations (0028–0029): vault connection, system scope, answers encrypted.
+    pendingRegistrations: {
+      async create(r) {
+        await createPendingRegistration(vault, cipher, {
+          id: r.id, linkTokenHash: r.link_token_hash, attendeeId: r.attendee_id, eventId: r.event_id,
+          zonePresenceConsent: r.zone_presence_consent, answers: r.answers, expiresAt: r.expires_at, now: r.created_at,
+        });
+      },
+      async take(linkTokenHash, now) {
+        const p = await takePendingRegistration(vault, cipher, linkTokenHash, now);
+        return p ? { ...p, link_token_hash: linkTokenHash } : null;
+      },
+      async cleanup(now) {
+        return cleanupPendingRegistrations(vault, now);
+      },
+      async deleteFor(attendeeId) {
+        return deletePendingRegistrationsOf(vault, attendeeId);
+      },
+    },
     dataRequests: {
       async open(attendeeId, kind, now) {
         return openDataRequest(db, attendeeId, kind, now);
@@ -486,6 +513,7 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       },
       async purge(eventId, actorId) {
         await purgeEventMovementData(db as never, eventId, { force: true, actorId });
+        await db.delete(scan_voids).where(eq(scan_voids.event_id, eventId)); // correction records go with the scans
       },
       async request(i) {
         return requestReport(db, { eventId: i.eventId, kind: i.kind, format: i.format, includeIdentity: i.includeIdentity, requestedBy: i.requestedBy, params: i.params });
@@ -548,7 +576,7 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
         return d ? toDevice(d) : null;
       },
       async heartbeat(i) {
-        return recordHeartbeat(db, { deviceId: i.deviceId, checkpointId: i.checkpointId ?? null, clockOffsetMs: i.clockOffsetMs, queueDepth: i.queueDepth, appVersion: i.appVersion, now: i.now });
+        return recordHeartbeat(db, { deviceId: i.deviceId, checkpointId: i.checkpointId ?? null, clockOffsetMs: i.clockOffsetMs, queueDepth: i.queueDepth, appVersion: i.appVersion, allowlistIssuedAt: i.allowlistIssuedAt ?? null, now: i.now });
       },
       async ensureScanner(i) {
         const find = async () => one(await db.select({ id: devices.id, checkpoint_id: devices.checkpoint_id }).from(devices).where(eq(devices.hardware_id, i.hardwareId)).limit(1));
@@ -570,6 +598,7 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
           checkpoint_id: g.checkpoint_id, label: g.label, perimeter: g.perimeter, link_state: g.link_state, last_heartbeat_at: g.last_heartbeat_at,
           heartbeat_age_s: g.heartbeat_age_s, clock_offset_ms: g.clock_offset_ms, clock_fault: g.clock_fault, queue_depth: g.queue_depth,
           last_scan_at: g.last_scan_at, scans_last_15m: g.scans_last_15m, staff_on_duty: g.staff_on_duty, position: g.position ?? null,
+          allowlist_issued_at: g.allowlist_issued_at, allowlist_stale: g.allowlist_stale,
         }));
       },
     },
@@ -626,13 +655,14 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       },
       async insert(r) {
         // Write-only on the general connection: encrypted identity plus the email blind index.
-        await createAttendee(db, cipher, { id: r.id, user_id: r.user_id, email: r.email, full_name: r.full_name, profile: r.profile_jsonb });
+        await createAttendee(db, cipher, { id: r.id, user_id: r.user_id, email: r.email, full_name: r.full_name, profile: r.profile_jsonb, phone: r.phone ?? null });
       },
       async update(id, p) {
         return updateAttendeeIdentity(vault, cipher, id, {
           ...(p.full_name !== undefined ? { full_name: p.full_name } : {}),
           ...(p.email !== undefined ? { email: p.email } : {}),
           ...(p.profile_jsonb !== undefined ? { profile: p.profile_jsonb } : {}),
+          ...(p.phone !== undefined ? { phone: p.phone } : {}),
         }, "operator");
       },
       async byIds(ids) {
@@ -893,6 +923,9 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       async markCheckedIn(id, at) {
         await db.update(registrations).set({ checked_in_at: at }).where(and(eq(registrations.id, id), isNull(registrations.checked_in_at)));
       },
+      async clearCheckedIn(id, at) {
+        await db.update(registrations).set({ checked_in_at: null }).where(and(eq(registrations.id, id), eq(registrations.checked_in_at, at)));
+      },
       async forAttendee(attendeeId) {
         return (await db.select().from(registrations).where(eq(registrations.attendee_id, attendeeId))).map(toRegistration);
       },
@@ -974,6 +1007,12 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       async handoverSummary(id) {
         const s = await shiftHandoverSummary(db, id);
         return s ? toHandover(s) : null;
+      },
+      async noteDevice(id, deviceHash) {
+        // Append once, at most 8 (the CHECK staff_assignments_device_hashes).
+        await db.update(staff_assignments)
+          .set({ scanner_device_hashes: sql`array_append(${staff_assignments.scanner_device_hashes}, ${deviceHash}::text)` })
+          .where(and(eq(staff_assignments.id, id), sql`NOT (${deviceHash}::text = ANY(${staff_assignments.scanner_device_hashes}))`, sql`cardinality(${staff_assignments.scanner_device_hashes}) < 8`));
       },
     },
 
@@ -1132,6 +1171,13 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
           return after[0]!.e;
         });
       },
+      async credentialFor(eventId, ephemeralId) {
+        return withVaultScope(scan, "scan", async (tx) => {
+          const rows = await tx.select({ c: ephemeral_ids.credential_id }).from(ephemeral_ids)
+            .where(and(eq(ephemeral_ids.event_id, eventId), eq(ephemeral_ids.ephemeral_id, ephemeralId))).limit(1);
+          return rows[0]?.c ?? null;
+        });
+      },
     },
 
     scans: {
@@ -1163,16 +1209,41 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
         }
         return { byResult, offline };
       },
-      async page(eventId, { checkpointId, result, ephemeralId, limit, before }) {
+      async page(eventId, { checkpointId, result, ephemeralId, limit, before, checkpointIds, ephemeralIds }) {
         const conds = [eq(scans.event_id, eventId)];
         if (checkpointId) conds.push(eq(scans.checkpoint_id, checkpointId));
         if (result) conds.push(eq(scans.result, result));
         if (ephemeralId) conds.push(eq(scans.ephemeral_id, ephemeralId));
+        if (checkpointIds) conds.push(checkpointIds.length ? inArray(scans.checkpoint_id, [...checkpointIds]) : sql`false`);
+        if (ephemeralIds) conds.push(ephemeralIds.length ? inArray(scans.ephemeral_id, [...ephemeralIds]) : sql`false`);
         if (before) {
           const b = one(await db.select({ at: scans.received_at }).from(scans).where(and(eq(scans.event_id, eventId), eq(scans.id, before))).limit(1));
           if (b) conds.push(or(lt(scans.received_at, b.at), and(eq(scans.received_at, b.at), lt(scans.id, before)))!);
         }
         return (await db.select().from(scans).where(and(...conds)).orderBy(desc(scans.received_at), desc(scans.id)).limit(limit)).map(toScan);
+      },
+      async logStats(eventId, { checkpointIds, result, ephemeralIds, cap }) {
+        const conds = [eq(scans.event_id, eventId)];
+        if (checkpointIds) conds.push(checkpointIds.length ? inArray(scans.checkpoint_id, [...checkpointIds]) : sql`false`);
+        if (result) conds.push(eq(scans.result, result));
+        if (ephemeralIds) conds.push(ephemeralIds.length ? inArray(scans.ephemeral_id, [...ephemeralIds]) : sql`false`);
+        // Counting stops one past the cap, so a long log costs at most `cap` rows.
+        const capped = db.select({ one: sql`1` }).from(scans).where(and(...conds)).limit(cap + 1).as("capped");
+        const [c] = await db.select({ n: sql<number>`count(*)::int` }).from(capped);
+        const [o] = await db.select({ at: sql<Date | string | null>`min(${scans.corrected_at})` }).from(scans).where(eq(scans.event_id, eventId));
+        const n = Number(c?.n ?? 0);
+        const at = o?.at ?? null;
+        return { total: Math.min(n, cap), exact: n <= cap, oldest_at: at === null ? null : new Date(at) };
+      },
+      async byId(eventId, scanId) {
+        return one((await db.select().from(scans).where(and(eq(scans.event_id, eventId), eq(scans.id, scanId))).limit(1)).map(toScan));
+      },
+      async insertVoid(r) {
+        const rows = await db.insert(scan_voids).values(r).onConflictDoNothing().returning({ id: scan_voids.id });
+        return rows.length === 1 ? "ok" : "duplicate";
+      },
+      async voids(eventId) {
+        return db.select().from(scan_voids).where(eq(scan_voids.event_id, eventId)).orderBy(asc(scan_voids.voided_at));
       },
     },
 
@@ -1227,6 +1298,14 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       async all() {
         return (await db.select().from(audit_log).orderBy(asc(audit_log.id))).map(toAudit);
       },
+      async find({ actions, targets, actorId, since, limit }) {
+        if (actions.length === 0 || (targets && targets.length === 0)) return [];
+        const conds = [inArray(audit_log.action, [...actions])];
+        if (targets) conds.push(inArray(audit_log.target, [...targets]));
+        if (actorId) conds.push(eq(audit_log.actor_id, actorId));
+        if (since) conds.push(gte(audit_log.at, since));
+        return (await db.select().from(audit_log).where(and(...conds)).orderBy(desc(audit_log.id)).limit(limit)).map(toAudit);
+      },
       async verify() {
         const problems = await auditVerify(db);
         if (problems.length === 0) return -1;
@@ -1278,8 +1357,11 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       },
       async rotateSession(i) {
         // The lifetime is picked by the token's holder kind inside the locked step (auth_rotate_session_by_kind).
-        const r = await rotateSession(db, { tokenHash: i.tokenHash, newTokenHash: i.newTokenHash, ttl: i.ttl, now: i.now });
-        return { status: r.status, family_id: r.family_id, user_id: r.user_id, attendee_id: r.attendee_id, mfa_at: r.mfa_at, expires_at: r.expires_at };
+        const r = await rotateSession(db, {
+          tokenHash: i.tokenHash, newTokenHash: i.newTokenHash, ttl: i.ttl, now: i.now,
+          userAgent: i.userAgent ?? null, ip: i.ip ?? null, graceSeconds: i.graceSeconds ?? 0,
+        });
+        return { status: r.status, family_id: r.family_id, user_id: r.user_id, attendee_id: r.attendee_id, mfa_at: r.mfa_at, expires_at: r.expires_at, reissued: r.reissued };
       },
       async revokeFamily(familyId, reason, now) {
         return revokeFamily(db, familyId, reason, now);

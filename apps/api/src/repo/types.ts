@@ -54,6 +54,8 @@ export interface AttendeeRow {
   email: string | null;
   full_name: string | null;
   profile_jsonb: Record<string, unknown>;
+  /** Optional phone (vault column `phone`, 0030; encrypted at rest in the SQL store). Absent = none. */
+  phone?: string | null;
 }
 
 export interface VenueRow {
@@ -147,6 +149,9 @@ export interface EventRow {
   created_at?: Date;
   /** Database time on SQL (a trigger stamps every update); wall-clock time in memory. */
   updated_at?: Date;
+  /** Organiser contact shown to invitees (0032); absent or null when none was set. */
+  contact_name?: string | null;
+  contact_email?: string | null;
 }
 /** An event with its venue and dates: every event past draft, and a draft once they are set. */
 export type ScheduledEvent = EventRow & { venue_id: string; starts_at: Date; ends_at: Date };
@@ -185,6 +190,40 @@ export interface StaffAssignmentRow {
   event_id?: string | null;
   /** Explicit handover (01 §3); does not shorten the reserved window. */
   handed_over_at?: Date | null;
+  /** base64url SHA-256 of each scanner install (client device id) the assignee used in the shift, at most 8 (0028). */
+  scanner_device_hashes?: string[];
+}
+
+/** A scanner's correction of a mistaken admission (0028 scan_voids). */
+export interface ScanVoidRow {
+  id: string;
+  event_id: string;
+  scan_id: string;
+  voided_by: string | null;
+  reason: string | null;
+  voided_at: Date;
+}
+
+/** A self-service registration waiting for its emailed link (0028 pii_vault.pending_registrations). */
+export interface PendingRegistrationRow {
+  id: string;
+  link_token_hash: string;
+  attendee_id: string;
+  event_id: string;
+  zone_presence_consent: boolean;
+  /** Profile values and phone (encrypted at rest in the SQL store). */
+  answers: Record<string, unknown>;
+  expires_at: Date;
+  created_at: Date;
+}
+export interface PendingRegistrationsRepo {
+  create(row: PendingRegistrationRow): Promise<void>;
+  /** Read and delete, once; null when none or expired (an expired one is deleted too). */
+  take(linkTokenHash: string, now: Date): Promise<PendingRegistrationRow | null>;
+  /** Delete those whose link expired; returns how many. */
+  cleanup(now: Date): Promise<number>;
+  /** Erasure: every pending registration of one attendee. */
+  deleteFor(attendeeId: string): Promise<number>;
 }
 
 export interface CredentialRow {
@@ -337,6 +376,8 @@ export interface RotateResult {
   mfa_at: Date | null;
   /** When rotated: expiry of the new token. */
   expires_at: Date | null;
+  /** A rotated token presented again inside the grace window by the same client was re-issued (0029). */
+  reissued?: boolean;
 }
 
 export interface RedeemLinkResult {
@@ -387,7 +428,7 @@ export interface AttendeesRepo {
   byId(id: string): Promise<AttendeeRow | null>;
   insert(row: AttendeeRow): Promise<void>;
   /** Identity through the vault helpers (SQL: updateAttendeeIdentity). False when no such attendee. */
-  update(id: string, patch: { full_name?: string | null; profile_jsonb?: Record<string, unknown>; email?: string | null }): Promise<boolean>;
+  update(id: string, patch: { full_name?: string | null; profile_jsonb?: Record<string, unknown>; email?: string | null; phone?: string | null }): Promise<boolean>;
   byIds(ids: readonly string[]): Promise<AttendeeRow[]>;
   /** Every attendee, ordered by id, keyset on id (operator listing; decrypts on the SQL backend). */
   list(opts: { after?: string; limit: number }): Promise<AttendeeRow[]>;
@@ -476,8 +517,8 @@ export interface EventsRepo {
   /** Every event, drafts included, most recently changed first; keyset on (updated_at, id) descending. */
   listAdmin(opts: { state?: EventState; q?: string; venueId?: string; after?: { updated_at: Date; id: string }; limit: number }): Promise<EventRow[]>;
   update(id: string, patch: Partial<Omit<EventRow, "id" | "org_id" | "venue_id" | "created_at" | "updated_at">>): Promise<EventRow>;
-  /** A draft's venue: its rooms go, and with them their sessions and access rules (as the database cascades). */
-  setVenue(eventId: string, venueId: string): Promise<EventRow>;
+  /** A draft's venue (null clears it): its rooms go, and with them their sessions and access rules (as the database cascades). */
+  setVenue(eventId: string, venueId: string | null): Promise<EventRow>;
   /** Replace the event's rooms (draft or published only; the caller checks). Removed rooms take their sessions and rules. */
   setRooms(eventId: string, rooms: EventRoomRow[]): Promise<void>;
   /**
@@ -508,6 +549,8 @@ export interface RegistrationsRepo {
   forEvent(eventId: string): Promise<RegistrationRow[]>;
   /** Set checked_in_at if it is still null (first admission only). */
   markCheckedIn(id: string, at: Date): Promise<void>;
+  /** Clear checked_in_at if it is exactly `at` (an undone first admission). */
+  clearCheckedIn(id: string, at: Date): Promise<void>;
   /** `duplicate` when the attendee is already registered for the event (registrations_event_attendee_uq). */
   insert(row: RegistrationRow & { invitation_id?: string | null }): Promise<"ok" | "duplicate">;
   /** Tier and state changes. Bumps the event's revocation epoch like the database trigger does. */
@@ -532,6 +575,8 @@ export interface StaffRepo {
   handOver(id: string, i: { actorId: string | null; now: Date }): Promise<HandoverRow | "already_handed_over" | null>;
   /** The handover summary at any time (SQL: shiftHandoverSummary). */
   handoverSummary(id: string): Promise<HandoverRow | null>;
+  /** Record a scanner install used under the assignment (no-op when present or when 8 are recorded). */
+  noteDevice(id: string, deviceHash: string): Promise<void>;
 }
 export interface CredentialsRepo {
   byId(id: string): Promise<CredentialRow | null>;
@@ -592,15 +637,26 @@ export interface EphemeralIdsRepo {
   getOrCreate(eventId: string, credentialId: string): Promise<string>;
   /** Read-only lookup; null when the credential has no scans at this event. */
   find(eventId: string, credentialId: string): Promise<string | null>;
+  /** The reverse lookup, for a scanner undoing its own admission (scan scope; null once purged). */
+  credentialFor(eventId: string, ephemeralId: string): Promise<string | null>;
 }
 export interface ScansRepo {
   byIdemKey(eventId: string, idemKey: string): Promise<ScanRow | null>;
   insert(row: ScanRow): Promise<void>;
   /** All scans for an event, ordered by corrected time (occurred_at + clock_offset_ms). Used to rebuild projections. */
   forEvent(eventId: string): Promise<ScanRow[]>;
-  page(eventId: string, opts: { checkpointId?: string; result?: ScanResult; ephemeralId?: string; limit: number; before?: string }): Promise<ScanRow[]>;
+  page(eventId: string, opts: { checkpointId?: string; result?: ScanResult; ephemeralId?: string; limit: number; before?: string; checkpointIds?: readonly string[]; ephemeralIds?: readonly string[] }): Promise<ScanRow[]>;
+  /**
+   * The access log's figures: scans matching the filters (as `page`), counted up to `cap` (`exact`
+   * false when there are more), and the event's oldest scan by corrected time, whatever the filters.
+   */
+  logStats(eventId: string, opts: { checkpointIds?: readonly string[]; result?: ScanResult; ephemeralIds?: readonly string[]; cap: number }): Promise<{ total: number; exact: boolean; oldest_at: Date | null }>;
   /** Scans recorded at a checkpoint by one staff user with corrected time in [from, to): counts by result, and how many were offline. */
   shiftCounts(q: { checkpointId: string; staffUserId: string; from: Date; to: Date }): Promise<{ byResult: Record<string, number>; offline: number }>;
+  byId(eventId: string, scanId: string): Promise<ScanRow | null>;
+  /** Record a correction (append-only); `duplicate` when the scan was already voided. */
+  insertVoid(row: ScanVoidRow): Promise<"ok" | "duplicate">;
+  voids(eventId: string): Promise<ScanVoidRow[]>;
 }
 export interface OccupancyRepo {
   insertAdjustment(row: OccupancyAdjustmentRow): Promise<void>;
@@ -624,6 +680,11 @@ export interface AuditRepo {
   /** Append to the hash chain. The store assigns id, prev_hash and hash atomically. */
   append(entry: Pick<AuditRow, "actor_id" | "action" | "target" | "meta_jsonb" | "at">): Promise<AuditRow>;
   all(): Promise<AuditRow[]>;
+  /**
+   * Entries with one of `actions`, newest first (by id), at most `limit`; narrowed to `targets` and to
+   * one actor and a start time when given (an empty `targets` returns nothing).
+   */
+  find(q: { actions: readonly string[]; targets?: readonly string[]; actorId?: string; since?: Date; limit: number }): Promise<AuditRow[]>;
   /** Index of the first broken entry, or -1 when the chain is intact. */
   verify(): Promise<number>;
   /**
@@ -667,7 +728,13 @@ export interface AuthRepo {
    * Exchange a refresh token. Presenting an already-exchanged token is reuse: the whole family is
    * revoked and `reuse_detected` returned. Creates the new row itself.
    */
-  rotateSession(i: { tokenHash: string; newTokenHash: string; ttl: RefreshTtl; now: Date }): Promise<RotateResult>;
+  /**
+   * `graceSeconds` > 0: a token presented again that soon after its exchange, by the same client
+   * (`userAgent` and the /24 or /48 prefix of `ip`, compared with the exchange's), while the token it
+   * was exchanged for is unused, is re-issued (`reissued`) instead of revoking the family; the unused
+   * token is superseded and counts as reuse if it ever comes back (SQL: auth_rotate_session, 0029).
+   */
+  rotateSession(i: { tokenHash: string; newTokenHash: string; ttl: RefreshTtl; now: Date; userAgent?: string | null; ip?: string | null; graceSeconds?: number }): Promise<RotateResult>;
   revokeFamily(familyId: string, reason: AuthRevokeReason, now: Date): Promise<number>;
   createLink(i: { tokenHash: string; attendeeId: string; expiresAt: Date; now: Date }): Promise<void>;
   /** Single use, even under concurrency. Only `redeemed` grants anything. */
@@ -730,6 +797,7 @@ export interface Repos {
   /** Run `fn` as one unit of work (see TxScope). Nested calls join the outer unit. */
   transaction<T>(fn: (scope: TxScope) => Promise<T>): Promise<T>;
   dataRequests: DataRequestsRepo;
+  pendingRegistrations: PendingRegistrationsRepo;
   maintenance: MaintenanceRepo;
   fixtures: FixtureWriter;
   /** Which implementation this is, for logs and tests. */
@@ -834,7 +902,8 @@ export interface DevicesRepo {
   /** The active device holding this token, or null. */
   authenticate(token: string): Promise<DeviceRow | null>;
   /** Also stamps the checkpoint's gate-health fields (`checkpointId`, else the device's own). */
-  heartbeat(i: { deviceId: string; checkpointId?: string | null; clockOffsetMs: number; queueDepth: number; appVersion: string | null; now: Date }): Promise<"ok" | "unknown_device" | "not_active">;
+  /** `allowlistIssuedAt`: the allowlist the device holds (0029); null/absent keeps the last one reported. */
+  heartbeat(i: { deviceId: string; checkpointId?: string | null; clockOffsetMs: number; queueDepth: number; appVersion: string | null; allowlistIssuedAt?: Date | null; now: Date }): Promise<"ok" | "unknown_device" | "not_active">;
   /**
    * The device row of a staff phone running the Gate Scanner (kind `scanner`, no device token),
    * found by its hardware id or created, and moved to `checkpointId` (its current assignment).
@@ -1011,6 +1080,10 @@ export interface GateHealthDbRow {
   last_scan_at: Date | null;
   scans_last_15m: number;
   staff_on_duty: number;
+  /** Oldest allowlist issued_at among active devices heard from in 15 minutes (0029); null when none reported. */
+  allowlist_issued_at: Date | null;
+  /** That allowlist is more than 15 minutes old. */
+  allowlist_stale: boolean;
   /** The checkpoint's grid position; null when not placed. */
   position?: GridPointRow | null;
 }

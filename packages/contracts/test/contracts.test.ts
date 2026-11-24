@@ -42,7 +42,29 @@ const subtle = webcrypto.subtle;
 
 describe("REST registry", () => {
   it("covers every endpoint in docs/02 §5 (68) plus 36 additive endpoints (email-link, logout, me/registration, credentials/:id/scans, venue update, checkpoint create/update, event state, event admin view, kiosk registration, desk code, staff invite and activation, shift handover, gate heartbeat, MFA enrolment and confirmation, six webhook endpoints, six device endpoints, five data-request endpoints, post-event summary, operator profile) and 6 more (four report-schedule endpoints, notification mark-read, operator broadcast) and the attendee's own pass resend", () => {
-    expect(Object.keys(endpoints)).toHaveLength(111 + 9 + 1);
+    expect(Object.keys(endpoints)).toHaveLength(111 + 9 + 1 + 6 + 5);
+  });
+  it("adds five endpoints for the console and invitation gaps: alert detail, gate activity, one registration, invitation read, RSVP with the token in the body", () => {
+    expect(endpoints.getAlert).toMatchObject({ method: "GET", path: "/alerts/:id", access: ["admin", "organiser", "supervisor"] });
+    expect(endpoints.checkpointActivity).toMatchObject({ method: "GET", path: "/checkpoints/:id/activity", access: ["admin", "organiser", "supervisor"] });
+    expect(endpoints.getRegistration).toMatchObject({ method: "GET", path: "/registrations/:id", access: ["admin", "organiser", "supervisor", "desk_clerk"] });
+    expect(endpoints.readInvitation).toMatchObject({ method: "POST", path: "/invitations/read", access: ["public"], rateLimit: "public" });
+    expect(endpoints.rsvpWithToken).toMatchObject({ method: "POST", path: "/invitations/rsvp", access: ["public"], rateLimit: "auth" });
+    // Additive only: a decline needs no name; an accept without one still parses (the server refuses it).
+    expect(endpoints.rsvp.body.safeParse({ email: "a@example.com", accept: false, zone_presence_consent: false }).success).toBe(true);
+    expect(endpoints.rsvp.body.safeParse({ email: "a@example.com", accept: true, full_name: "A", zone_presence_consent: true }).success).toBe(true);
+    expect(endpoints.listScans.query.parse({ event_id: webcrypto.randomUUID(), checkpoint_ids: `${webcrypto.randomUUID()},${webcrypto.randomUUID()}` }).checkpoint_ids).toHaveLength(2);
+    expect(endpoints.updateEvent.body.safeParse({ venue_id: null }).success).toBe(true);
+  });
+  it("adds six endpoints for the scanner and attendee gaps: scan undo, GET /me, PATCH /me/profile, own registrations, lost-band report, public occupancy", () => {
+    expect(endpoints.undoScan).toMatchObject({ method: "POST", path: "/scans/:id/undo", access: ["security_staff"], audited: true, rateLimit: "scan" });
+    for (const name of ["me", "updateMyProfile", "myRegistrations", "reportLostBand"] as const) expect(endpoints[name].access).toEqual(["attendee"]);
+    expect(endpoints.reportLostBand.audited).toBe(true);
+    expect(endpoints.reportLostBand.rateLimit).toBe("resend");
+    expect(endpoints.publicOccupancy).toMatchObject({ method: "GET", path: "/events/:id/occupancy", access: ["public"], rateLimit: "public" });
+    // Additive only: an existing scan submission (no assignment) and a heartbeat (no allowlist time) still parse.
+    expect(endpoints.gateHeartbeat.body.safeParse({ checkpoint_id: webcrypto.randomUUID(), device_id: "d", queue_depth: 0, clock_offset_ms: 0, online: true }).success).toBe(true);
+    expect(endpoints.registerUser.body.safeParse({ email: "a@example.com", full_name: "A", event_slug: "x", zone_presence_consent: false, phone: "call me" }).success).toBe(false);
   });
   it("pins every role's endpoints (D-23): a new endpoint must be placed in this matrix deliberately", () => {
     const allowed = (role: string) =>
@@ -52,13 +74,15 @@ describe("REST registry", () => {
     expect(allowed("supervisor")).toEqual([
       ...signedIn, "ackAlert", "checkpointScans", "clearReview", "dashboard", "eventRegistrations", "eventSummary", "gateHealth", "getVenue",
       "listAlerts", "listAttendees", "listCheckpoints", "listCredentials", "listScans", "recountRoom", "resolveAlert", "revoke",
+      "getAlert", "checkpointActivity", "getRegistration",
     ].sort());
     expect(allowed("desk_clerk")).toEqual([
       ...signedIn, "bindCarrier", "deskCode", "eventRegistrations", "inventory", "myAssignments", "rebindCarrier", "resend",
+      "getRegistration",
     ].sort());
     expect(allowed("security_staff")).toEqual([
       ...signedIn, "ackAlert", "allowlist", "bindCarrier", "deskCode", "gateHeartbeat", "handover", "kioskRegister", "listAlerts", "listCheckpoints",
-      "myAssignments", "postScans",
+      "myAssignments", "postScans", "undoScan",
     ].sort());
     for (const role of ["speaker", "crew"]) expect(allowed(role)).toEqual([...signedIn, "myAssignments"].sort());
     // Admin reaches every endpoint an operator or staff role reaches, except the scanner's own and the attendee's.

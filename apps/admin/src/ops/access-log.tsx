@@ -16,13 +16,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Search, X } from "lucide-react";
-import { SCAN_RESULT_VALUES, type ScanResult } from "@synan/contracts/enums";
+import type { ScanResult } from "@synan/contracts/enums";
+import { SCAN_RESULT_COPY } from "@synan/contracts/copy";
 import { Button, Field, Select, TextInput, cn } from "@synan/ui/components";
 import { ResultChip, SignalShape, StatusDot, formatNumber, formatOffset, resultLabel } from "@synan/ui/data";
 import { CLOSED_EVENT, scanCursor, type OpsScan, type ScanLogQuery } from "@synan/mock/command";
 import { Can, useSession } from "../access/session";
 import { EmptyState, ErrorState, LoadingState, PageHeader, TIER_LABEL, formatDate, linkClass, useDocumentTitle, zoneLabel } from "../kit";
-import { api } from "../live/backend";
+import { api, mode } from "../live/backend";
 import { useCommand } from "../live/context";
 import { useSlice } from "../live/slice";
 import type { LiveScan } from "../live/store";
@@ -35,6 +36,8 @@ const WINDOW = 200;
 const FLUSH_MS = 250;
 const RECONCILE_MS = 5_000;
 const ANY = "any";
+/** Every result, from the Zod-free copy module (the enums module would bundle Zod). */
+const SCAN_RESULT_VALUES = Object.keys(SCAN_RESULT_COPY) as ScanResult[];
 
 export default function AccessLogScreen() {
   const { event } = useCommand();
@@ -282,12 +285,20 @@ function AccessLog({ event }: { event: CommandEvent }) {
   }, [paused, pending]);
 
   const sentinel = useRef<HTMLDivElement>(null);
+  // "At the top" = the head of the list is in view in its scroll container (the shell's main).
   useEffect(() => {
     const el = sentinel.current;
     if (!el) return;
-    const observer = new IntersectionObserver(([entry]) => setAtTop(entry?.isIntersecting ?? true));
-    observer.observe(el);
-    return () => observer.disconnect();
+    let scroller: HTMLElement | null = el.parentElement;
+    while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
+    const target: HTMLElement | Window = scroller ?? window;
+    const check = () => {
+      const top = scroller ? scroller.getBoundingClientRect().top : 0;
+      setAtTop(el.getBoundingClientRect().top >= top - 4);
+    };
+    check();
+    target.addEventListener("scroll", check, { passive: true });
+    return () => target.removeEventListener("scroll", check);
   }, [load.status]);
 
   const loadOlder = async () => {
@@ -427,8 +438,8 @@ function AccessLog({ event }: { event: CommandEvent }) {
                 {history ? "Showing older scans; new ones are not added while you browse." : null}
                 {!history && pending.length > 0 ? (
                   <>
-                    <span className="font-mono text-foreground tabular-nums">{formatNumber(pending.length)}</span> new {pending.length === 1 ? "scan" : "scans"}
-                    {expanded ? " · close the open row or" : held ? " · paused," : ""} waiting
+                    <span className="font-mono text-foreground tabular-nums">{formatNumber(pending.length)}</span> new {pending.length === 1 ? "scan" : "scans"} waiting
+                    {held ? " while paused" : expanded ? " while a row is open" : " above"}
                   </>
                 ) : null}
               </span>
@@ -464,6 +475,8 @@ function AccessLog({ event }: { event: CommandEvent }) {
           <footer className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-12 text-muted-foreground sm:px-6">
             <span>
               Showing <span className="font-mono tabular-nums">{formatNumber(rows.length)}</span> of{" "}
+              {/* The real API does not count the whole log: with more to load, the total is a floor. */}
+              {mode === "api" && older ? "at least " : null}
               <span className="font-mono tabular-nums">{formatNumber(Math.max(total, rows.length))}</span>
               {filtered ? " matching" : ""} scans{rows.length >= WINDOW ? ` · ${WINDOW} at a time` : ""}
             </span>

@@ -5,6 +5,7 @@ import { SessionProvider, useSession } from "./access/session";
 import CommandCenter from "./command/command-center";
 import EventSummary from "./summary/event-summary";
 import { LoadingState } from "./kit";
+import { mode } from "./live/backend";
 import { CommandProvider, useCommand } from "./live/context";
 import { SCREENS, type ScreenId } from "./routes";
 import { NotFound, Placeholder } from "./screens/placeholder";
@@ -33,7 +34,11 @@ const GateDetail = lazy(() => import("./ops/gate-detail"));
 const AccessLog = lazy(() => import("./ops/access-log"));
 
 /** Shell routes not built yet: honest placeholders (docs/06 §2.1). */
-const PLACEHOLDERS: ScreenId[] = ["attendees", "staff", "reports", "eventReport", "settings"];
+const PLACEHOLDERS: ScreenId[] = ["staff", "reports", "eventReport", "settings"];
+const AttendeeLookup = lazy(() => import("./people/attendee-lookup"));
+
+/** Real API only: the second-factor prompt and authenticator set-up (absent from a mock build). */
+const StepUpHost = mode === "api" ? lazy(() => import("./access/step-up")) : null;
 
 function Lazy({ children }: { children: ReactNode }) {
   return <Suspense fallback={<LoadingState label="Opening…" />}>{children}</Suspense>;
@@ -68,6 +73,11 @@ export default function App() {
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "")}>
       <SessionProvider>
+        {StepUpHost ? (
+          <Suspense fallback={null}>
+            <StepUpHost />
+          </Suspense>
+        ) : null}
         <CommandProvider>
           <Routes>
             {/* Signing in and out happens in the session gate; an old sign-in link lands home. */}
@@ -76,9 +86,11 @@ export default function App() {
               path={SCREENS.setup.path}
               element={
                 <SessionGate>
-                  <Screen id="setup">
-                    <FirstRun />
-                  </Screen>
+                  <RequireCapability need="setup.run" standalone>
+                    <Lazy>
+                      <FirstRun />
+                    </Lazy>
+                  </RequireCapability>
                 </SessionGate>
               }
             />
@@ -111,6 +123,7 @@ export default function App() {
                 <Route path="settings" element={<Screen id="eventSettings"><WorkspaceSettings /></Screen>} />
               </Route>
 
+              <Route path={SCREENS.attendees.path} element={<Screen id="attendees"><AttendeeLookup /></Screen>} />
               <Route path={SCREENS.desk.path} element={<Screen id="desk"><Desk /></Screen>} />
               <Route path="/credentials" element={<Navigate to={SCREENS.desk.path} replace />} />
               <Route path={SCREENS.alerts.path} element={<Screen id="alerts"><Alerts /></Screen>} />

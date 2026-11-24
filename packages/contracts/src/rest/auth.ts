@@ -8,9 +8,14 @@ import { endpoint, PUBLIC, type Access } from "./endpoint.js";
 const ANY_SIGNED_IN: readonly Access[] = ["attendee", "admin", "organiser", "security_staff", "speaker", "crew", "supervisor", "desk_clerk"];
 const ANY_USER: readonly Access[] = ["admin", "organiser", "security_staff", "speaker", "crew", "supervisor", "desk_clerk"];
 
-/** The authenticated identity as the client sees it. Never contains a DB id for attendees. */
+/** The authenticated identity as the client sees it. */
 export const Principal = z.object({
-  /** Opaque subject identifier. */
+  /**
+   * Opaque subject identifier. For an attendee it is their own record id (the same value as
+   * `GET /me` `id`): only ever the caller's own, never sequential, and accepted by no route except
+   * the caller's own self-service. Attendee clients should use `GET /me` and `PATCH /me/profile`,
+   * which need no id; `PATCH /users/:id/profile` with this value keeps working.
+   */
   sub: z.string(),
   kind: PrincipalKind,
   /** Present for operator and staff principals. */
@@ -93,12 +98,19 @@ export const SigningKey = z.object({
 });
 export type SigningKey = z.infer<typeof SigningKey>;
 
-export const SigningKeys = z.object({ keys: z.array(SigningKey) });
+/**
+ * Additive: the clock leeway, in seconds, the server allows either side of a portal QR's validity
+ * window (and an emailed code's expiry). A scanner verifying codes offline should allow the same.
+ */
+const QrLeeway = z.number().int().min(0).optional();
+
+export const SigningKeys = z.object({ keys: z.array(SigningKey), qr_leeway_s: QrLeeway });
 export type SigningKeys = z.infer<typeof SigningKeys>;
 
 export const ServerTime = z.object({
   server_time: IsoDateTime,
   epoch_ms: z.number().int(),
+  qr_leeway_s: QrLeeway,
 });
 export type ServerTime = z.infer<typeof ServerTime>;
 

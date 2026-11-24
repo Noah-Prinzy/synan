@@ -249,8 +249,32 @@ export const ScanRecord = z.object({
   received_at: IsoDateTime,
   clock_offset_ms: z.number().int(),
   offline: z.boolean(),
+  /** Additive: occurred_at + clock_offset_ms, the time the server orders the scan by (D-14). */
+  corrected_at: IsoDateTime.optional(),
 });
 export type ScanRecord = z.infer<typeof ScanRecord>;
+
+/**
+ * GET /checkpoints/:id/activity: one gate's throughput per minute, from the per-gate, per-minute
+ * rollups (D-16), so it reads the same after the purge. Oldest first, zero-filled, ending with the
+ * current minute. Link-state history is not included: heartbeats keep only each device's latest
+ * state, so no history is stored to derive it from.
+ */
+export const GateActivity = z.object({
+  checkpoint_id: Id,
+  event_id: Id,
+  /** Start of the first minute. */
+  from: IsoDateTime,
+  minutes: z.array(z.object({ at: IsoDateTime, scans: z.number().int().min(0), admitted: z.number().int().min(0), denied: z.number().int().min(0) })),
+  /** Physical reads by recorded result over the whole window (the failure breakdown). */
+  by_result: z.record(z.string(), z.number().int().min(0)),
+});
+export type GateActivity = z.infer<typeof GateActivity>;
+export const GateActivityQuery = z.object({
+  event_id: Id,
+  /** Whole minutes ending with the current one (default 15, at most 240). */
+  minutes: z.coerce.number().int().min(1).max(240).default(15),
+});
 
 /**
  * Gate health from the devices at each checkpoint (fixed readers, kiosks and staff phones all
@@ -280,6 +304,13 @@ export const GateHealth = z.object({
   position: GridPoint.nullable().optional(),
   /** Scans refused in the last 15 minutes by the checkpoint's per-minute scan limit (03 §4; this API instance). */
   scans_rate_limited_15m: z.number().int().min(0).optional(),
+  /**
+   * Additive: the oldest allowlist `issued_at` among the gate's devices heard from in the last 15
+   * minutes (from their heartbeats); null when none reported one.
+   */
+  allowlist_issued_at: IsoDateTime.nullable().optional(),
+  /** Additive: that allowlist is more than 15 minutes old (the offline fail-open window, O-05). */
+  allowlist_stale: z.boolean().optional(),
 });
 export type GateHealth = z.infer<typeof GateHealth>;
 
@@ -307,6 +338,8 @@ export const venueEndpoints = {
   recountRoom: endpoint({ method: "POST", path: "/rooms/:id/recount", access: SUPERVISE, audited: true, params: IdParam, body: RecountRequest, response: RecountResult }),
   listCheckpoints: endpoint({ method: "GET", path: "/checkpoints", access: OPS_AND_SECURITY, query: CheckpointQuery, response: pageOf(Checkpoint) }),
   checkpointScans: endpoint({ method: "GET", path: "/checkpoints/:id/scans", access: SUPERVISE, params: IdParam, query: CheckpointScansQuery, response: pageOf(ScanRecord) }),
+  /** Addition (06 D12, D12b): a gate's per-minute throughput from the rollups. */
+  checkpointActivity: endpoint({ method: "GET", path: "/checkpoints/:id/activity", access: SUPERVISE, params: IdParam, query: GateActivityQuery, response: GateActivity }),
   /** Not in 02 §5: create and edit gates (the layout needs them; only GET /checkpoints was listed). */
   createCheckpoint: endpoint({ method: "POST", path: "/checkpoints", access: ADMIN_ONLY, audited: true, body: CreateCheckpoint, response: Checkpoint, status: 201 }),
   updateCheckpoint: endpoint({ method: "PUT", path: "/checkpoints/:id", access: ADMIN_ONLY, audited: true, params: IdParam, body: UpdateCheckpoint, response: Checkpoint }),

@@ -4,9 +4,13 @@ import { Id, IsoDateTime, pageOf, PageQuery } from "../common.js";
 import { AttendeeTier, CarrierKind, CarrierState, CredentialState, NotificationKind, RegistrationState } from "../enums/index.js";
 import { QR_PREFIX_PORTAL, QR_TEXT_LENGTH } from "../qr/index.js";
 import { ATTENDEE, endpoint, type Access } from "./endpoint.js";
-import { EventSession } from "./events.js";
+import { EventRef, EventSession } from "./events.js";
 import { StaffAssignment } from "./staff.js";
 
+/**
+ * Without `event_id`: the attendee's current pass — the live event's, else the next one to start,
+ * else the most recent (no longer an error when the attendee holds several passes).
+ */
 export const MeCredentialQuery = z.object({ event_id: Id.optional() });
 
 /** POST /me/credential/resend: which event's pass to email. */
@@ -23,8 +27,58 @@ export const MyCredential = z.object({
   carriers: z.array(z.object({ kind: CarrierKind, state: CarrierState, identifier_hint: z.string() })),
   /** Room ids this pass is permitted to enter now (resolved server-side). */
   permitted_room_ids: z.array(Id),
+  /** Additive; always present in server responses: the event this pass is for. */
+  event: EventRef.optional(),
 });
 export type MyCredential = z.infer<typeof MyCredential>;
+
+/** GET /me: the signed-in attendee. */
+export const Me = z.object({
+  /** The attendee's own id (the same value as `Principal.sub`); only ever theirs. */
+  id: Id,
+  full_name: z.string().nullable(),
+  /** e.g. `o•••@example.com`; null for an anonymous (Public-tier) attendee. */
+  email_masked: z.string().nullable(),
+  /** e.g. `••••• 4567`; null when no phone is on file. */
+  phone_masked: z.string().nullable(),
+});
+export type Me = z.infer<typeof Me>;
+
+/** PATCH /me/profile: the caller's own identity (the old `PATCH /users/:id/profile` keeps working). */
+export const UpdateMyProfile = z.object({
+  full_name: z.string().trim().min(1).max(200).optional(),
+  profile: z.record(z.string(), z.union([z.string().max(2000), z.boolean(), z.array(z.string().max(200))])).optional(),
+  /** E.164-ish: digits, spaces, `+ - ( )`; null removes it. Held encrypted in the identity vault. */
+  phone: z.string().trim().regex(/^\+?[0-9 ()-]{6,24}$/).nullable().optional(),
+});
+
+/** One of the attendee's own registrations, with its event and pass state (unlisted events included). */
+export const MyRegistrationItem = z.object({
+  registration_id: Id,
+  event: EventRef,
+  tier: AttendeeTier,
+  state: RegistrationState,
+  created_at: IsoDateTime,
+  checked_in_at: IsoDateTime.nullable(),
+  zone_presence_consent: z.boolean(),
+  /** State of the current pass, or null if none is issued. */
+  credential_state: CredentialState.nullable(),
+  /** The pass has a live wristband (bound or active). */
+  band_bound: z.boolean(),
+});
+export type MyRegistrationItem = z.infer<typeof MyRegistrationItem>;
+
+/**
+ * POST /me/credential/report-lost: the attendee's own wristband is lost. The band is marked `lost`
+ * at once, so it opens no door (online at once, offline gates at their next allowlist), and the desk
+ * is told; a replacement is collected at the desk (no automatic re-issue). Idempotent.
+ */
+export const ReportLostBand = z.object({ event_id: Id });
+export const ReportLostBandResult = z.object({
+  /** False when the pass had no live band (nothing to mark). */
+  marked_lost: z.boolean(),
+  credential: MyCredential,
+});
 
 /**
  * One signed portal QR (D-12). `code` is the QR text: a compact Ed25519-signed code
@@ -132,6 +186,12 @@ export const meEndpoints = {
   myAssignments: endpoint({ method: "GET", path: "/me/assignments", access: STAFF_SELF, response: z.object({ items: z.array(StaffAssignment) }) }),
   dataExport: endpoint({ method: "POST", path: "/me/data-export", access: ATTENDEE, rateLimit: "resend", response: DataRequestAccepted, status: 202 }),
   dataErasure: endpoint({ method: "POST", path: "/me/data-erasure", access: ATTENDEE, rateLimit: "resend", body: z.object({ confirm: z.literal(true) }), response: DataRequestAccepted, status: 202 }),
+  /* ---- additions for the attendee portal ---- */
+  me: endpoint({ method: "GET", path: "/me", access: ATTENDEE, response: Me }),
+  updateMyProfile: endpoint({ method: "PATCH", path: "/me/profile", access: ATTENDEE, rateLimit: "auth", body: UpdateMyProfile, response: Me }),
+  /** Every own registration, newest event first, with its event and pass state. */
+  myRegistrations: endpoint({ method: "GET", path: "/me/registrations", access: ATTENDEE, response: z.object({ items: z.array(MyRegistrationItem) }) }),
+  reportLostBand: endpoint({ method: "POST", path: "/me/credential/report-lost", access: ATTENDEE, audited: true, rateLimit: "resend", body: ReportLostBand, response: ReportLostBandResult }),
 } as const;
 
 /* ---- data-subject requests (03 §5): additions, not in 02 §5 (proposed) ---- */

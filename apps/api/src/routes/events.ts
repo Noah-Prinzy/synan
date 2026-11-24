@@ -32,7 +32,17 @@ export async function summary(app: AppContext, e: ScheduledEvent): Promise<Event
     state: e.state,
     venue: { id: e.venue_id, name: venue?.name ?? "", city: venue?.city ?? null },
     on_site: await publicOnSite(app, e),
+    ...(await cardFigures(app, e)),
   };
+}
+
+/** Capacity (sum of the capacities in force of the event's rooms; null without rooms), session count, image (none yet). */
+async function cardFigures(app: AppContext, e: EventRow): Promise<{ capacity: number | null; session_count: number; image_url: string | null }> {
+  const eventRooms = await app.repos.events.rooms(e.id);
+  const rooms = await app.repos.venues.roomsByIds(eventRooms.map((r) => r.room_id));
+  const override = new Map(eventRooms.map((r) => [r.room_id, r.capacity_override]));
+  const capacity = rooms.length ? rooms.reduce((sum, r) => sum + (override.get(r.id) ?? r.capacity), 0) : null;
+  return { capacity, session_count: (await app.repos.events.sessions(e.id)).length, image_url: null };
 }
 
 /**

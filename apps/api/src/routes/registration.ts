@@ -15,7 +15,8 @@
 import { randomUUID } from "node:crypto";
 import type { Express } from "express";
 import { ContractError } from "@synan/contracts/errors";
-import { endpoints, type BatchItemRejection, type Registration } from "@synan/contracts/rest";
+import { endpoints, ProfileField, RsvpRequest, type BatchItemRejection, type ProfileField as ProfileFieldT, type Registration } from "@synan/contracts/rest";
+import type { z } from "zod";
 import type { AppContext } from "../app.js";
 import { API_BRAND } from "../brand.js";
 import { carrierDto, hint } from "../domain/credential-service.js";
@@ -68,13 +69,72 @@ async function filteredPage<T extends { id: string }>(
   return { items: out, next_cursor: cursor ?? null };
 }
 
+const newRegistrationAt = (at: Date, eventId: string, attendeeId: string, tier: RegistrationRow["tier"], consent: boolean): RegistrationRow => ({
+  id: randomUUID(), event_id: eventId, attendee_id: attendeeId, tier, state: "confirmed",
+  zone_presence_consent_at: consent ? at : null, checked_in_at: null, created_at: at,
+});
+
+/** What `POST /users/register` keeps with a pending registration (encrypted in the vault on SQL). */
+interface PendingAnswers {
+  full_name?: string;
+  profile?: Record<string, unknown>;
+  phone?: string;
+}
+
+/**
+ * Registrations completed from a pending registration, not yet re-sent by a client still on the old
+ * two-call path (register, then `POST /registrations` after the link): that one `POST` adopts the
+ * registration (201) instead of answering CONFLICT. In process and per app (one API instance, D-17);
+ * kept as long as an emailed link lives. Losing it (a restart) only means that old client sees CONFLICT.
+ */
+const adoptable = new WeakMap<AppContext, Map<string, number>>();
+const adoptKey = (attendeeId: string, eventId: string) => `${attendeeId}:${eventId}`;
+
+/**
+ * The emailed link was redeemed (on any device): complete the registration kept pending with it.
+ * Identity answers fill only what is empty (an unauthenticated request never overwrites a known
+ * person's name, phone or answers); the registration is Ordinary and confirmed, its credential
+ * issued and pass sent, exactly as `POST /registrations`. Nothing happens when there is none, it
+ * expired, the event closed or left self-service, or the attendee is already registered. Never
+ * throws: sign-in does not depend on it. Returns the registration created, if any.
+ */
+export async function completePendingRegistration(app: AppContext, linkTokenHash: string, attendeeId: string): Promise<RegistrationRow | null> {
+  try {
+    const at = new Date(app.clock.now());
+    const p = await app.repos.pendingRegistrations.take(linkTokenHash, at);
+    if (!p || p.attendee_id !== attendeeId) return null;
+    const e = await app.repos.events.byId(p.event_id);
+    if (!e || !e.listed_bool || !open(e)) return null;
+    const att = await app.repos.attendees.byId(attendeeId);
+    if (!att || !att.email) return null;
+    if ((await app.repos.registrations.forAttendee(att.id)).some((r) => r.event_id === e.id)) return null;
+    const a = p.answers as PendingAnswers;
+    const extra = Object.fromEntries(Object.entries(a.profile ?? {}).filter(([k]) => !(k in att.profile_jsonb)));
+    const patch = {
+      ...(a.full_name && !att.full_name ? { full_name: a.full_name } : {}),
+      ...(a.phone && !att.phone ? { phone: a.phone } : {}),
+      ...(Object.keys(extra).length ? { profile_jsonb: { ...att.profile_jsonb, ...extra } } : {}),
+    };
+    if (Object.keys(patch).length) await app.repos.attendees.update(att.id, patch);
+    const reg = newRegistrationAt(at, e.id, att.id, "ORDINARY", p.zone_presence_consent);
+    if ((await app.repos.registrations.insert(reg)) === "duplicate") return null;
+    await app.credentials.issueAndSend(reg.id);
+    let m = adoptable.get(app);
+    if (!m) adoptable.set(app, (m = new Map()));
+    for (const [k, until] of m) if (until <= at.getTime()) m.delete(k);
+    m.set(adoptKey(att.id, e.id), at.getTime() + app.config.emailLinkTtlS * 1000);
+    return reg;
+  } catch (e) {
+    console.error("[registration] completing a pending registration failed:", e instanceof Error ? e.message.slice(0, 160) : "error");
+    return null;
+  }
+}
+
 export function registrationRoutes(x: Express, app: AppContext) {
   const audit = (actor: string | null, action: string, target: string, meta: Json = {}) => app.audit.append({ actorId: actor, action, target, meta });
   const now = () => new Date(app.clock.now());
-  const newRegistration = (eventId: string, attendeeId: string, tier: RegistrationRow["tier"], consent: boolean): RegistrationRow => ({
-    id: randomUUID(), event_id: eventId, attendee_id: attendeeId, tier, state: "confirmed",
-    zone_presence_consent_at: consent ? now() : null, checked_in_at: null, created_at: now(),
-  });
+  const newRegistration = (eventId: string, attendeeId: string, tier: RegistrationRow["tier"], consent: boolean): RegistrationRow =>
+    newRegistrationAt(now(), eventId, attendeeId, tier, consent);
   /** Self-service is for listed, open events only: an unlisted event answers exactly like a missing one. */
   const selfServiceEvent = async (e: EventRow | null, ctx: AuthContext | null): Promise<EventRow> => {
     if (!e || !e.listed_bool || !open(e) || !(await canSeeEvent(app, e, ctx))) throw new ContractError("NOT_FOUND");
@@ -88,11 +148,17 @@ export function registrationRoutes(x: Express, app: AppContext) {
     app.rateLimiter.hit(`ip:${ip}:${endpoints.registerUser.path}`, app.config.rateLimits.authPerMin, 60_000);
     const retry = app.rateLimiter.hit(`link:${body.email.toLowerCase()}`, 3, 15 * 60_000);
     if (retry === null) {
-      // Never overwrite an existing person's identity from an unauthenticated request.
+      // Never overwrite an existing person's identity from an unauthenticated request. A new address
+      // gets a bare row (the link needs one); the answers wait, encrypted, with the pending registration.
       if (!(await app.repos.attendees.byEmail(body.email))) {
-        await app.repos.attendees.insert({ id: randomUUID(), user_id: null, email: body.email, full_name: body.full_name, profile_jsonb: body.profile });
+        await app.repos.attendees.insert({ id: randomUUID(), user_id: null, email: body.email, full_name: null, profile_jsonb: {} });
       }
-      await app.auth.requestEmailLink(body.email, `/events/${e.slug}/register`);
+      const answers: PendingAnswers = { full_name: body.full_name, profile: body.profile, ...(body.phone ? { phone: body.phone } : {}) };
+      // The registration is kept pending with the emailed link and completed when it is redeemed,
+      // on whatever device (completePendingRegistration); unused, it goes when the link expires.
+      await app.auth.requestEmailLink(body.email, `/events/${e.slug}/register`, {
+        eventId: e.id, eventTitle: e.title, zonePresenceConsent: body.zone_presence_consent, answers: answers as Record<string, unknown>,
+      });
     }
     // Same answer whether the address was new, known, or limited.
     return { accepted: true as const, verification_sent: true };
@@ -104,10 +170,72 @@ export function registrationRoutes(x: Express, app: AppContext) {
     const att = await app.repos.attendees.byId(ctx!.sub);
     if (!att || !att.email) throw new ContractError("FORBIDDEN");
     const reg = newRegistration(e.id, att.id, "ORDINARY", body.zone_presence_consent);
-    if ((await app.repos.registrations.insert(reg)) === "duplicate") throw new ContractError("CONFLICT", "You are already registered for this event.");
+    if ((await app.repos.registrations.insert(reg)) === "duplicate") {
+      // The old two-call path: the link already completed this registration; this one call adopts it.
+      const m = adoptable.get(app);
+      const key = adoptKey(att.id, e.id);
+      const existing = (await app.repos.registrations.forAttendee(att.id)).find((r) => r.event_id === e.id);
+      if (existing && m && (m.get(key) ?? 0) > app.clock.now()) {
+        m.delete(key);
+        if (Object.keys(body.profile).length) await app.repos.attendees.update(att.id, { profile_jsonb: { ...att.profile_jsonb, ...body.profile } });
+        return registrationDto(existing);
+      }
+      throw new ContractError("CONFLICT", "You are already registered for this event.");
+    }
     if (Object.keys(body.profile).length) await app.repos.attendees.update(att.id, { profile_jsonb: { ...att.profile_jsonb, ...body.profile } });
     await app.credentials.issueAndSend(reg.id);
     return registrationDto(reg);
+  });
+
+  /**
+   * The desk's view of registrations (06 D6.4, D8): each one's current credential (newest not
+   * replaced), live wristband, lost band, and when its pass email last went out.
+   */
+  const deskFacts = async (regs: RegistrationRow[]) => {
+    const creds = await app.repos.credentials.forRegistrations(regs.map((r) => r.id));
+    const credOf = new Map<string, CredentialRow>();
+    for (const c of creds) {
+      if (c.state === "replaced" || !c.registration_id) continue;
+      const cur = credOf.get(c.registration_id);
+      if (!cur || c.issued_at > cur.issued_at) credOf.set(c.registration_id, c);
+    }
+    const bandOf = new Map<string, CarrierRow>();
+    const lastBandOf = new Map<string, CarrierRow>();
+    const emailedAt = new Map<string, Date>();
+    for (const c of await app.repos.carriers.forCredentials([...credOf.values()].map((x) => x.id))) {
+      if (!c.credential_id) continue;
+      if (c.kind === "nfc" && (c.state === "assigned" || c.state === "bound" || c.state === "active")) bandOf.set(c.credential_id, c);
+      if (c.kind === "nfc" && (c.bound_at?.getTime() ?? 0) >= (lastBandOf.get(c.credential_id)?.bound_at?.getTime() ?? -1)) lastBandOf.set(c.credential_id, c);
+      // Each pass email creates a new emailed code (and retires the one before): the newest is the last send.
+      if (c.kind === "qr_email" && c.bound_at && c.bound_at > (emailedAt.get(c.credential_id) ?? new Date(0))) emailedAt.set(c.credential_id, c.bound_at);
+    }
+    // The pass has no live band and its last band is lost (reported by the attendee or the desk): the desk binds a new one.
+    const bandLost = (credId: string | undefined) => !!credId && !bandOf.has(credId) && lastBandOf.get(credId)?.state === "lost";
+    return { credOf, bandOf, lastBandOf, emailedAt, bandLost };
+  };
+  type DeskFacts = Awaited<ReturnType<typeof deskFacts>>;
+  const deskRow = (r: RegistrationRow, a: AttendeeRow | undefined, f: DeskFacts, clerk: boolean) => {
+    const cred = f.credOf.get(r.id) ?? null;
+    const band = cred ? f.bandOf.get(cred.id) : undefined;
+    const lost = f.bandLost(cred?.id);
+    return {
+      ...registrationDto(r), attendee: { id: r.attendee_id, full_name: a?.full_name ?? null, email: a?.email ?? null },
+      credential_id: cred?.id ?? null, credential_state: cred?.state ?? null, band_hint: band ? hint(band) : null, band_lost: lost,
+      carrier_id: band?.id ?? (lost && cred ? f.lastBandOf.get(cred.id)!.id : null),
+      // Sent only to someone with an address: an anonymous (Public-tier) pass is never emailed.
+      pass_sent_at: cred && a?.email ? (f.emailedAt.get(cred.id)?.toISOString() ?? null) : null,
+      // A desk clerk sees identity, tier and states only: no check-in time (D-23).
+      ...(clerk ? {} : { checked_in_at: r.checked_in_at?.toISOString() ?? null }),
+    };
+  };
+
+  mount(x, app, endpoints.getRegistration, async ({ params, ctx }) => {
+    const r = await app.repos.registrations.byId(params.id);
+    const e = r ? await app.repos.events.byId(r.event_id) : null;
+    // A desk clerk outside their desk events: answered like a missing registration (D-23).
+    if (!r || !e || !(await mayWorkDeskFor(app, ctx!, e))) throw new ContractError("NOT_FOUND");
+    const [a] = await app.repos.attendees.byIds([r.attendee_id]);
+    return deskRow(r, a, await deskFacts([r]), ctx!.role === "desk_clerk");
   });
 
   /* ---- operators: an event's registrations ---- */
@@ -117,18 +245,8 @@ export function registrationRoutes(x: Express, app: AppContext) {
     if (!e || !(await mayWorkDeskFor(app, ctx!, e))) throw new ContractError("NOT_FOUND");
     const clerk = ctx!.role === "desk_clerk";
     const all = await app.repos.registrations.forEvent(e.id);
-    // Each registration's current credential (newest not replaced) and its live wristband.
-    const creds = await app.repos.credentials.forRegistrations(all.map((r) => r.id));
-    const credOf = new Map<string, CredentialRow>();
-    for (const c of creds) {
-      if (c.state === "replaced" || !c.registration_id) continue;
-      const cur = credOf.get(c.registration_id);
-      if (!cur || c.issued_at > cur.issued_at) credOf.set(c.registration_id, c);
-    }
-    const bandOf = new Map<string, CarrierRow>();
-    for (const c of await app.repos.carriers.forCredentials([...credOf.values()].map((x) => x.id))) {
-      if (c.kind === "nfc" && c.credential_id && (c.state === "assigned" || c.state === "bound" || c.state === "active")) bandOf.set(c.credential_id, c);
-    }
+    const facts = await deskFacts(all);
+    const { credOf, bandOf, bandLost } = facts;
     let matching: Set<string> | null = null;
     if (query.q) {
       // Operators search identity: a bounded decrypt-and-filter over this event's attendees (SQL backend).
@@ -140,23 +258,14 @@ export function registrationRoutes(x: Express, app: AppContext) {
       .filter((r) => !query.state || r.state === query.state)
       .filter((r) => !query.credential || credOf.get(r.id)?.state === query.credential)
       .filter((r) => query.unbound === undefined || (query.unbound ? !bandOf.has(credOf.get(r.id)?.id ?? "") : bandOf.has(credOf.get(r.id)?.id ?? "")))
+      .filter((r) => query.band_lost === undefined || bandLost(credOf.get(r.id)?.id) === query.band_lost)
       .filter((r) => !matching || matching.has(r.attendee_id))
       .sort((a, b) => a.id.localeCompare(b.id))
       .filter((r) => !query.cursor || r.id > query.cursor);
     const page = regs.slice(0, query.limit);
     const people = new Map((await app.repos.attendees.byIds(page.map((r) => r.attendee_id))).map((a) => [a.id, a]));
     return {
-      items: page.map((r) => {
-        const a = people.get(r.attendee_id);
-        const cred = credOf.get(r.id) ?? null;
-        const band = cred ? bandOf.get(cred.id) : undefined;
-        return {
-          ...registrationDto(r), attendee: { id: r.attendee_id, full_name: a?.full_name ?? null, email: a?.email ?? null },
-          credential_id: cred?.id ?? null, credential_state: cred?.state ?? null, band_hint: band ? hint(band) : null,
-          // A desk clerk sees identity, tier and states only: no check-in time (D-23).
-          ...(clerk ? {} : { checked_in_at: r.checked_in_at?.toISOString() ?? null }),
-        };
-      }),
+      items: page.map((r) => deskRow(r, people.get(r.attendee_id), facts, clerk)),
       next_cursor: regs.length > query.limit ? page.at(-1)!.id : null,
       total: all.length,
     };
@@ -222,33 +331,78 @@ export function registrationRoutes(x: Express, app: AppContext) {
     return { items, rejected };
   });
 
-  mount(x, app, endpoints.rsvp, async ({ params, body }) => {
-    const inv = await app.repos.invitations.byTokenHash(sha256b64url(params.token));
-    // Unknown, used, declined and wrong-address all look alike: nothing about the invitation leaks.
+  /**
+   * The reply to an invitation, whichever way the token arrives (path: deprecated; body: preferred).
+   * Unknown, used, declined and wrong-address all look alike: nothing about the invitation leaks.
+   */
+  const answerInvitation = async (token: string, body: z.output<typeof RsvpRequest>) => {
+    const inv = await app.repos.invitations.byTokenHash(sha256b64url(token));
     if (!inv || inv.state === "redeemed" || inv.state === "revoked") throw new ContractError("LINK_INVALID");
     if (!app.repos.invitations.hashCandidates(body.email).includes(inv.email_hash)) throw new ContractError("LINK_INVALID");
     const e = await app.repos.events.byId(inv.event_id);
     if (inv.state === "expired" || inv.expires_at.getTime() <= app.clock.now() || !e || !open(e)) throw new ContractError("LINK_EXPIRED");
     if (!body.accept) {
+      // Declining needs no name, and stores nothing about the person.
       if (!(await app.repos.invitations.consume(inv.id, "revoked", now()))) throw new ContractError("LINK_INVALID");
       return { registration: null };
     }
+    const fullName = body.full_name?.trim();
+    if (!fullName) throw invalid("body.full_name", "a name is needed to accept");
     let att: AttendeeRow | null = await app.repos.attendees.byEmail(body.email);
+    const existing = att !== null;
     if (!att) {
-      att = { id: randomUUID(), user_id: null, email: body.email, full_name: body.full_name, profile_jsonb: body.profile };
+      att = { id: randomUUID(), user_id: null, email: body.email, full_name: fullName, profile_jsonb: body.profile };
       await app.repos.attendees.insert(att);
     }
-    if ((await app.repos.registrations.forAttendee(att.id)).some((r) => r.event_id === e.id)) {
+    const person: AttendeeRow = att;
+    if ((await app.repos.registrations.forAttendee(person.id)).some((r) => r.event_id === e.id)) {
       throw new ContractError("CONFLICT", "You are already registered for this event.");
     }
     // Single use, even under concurrency: only one RSVP flips the invitation.
     if (!(await app.repos.invitations.consume(inv.id, "redeemed", now()))) throw new ContractError("LINK_INVALID");
-    const reg = newRegistration(e.id, att.id, "PRIVATE_INVITE", body.zone_presence_consent);
+    if (existing) {
+      // The name given on accepting is the attendee's name (their pass shows it). The reply proves the
+      // invited address and holds its single-use link, as a sign-in link would. Answers are added
+      // where the person had none; existing answers are kept.
+      const extra = Object.fromEntries(Object.entries(body.profile).filter(([k]) => !(k in person.profile_jsonb)));
+      await app.repos.attendees.update(person.id, {
+        ...(person.full_name !== fullName ? { full_name: fullName } : {}),
+        ...(Object.keys(extra).length ? { profile_jsonb: { ...person.profile_jsonb, ...extra } } : {}),
+      });
+    }
+    const reg = newRegistration(e.id, person.id, "PRIVATE_INVITE", body.zone_presence_consent);
     if ((await app.repos.registrations.insert({ ...reg, invitation_id: inv.id })) === "duplicate") {
       throw new ContractError("CONFLICT", "You are already registered for this event.");
     }
     await app.credentials.issueAndSend(reg.id);
     return { registration: registrationDto(reg) };
+  };
+  mount(x, app, endpoints.rsvp, async ({ params, body }) => answerInvitation(params.token, body));
+  mount(x, app, endpoints.rsvpWithToken, async ({ body: { token, ...body } }) => answerInvitation(token, body));
+
+  /**
+   * Read an open invitation before replying. Unknown, used, declined and withdrawn links answer
+   * LINK_INVALID alike (as the reply does); a link past its reply-by time, or whose event is no longer
+   * open, LINK_EXPIRED. No address is asked for or returned, so nothing about one is confirmed.
+   */
+  mount(x, app, endpoints.readInvitation, async ({ body }) => {
+    const inv = await app.repos.invitations.byTokenHash(sha256b64url(body.token));
+    const e = inv ? await app.repos.events.byId(inv.event_id) : null;
+    if (!inv || inv.state === "redeemed" || inv.state === "revoked") throw new ContractError("LINK_INVALID");
+    if (inv.state === "expired" || inv.expires_at.getTime() <= app.clock.now() || !e || !open(e)) throw new ContractError("LINK_EXPIRED");
+    const venue = e.venue_id ? await app.repos.venues.venue(e.venue_id) : null;
+    const org = (await app.repos.venues.organizations()).find((o) => o.id === e.org_id);
+    const contact = e.contact_name || e.contact_email ? { name: e.contact_name ?? null, email: e.contact_email ?? null } : null;
+    return {
+      event: {
+        id: e.id, slug: e.slug, title: e.title, starts_at: e.starts_at?.toISOString() ?? null, ends_at: e.ends_at?.toISOString() ?? null,
+        timezone: e.timezone, venue_name: venue?.name ?? null, city: venue?.city ?? null,
+      },
+      host: e.contact_name || org?.name || null,
+      contact,
+      expires_at: inv.expires_at.toISOString(),
+      fields: e.profile_schema_jsonb.filter((f) => ProfileField.safeParse(f).success) as ProfileFieldT[],
+    };
   });
 
   /* ---- Public tier at a kiosk ---- */

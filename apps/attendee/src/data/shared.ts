@@ -53,4 +53,7 @@ export function notifySession(): void {
   window.dispatchEvent(new Event(SESSION_EVENT));
 }
 
-export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+/** A10: the invitation replies this device sent (data/invitation.ts), by token fingerprint. */
+export const INVITATION_REPLIES_KEY = "synan.invitation.replies";
+
+export const sleep =(ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));

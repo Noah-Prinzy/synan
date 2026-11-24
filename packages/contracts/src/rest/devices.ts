@@ -50,6 +50,8 @@ export const DeviceHeartbeat = z.object({
   queue_depth: z.number().int().min(0),
   clock_offset_ms: z.number().int(),
   app_version: z.string().max(64).optional(),
+  /** Additive: `issued_at` of the allowlist the reader holds (as on POST /gates/heartbeat). */
+  allowlist_issued_at: IsoDateTime.nullable().optional(),
 });
 
 export const deviceEndpoints = {

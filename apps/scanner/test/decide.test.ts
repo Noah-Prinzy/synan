@@ -82,6 +82,30 @@ describe("local decision, in the server's order", () => {
     expect(d).toEqual({ result: "already_inside", step: 6, lastInAtMs: T - 4 * 60_000 });
   });
 
+  it("2 — emailed codes are checked against qr_email_hashes: only the listed (still usable) code admits", () => {
+    const email = (hash: string | null, list: string[] | undefined, e: Partial<Parameters<typeof entry>[0]> = {}) =>
+      run({ medium: "qr", resolution: known({ carrier: "qr_email", emailCid: "cid", emailHash: hash }, { credential_hash: KEY, qr_email_hashes: list, ...e }) });
+    expect(email("h-live", ["h-live"])).toBe("admitted");
+    // Superseded by a resend, or used: any other emailed code of the pass reads spent.
+    expect(email("h-old", ["h-live"])).toBe("pass_spent");
+    expect(email("h-old", [])).toBe("pass_spent");
+    // The pass-wide flag no longer refuses a listed code (a resend after one was used).
+    expect(email("h-live", ["h-live"], { qr_email_spent: true })).toBe("admitted");
+    // An older list without the field: the pass-wide flag decides.
+    expect(email("h-live", undefined, { qr_email_spent: true })).toBe("pass_spent");
+    expect(email("h-live", undefined)).toBe("admitted");
+    // Used on this device since the list was issued.
+    expect(run({ medium: "qr", spentEmailCids: new Set(["cid"]), resolution: known({ carrier: "qr_email", emailCid: "cid", emailHash: "h-live" }, { credential_hash: KEY, qr_email_hashes: ["h-live"] }) })).toBe("pass_spent");
+  });
+
+  it("3 — a cancelled registration's pass reads revoked, as the list marks it", () => {
+    expect(run({ resolution: known({}, { credential_hash: KEY, revoked: true, state: "revoked" }) })).toBe("revoked");
+  });
+
+  it("1 — an `assigned` band is not on the list, so it opens nothing: unknown_token", () => {
+    expect(run({ resolution: { known: false, credentialKey: "sha-of-assigned-band" } })).toBe("unknown_token");
+  });
+
   it("8 — otherwise admitted (capacity is not knowable offline; the server catches it at sync)", () => {
     expect(run({})).toBe("admitted");
     expect(run({ checkpoint: doors })).toBe("admitted");

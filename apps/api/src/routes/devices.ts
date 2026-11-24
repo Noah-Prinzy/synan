@@ -75,11 +75,18 @@ export function deviceRoutes(x: Express, app: AppContext) {
     // Device and checkpoint gate-health fields in one step (the token's checkpoint, never one the body names).
     const r = await app.repos.devices.heartbeat({
       deviceId: ctx!.sub, checkpointId: ctx!.checkpointId ?? null, clockOffsetMs: body.clock_offset_ms, queueDepth: body.queue_depth,
-      appVersion: body.app_version ?? null, now: new Date(now),
+      appVersion: body.app_version ?? null, allowlistIssuedAt: body.allowlist_issued_at ? new Date(body.allowlist_issued_at) : null, now: new Date(now),
     });
     if (r !== "ok") {
       await app.scannerTrust.refused({ reason: "device_not_active", channel: `${endpoints.deviceHeartbeat.method} ${endpoints.deviceHeartbeat.path}`, ip, deviceId: ctx!.sub, checkpointId: ctx!.checkpointId ?? null });
       throw new ContractError("UNAUTHENTICATED");
+    }
+    // A fixed reader works every live event at its venue (it has no shift).
+    const cp = ctx!.checkpointId ? await app.repos.venues.checkpoint(ctx!.checkpointId) : null;
+    if (cp && body.allowlist_issued_at) {
+      for (const e of await app.repos.events.listAll({ state: "live", limit: 100 })) {
+        if (e.venue_id === cp.venue_id) await app.gates.allowlistReported({ eventId: e.id, checkpointId: cp.id, roomId: cp.room_id, issuedAt: new Date(body.allowlist_issued_at) });
+      }
     }
     return { server_time: new Date(now).toISOString() };
   });

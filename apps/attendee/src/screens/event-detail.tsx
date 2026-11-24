@@ -7,6 +7,7 @@ import { ErrorState, OfflineState, StateBlock } from "../components/states";
 import { getEventDetail, type EventDetail as EventRecord } from "../data/events";
 import { dayKey, formatLongDay, formatTime, zoneLabel } from "../data/format";
 import { dataVersion } from "../data/live";
+import { roomNow, useOccupancy, type OccupancyView } from "../data/occupancy";
 import { useResource } from "../data/resource";
 import { useSession } from "../data/auth";
 import { MorphSkeleton } from "@synan/ui/components";
@@ -135,7 +136,8 @@ function StatusCell({ event, signedIn }: { event: EventRecord; signedIn: boolean
   );
 }
 
-function SessionList({ event }: { event: EventRecord }) {
+/** Each session's room, live (GET /events/:id/occupancy). A count the API withholds is not shown. */
+function SessionList({ event, occupancy }: { event: EventRecord; occupancy: OccupancyView | null }) {
   const live = event.state === "live";
   const days = new Map<string, EventRecord["sessions"]>();
   for (const session of event.sessions) {
@@ -151,7 +153,10 @@ function SessionList({ event }: { event: EventRecord }) {
           </h3>
           <ul>
             {sessions.map((session) => {
-              const pct = session.capacity > 0 ? Math.round((session.occupancy / session.capacity) * 100) : 0;
+              const room = roomNow(occupancy, session.roomId);
+              const count = room.kind === "count" ? room.occupancy : 0;
+              const capacity = session.capacity || (room.kind === "closed" ? 0 : room.capacity);
+              const pct = capacity > 0 ? Math.round((count / capacity) * 100) : 0;
               return (
                 <li
                   key={session.id}
@@ -165,7 +170,7 @@ function SessionList({ event }: { event: EventRecord }) {
                     <p className="text-17">{session.title}</p>
                     <p className="mt-1 text-15 text-muted-foreground">{session.room}</p>
                   </div>
-                  {live && session.occupancy > 0 ? (
+                  {live && count > 0 ? (
                     <div className="self-center">
                       <p className={`mb-1.5 text-right text-13 ${pct >= 100 ? "text-destructive" : pct >= 85 ? "text-warning" : "text-muted-foreground"}`}>
                         {pct >= 100 ? "Full" : pct >= 85 ? "Nearly full · " : ""}
@@ -206,6 +211,8 @@ export default function EventDetail() {
   useHashLanding(ready);
 
   const event = resource.status === "ready" ? resource.data : null;
+  // Polled while the page is open and visible, signed in or not.
+  const occupancy = useOccupancy(event ? [event.id] : []);
   useEffect(() => {
     document.title = pageTitle(event?.title ?? "Event");
   }, [event]);
@@ -243,7 +250,10 @@ export default function EventDetail() {
   }
 
   const live = event.state === "live";
-  const pct = live && event.capacity > 0 ? Math.round((event.admitted / event.capacity) * 100) : 0;
+  const view = occupancy(event.id);
+  // People on site: the live poll's figure, else the event page's own; null when withheld (too few to show).
+  const onSite = view ? view.onSite : event.admittedShown ? event.admitted : null;
+  const pct = live && onSite !== null && event.capacity > 0 ? Math.round((onSite / event.capacity) * 100) : 0;
 
   return (
     <PageShell bleed>
@@ -327,11 +337,11 @@ export default function EventDetail() {
                 <dd className="mt-1 font-mono text-21">{event.capacity.toLocaleString("en-GB")}</dd>
               </div>
               <div className="col-span-2 border-r border-b border-border p-4 md:col-span-1">
-                <dt className="text-13 text-muted-foreground">{live ? "Here now" : "Doors"}</dt>
+                <dt className="text-13 text-muted-foreground">{live && onSite !== null ? "Here now" : "Doors"}</dt>
                 <dd className="mt-1">
-                  {live ? (
+                  {live && onSite !== null ? (
                     <>
-                      <span className="font-mono text-21">{event.admitted.toLocaleString("en-GB")}</span>
+                      <span className="font-mono text-21">{onSite.toLocaleString("en-GB")}</span>
                       <AnimatedBar value={pct} tone={barTone(pct)} label={`${pct}% of capacity`} className="mt-2" />
                     </>
                   ) : (
@@ -346,7 +356,7 @@ export default function EventDetail() {
             <h2 id="schedule-title" className="font-display text-28">Schedule</h2>
             <p className="mt-2 text-15 text-muted-foreground">All times are {zoneLabel(event.timezone, event.startsAt)}.</p>
             <div className="mt-8">
-              <SessionList event={event} />
+              <SessionList event={event} occupancy={view} />
             </div>
           </section>
 

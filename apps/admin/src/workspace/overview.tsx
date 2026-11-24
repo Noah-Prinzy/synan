@@ -30,11 +30,13 @@ import {
   zoneLabel,
 } from "../kit";
 import { api, clock, configure } from "../live/backend";
+import { useCan } from "../access/session";
+import { WORKSPACE_TAB_NEED, type WorkspaceTab } from "../routes";
 import { eventRooms, useWorkspaceEvent } from "./parts/context";
 import { plural } from "./parts/copy";
 
 /** Where a published event fixes an unmet readiness item (the wizard is for drafts). */
-const FIX_TAB: Partial<Record<ReadinessKey, { to: string; label: string }>> = {
+const FIX_TAB: Partial<Record<ReadinessKey, { to: WorkspaceTab; label: string }>> = {
   basics: { to: "settings", label: "Settings" },
   capacity: { to: "settings", label: "Settings" },
   rules: { to: "rooms", label: "Rooms & rules" },
@@ -55,6 +57,7 @@ export default function WorkspaceOverview() {
   const { event, venue } = useWorkspaceEvent();
   useDocumentTitle(`Overview · ${event.title || "Untitled event"}`);
   const navigate = useNavigate();
+  const can = useCan();
   const tz = event.timezone;
   const over = event.state === "closed" || event.state === "archived";
 
@@ -180,9 +183,13 @@ export default function WorkspaceOverview() {
                 [
                   "Venue",
                   event.venue_id && venue.status === "ready" && venue.data ? (
-                    <Link to={`/venues/${event.venue_id}`} className={linkClass}>
-                      {venue.data.venue.name}
-                    </Link>
+                    can("venues.edit") ? (
+                      <Link to={`/venues/${event.venue_id}`} className={linkClass}>
+                        {venue.data.venue.name}
+                      </Link>
+                    ) : (
+                      venue.data.venue.name
+                    )
                   ) : event.venue_id ? (
                     "…"
                   ) : (
@@ -232,7 +239,7 @@ export default function WorkspaceOverview() {
           <nav aria-labelledby="ov-links" className="border-t border-border">
             <SectionHead id="ov-links" title="In this event" />
             <ul>
-              {QUICK_LINKS.map(([to, label, detail]) => (
+              {QUICK_LINKS.filter(([to]) => can(WORKSPACE_TAB_NEED[to])).map(([to, label, detail]) => (
                 <li key={to} className="border-b border-border last:border-b-0">
                   <Link
                     to={`/events/${event.id}/${to}`}
@@ -255,12 +262,22 @@ export default function WorkspaceOverview() {
 }
 
 function PublishedFixes({ items, eventId }: { items: ReadinessItem[]; eventId: string }) {
+  const can = useCan();
   const unmet = items.filter((item) => !item.met);
   if (unmet.length === 0) return null;
   return (
     <ul className="text-12 text-muted-foreground">
       {unmet.map((item) => {
-        const fix = FIX_TAB[item.key];
+        const tab = FIX_TAB[item.key];
+        // A fix in a tab the role cannot open is someone else's job: say whose, without a dead link.
+        const fix = tab && can(WORKSPACE_TAB_NEED[tab.to]) ? tab : undefined;
+        if (tab && !fix) {
+          return (
+            <li key={item.key}>
+              {item.label}: an admin sets this in {tab.label}.
+            </li>
+          );
+        }
         return (
           <li key={item.key}>
             {item.label}:{" "}

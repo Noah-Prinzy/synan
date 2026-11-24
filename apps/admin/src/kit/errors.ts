@@ -2,9 +2,12 @@
  * Turning a failed call into words. Every message comes from the contracts' error copy
  * (docs/02 §7: the single source); field messages come from the server's validation and
  * are already written for people.
+ *
+ * Works for the mock's MockApiError and the real API's ApiFailure alike: both carry `code`
+ * and `fields` (field name → message). Read by shape, so neither class is imported here and
+ * neither backend is pulled into the other's build.
  */
 import { ERROR_COPY } from "@synan/contracts/copy";
-import { MockApiError } from "@synan/mock/command";
 
 export type ErrorCode = keyof typeof ERROR_COPY;
 
@@ -16,22 +19,60 @@ export interface ErrorInfo {
   fields: Record<string, string>;
 }
 
+function field(error: unknown, key: string): unknown {
+  return error && typeof error === "object" && key in error ? (error as Record<string, unknown>)[key] : undefined;
+}
+
 export function errorCode(error: unknown): ErrorCode {
-  const raw = error instanceof MockApiError ? error.code : error instanceof Error ? error.message : "";
+  const code = field(error, "code");
+  const raw = typeof code === "string" ? code : error instanceof Error ? error.message : "";
   return raw in ERROR_COPY ? (raw as ErrorCode) : "INTERNAL";
 }
 
+/**
+ * NOT IN CONTRACTS: words for "nothing answered" (the real API only; the mock always answers).
+ * The same sentences as api/failure.ts's NETWORK_COPY, kept here so this file imports neither
+ * backend; both move to `@synan/contracts/copy` when the proposed NETWORK / OFFLINE codes land.
+ */
+const NO_ANSWER_COPY = {
+  offline: { title: "You are offline", message: "This needs a connection. It will work again when you are back online." },
+  unreachable: { title: "Server not reachable", message: "The server did not answer. Check the connection and try again." },
+} as const;
+
 export function errorCopy(error: unknown): ErrorInfo {
   const code = errorCode(error);
-  const copy = ERROR_COPY[code];
+  const silent = noAnswer(error);
+  const copy = silent ? NO_ANSWER_COPY[silent] : ERROR_COPY[code];
   return {
     code,
     title: copy.title,
     message: copy.message,
-    fields: error instanceof MockApiError ? error.fields : {},
+    fields: fieldErrors(error),
   };
 }
 
 export function fieldErrors(error: unknown): Record<string, string> {
-  return error instanceof MockApiError ? error.fields : {};
+  const fields = field(error, "fields");
+  return fields && typeof fields === "object" ? (fields as Record<string, string>) : {};
+}
+
+/**
+ * The real API's extras, read by shape (undefined on the mock): the code the server actually sent
+ * when an adapter re-coded the failure for a screen, and whether nothing answered at all.
+ */
+export function serverCode(error: unknown): ErrorCode | undefined {
+  const code = field(error, "serverCode");
+  return typeof code === "string" && code in ERROR_COPY ? (code as ErrorCode) : undefined;
+}
+
+/** Nothing answered (offline, unreachable, timed out): `offline` when the browser says it has no network. */
+export function noAnswer(error: unknown): "offline" | "unreachable" | null {
+  if (field(error, "kind") !== "network") return null;
+  return field(error, "offline") ? "offline" : "unreachable";
+}
+
+/** Seconds the server asked to wait before trying again (429), when it said. */
+export function retryAfter(error: unknown): number | null {
+  const s = field(error, "retryAfterS");
+  return typeof s === "number" && s > 0 ? s : null;
 }

@@ -7,28 +7,47 @@
  *                      known, so a deep link never flashes a screen the role may not open.
  *   NoConsole          the whole page for a role with no console (security staff, speaker,
  *                      crew): what the account is for, and sign out.
- *   SignedOut          the whole page after signing out.
+ *   SignedOut          the whole page while nobody is signed in: on the real API the sign-in
+ *                      form (sign-in.tsx), saying why; on the mock, one Sign in button.
  */
-import { useState, type ReactNode } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
+import { DEV_TOOLS, mode } from "../live/backend";
 import { Link } from "react-router-dom";
 import { Wordmark } from "@synan/ui/brand";
 import { ActionButton, buttonClass } from "@synan/ui/components";
 import { ErrorState, LoadingState, useDocumentTitle } from "../kit";
 import { ROLE_PURPOSE, type Capability } from "./capabilities";
 import { useSession } from "./session";
+import { SignInForm } from "./sign-in";
 
-export function RequireCapability({ need, children }: { need: Capability | readonly Capability[]; children: ReactNode }) {
+export function RequireCapability({
+  need,
+  children,
+  standalone = false,
+}: {
+  need: Capability | readonly Capability[];
+  children: ReactNode;
+  /** Outside the shell (first run): the refusal gets the standalone frame. */
+  standalone?: boolean;
+}) {
   const { can } = useSession();
   const needs = typeof need === "string" ? [need] : need;
-  return needs.every(can) ? <>{children}</> : <NotForRole />;
+  if (needs.every(can)) return <>{children}</>;
+  return standalone ? (
+    <Frame>
+      <NotForRole inFrame />
+    </Frame>
+  ) : (
+    <NotForRole />
+  );
 }
 
 /** Inside the shell: this screen is not part of the role's console. */
-export function NotForRole() {
+export function NotForRole({ inFrame = false }: { inFrame?: boolean }) {
   const { roleLabel, role, landing, landingLabel } = useSession();
   useDocumentTitle("Not available");
   return (
-    <section aria-labelledby="not-for-role" className="max-w-160 px-4 py-10 sm:px-6">
+    <section aria-labelledby="not-for-role" className={inFrame ? "mt-10 max-w-160" : "max-w-160 px-4 py-10 sm:px-6"}>
       <p className="font-mono text-11 text-muted-foreground">{roleLabel}</p>
       <h1 id="not-for-role" className="mt-1 font-display text-28 leading-tight tracking-tight text-balance">
         This screen is not part of your console
@@ -64,10 +83,13 @@ export function SessionGate({ children }: { children: ReactNode }) {
       </Frame>
     );
   }
-  if (state.status === "signed-out") return <SignedOut />;
+  if (state.status === "signed-out") return <SignedOut reason={state.reason} />;
   if (!session.hasConsole) return <NoConsole />;
   return <>{children}</>;
 }
+
+/** Development only, mock only: switch roles from the pages outside the shell. Absent from production builds. */
+const RoleDock = DEV_TOOLS && mode === "mock" ? lazy(() => import("../dev/role-switcher")) : null;
 
 /** The standalone page frame: the wordmark once, one centred column, no chrome. */
 function Frame({ children }: { children: ReactNode }) {
@@ -79,6 +101,11 @@ function Frame({ children }: { children: ReactNode }) {
         </p>
         {children}
       </main>
+      {RoleDock ? (
+        <Suspense fallback={null}>
+          <RoleDock />
+        </Suspense>
+      ) : null}
     </div>
   );
 }
@@ -94,7 +121,11 @@ export function NoConsole() {
           {scanner ? "This account uses the Gate Scanner" : "This account has no console"}
         </h1>
         <p className="mt-3 max-w-120 text-15 leading-relaxed text-muted-foreground">
-          {user ? <>You are signed in as {user.name}, {article(roleLabel)} {roleLabel.toLowerCase()}. </> : null}
+          {user ? (
+            <>
+              You are signed in as {user.name} ({roleLabel.toLowerCase()}).{" "}
+            </>
+          ) : null}
           {scanner
             ? "Gate scanning happens on the scanner phone or tablet at your checkpoint. Open the Gate Scanner there and pair it with your gate."
             : "Your access is your credential: show your pass or wristband at the door. Your organiser grants the rooms you need for each event."}
@@ -123,7 +154,19 @@ function SignOutButton({ signOut }: { signOut: () => Promise<void> }) {
   );
 }
 
-export function SignedOut() {
+export function SignedOut({ reason = "signed-out" }: { reason?: Parameters<typeof SignInForm>[0]["reason"] }) {
+  if (mode === "api") {
+    return (
+      <Frame>
+        <SignInForm reason={reason} />
+      </Frame>
+    );
+  }
+  return <MockSignedOut />;
+}
+
+/** The mock: no credentials to ask for; one button signs the persona back in. */
+function MockSignedOut() {
   const { signIn } = useSession();
   const [failed, setFailed] = useState(false);
   useDocumentTitle("Signed out");

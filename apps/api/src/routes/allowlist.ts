@@ -76,6 +76,15 @@ export function allowlistRoutes(x: Express, app: AppContext) {
     if (e.state !== "published" && e.state !== "live") throw new ContractError("EVENT_NOT_LIVE");
     if (to <= from) to = from + 1; // an event already past its end still yields a (state-only) list
     const data = await app.repos.events.allowlist(e.id, { from: new Date(from), to: new Date(to), checkpointId });
+    // A perimeter gate's list also names, per pass, the event rooms it may enter in the window (ids
+    // only), so an offline verdict can show the room chips (A7). Not an admission rule there.
+    const cp = checkpointId ? await app.repos.venues.checkpoint(checkpointId) : null;
+    let entries: AllowlistPayload["entries"] = data.entries;
+    if (cp?.perimeter_bool) {
+      const whole = await app.repos.events.allowlist(e.id, { from: new Date(from), to: new Date(to), checkpointId: null });
+      const rooms = new Map(whole.entries.map((x) => [x.credential_hash, x.permitted_room_ids]));
+      entries = data.entries.map((x) => ({ ...x, perimeter_room_ids: rooms.get(x.credential_hash) ?? [] }));
+    }
     const payload: AllowlistPayload = {
       event_id: e.id,
       checkpoint_id: checkpointId,
@@ -85,7 +94,7 @@ export function allowlistRoutes(x: Express, app: AppContext) {
       window_start: new Date(from).toISOString(),
       window_end: new Date(to).toISOString(),
       issued_at: new Date(now).toISOString(),
-      entries: data.entries,
+      entries,
     };
     return signAllowlist(app, payload);
   });

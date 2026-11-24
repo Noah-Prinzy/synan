@@ -98,7 +98,7 @@ export class TelemetryHub {
       s.zones.set(z.zone_id, z);
       s.pubZones.set(z.zone_id, this.suppress(z, "public"));
     }
-    s.pubTotals = JSON.stringify(this.suppressTotals(this.totalsOf(s), "public"));
+    s.pubTotals = JSON.stringify(this.publicView(eventId).totals);
   }
 
   onSiteOf(eventId: string): number {
@@ -187,7 +187,9 @@ export class TelemetryHub {
       s.pubZones.set(z.zone_id, v);
       zones.push(v);
     }
-    const totals = this.suppressTotals(d.totals, "public");
+    // Public totals add up only what is shown (publicView), never the full sums: total − shown rooms
+    // would otherwise recover the suppressed rooms' count (O-08). The state is the delta's state here.
+    const totals = this.publicView(eventId).totals;
     const totalsChanged = JSON.stringify(totals) !== s.pubTotals;
     if (!rooms.length && !zones.length && !totalsChanged) return null;
     s.pubTotals = JSON.stringify(totals);
@@ -235,17 +237,30 @@ export class TelemetryHub {
 
   snapshot(eventId: string, scope: TelemetryScope): TelemetryEvent {
     const s = this.state(eventId);
+    // The public snapshot is exactly the public read: one implementation of the public scope.
+    const data =
+      scope === "public"
+        ? this.publicView(eventId)
+        : { rooms: [...s.rooms.values()], zones: [...s.zones.values()], totals: this.suppressTotals(this.totalsOf(s), scope) };
     return {
       id: this.cursor(s.seq),
       type: "occupancy.snapshot",
       at: new Date(this.clock.now()).toISOString(),
-      data: {
-        event_id: eventId,
-        rooms: [...s.rooms.values()].map((r) => this.suppress(r, scope)),
-        zones: [...s.zones.values()].map((z) => this.suppress(z, scope)),
-        totals: this.suppressTotals(this.totalsOf(s), scope),
-      },
+      data: { event_id: eventId, ...data },
     };
+  }
+
+  /**
+   * The public scope as a read (GET /events/:id/occupancy): rooms and zones suppressed exactly as on
+   * the public stream, and totals that add up only the rooms and zones shown (each then suppressed
+   * below k), so no suppressed count can be recovered by subtracting the shown ones (O-08).
+   */
+  publicView(eventId: string): { rooms: RoomOccupancy[]; zones: ZoneOccupancy[]; totals: { on_site: number | null; in_rooms: number | null } } {
+    const s = this.state(eventId);
+    const rooms = [...s.rooms.values()].map((r) => this.suppress(r, "public"));
+    const zones = [...s.zones.values()].map((z) => this.suppress(z, "public"));
+    const shown = (xs: { occupancy: number | null }[]) => xs.reduce((n, x) => n + (x.occupancy ?? 0), 0);
+    return { rooms, zones, totals: this.suppressTotals({ on_site: shown(zones), in_rooms: shown(rooms) }, "public") };
   }
 
   /**

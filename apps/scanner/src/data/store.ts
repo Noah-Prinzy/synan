@@ -36,8 +36,18 @@ export interface Scan {
   /** An operator undid this admission (a correction record; the scan is never deleted). */
   undone: boolean;
   credential: string | null;
-  /** API mode: the server refused to record this scan (never counted), with its reason. */
+  /** API mode: the server refused to record this scan (never counted, or not yet), with its reason. */
   refused?: string | null;
+  /** API mode: until when (device ms) Undo can still succeed; null = not undoable. Unset on the mock (60 s from `at`). */
+  undoUntil?: number | null;
+  /** API mode: what became of an undo the server had to agree to, when it did not. */
+  undoNote?: string | null;
+  /** API mode: undone on this device before it was ever sent, so it is kept here and never sent. */
+  heldBack?: boolean;
+  /** API mode: counted under a shift that had already ended or been handed over. */
+  lateSynced?: boolean;
+  /** API mode: made by another staff member's earlier shift on this device. */
+  earlierShift?: boolean;
 }
 
 interface State {
@@ -261,8 +271,14 @@ export function decide(presented: Presented, gate: Gate): Scan | Promise<Scan> {
 
 /** Undo an admission made in error, within 60 s: writes a correction, never deletes. */
 export const UNDO_WINDOW_MS = 60_000;
-export function undo(id: string): void {
-  if (API_MODE) return void runtime.undo(id);
+/** Until when Undo is offered for a scan, or null (API mode: the runtime says; mock: 60 s after an admission). */
+export function undoDeadline(scan: Scan): number | null {
+  if (scan.undoUntil !== undefined) return scan.undoUntil;
+  return scan.result === "admitted" && !scan.undone ? scan.at + UNDO_WINDOW_MS : null;
+}
+/** API mode: resolves when undone (on the device, or by the server); rejects when it could not be. */
+export function undo(id: string): void | Promise<void> {
+  if (API_MODE) return runtime.undo(id);
   set({ scans: state.scans.map((scan) => (scan.id === id ? { ...scan, undone: true, synced: !linkUp() ? false : scan.synced } : scan)) });
 }
 

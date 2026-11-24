@@ -5,11 +5,12 @@
  *
  * Session (03 §3): `POST /auth/login` → a short-lived access token and a rotating refresh token.
  * Refresh tokens are single-use and reuse revokes the whole session, so a refresh runs under a Web
- * Lock shared by every tab, and a tab that waited re-reads the tokens another tab just stored.
+ * Lock shared by every tab, and a tab that waited re-reads the tokens another tab just stored. A
+ * refresh whose answer is lost is retried once with the same token, inside the server's grace.
  */
 import type { BodyOf, endpoints, ParamsOf, QueryOf, ResponseOf, TokenPair } from "@synan/contracts/rest";
 import type { ErrorCode } from "@synan/contracts/errors";
-import { REQUEST_TIMEOUT_MS, REST_BASE } from "./config";
+import { REFRESH_RETRY_DELAY_MS, REFRESH_TIMEOUT_MS, REQUEST_TIMEOUT_MS, REST_BASE } from "./config";
 
 type Endpoints = typeof endpoints;
 
@@ -22,11 +23,11 @@ export const PATHS = {
   signingKeys: { method: "GET", path: "/auth/signing-keys" },
   time: { method: "GET", path: "/time" },
   myAssignments: { method: "GET", path: "/me/assignments" },
-  listCheckpoints: { method: "GET", path: "/checkpoints" },
   listEvents: { method: "GET", path: "/events" },
   getEvent: { method: "GET", path: "/events/:slug" },
   allowlist: { method: "GET", path: "/events/:id/allowlist" },
   postScans: { method: "POST", path: "/scans" },
+  undoScan: { method: "POST", path: "/scans/:id/undo" },
   gateHeartbeat: { method: "POST", path: "/gates/heartbeat" },
   handover: { method: "POST", path: "/staff-assignments/:id/handover" },
 } as const satisfies { [K in keyof Endpoints]?: { method: Endpoints[K]["method"]; path: string } };
@@ -128,6 +129,25 @@ async function withLock<T>(fn: () => Promise<T>): Promise<T> {
 
 let refreshing: Promise<Session | null> | null = null;
 
+/**
+ * POST /auth/refresh with one retry of the SAME token when no answer came back (no answer, timeout,
+ * 5xx). The server may have rotated it and lost the answer; it re-issues to the same client within
+ * 10 seconds, so the retry is what saves the session (a new token would not exist to send).
+ */
+export async function refreshWithRetry(
+  token: string,
+  send: (token: string) => Promise<TokenPair> = (t) => raw("refresh", { body: { refresh_token: t } }, null, REFRESH_TIMEOUT_MS),
+  pause: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<TokenPair> {
+  try {
+    return await send(token);
+  } catch (e) {
+    if (!(e instanceof ApiFailure && e.ambiguous)) throw e;
+    await pause(REFRESH_RETRY_DELAY_MS);
+    return send(token);
+  }
+}
+
 /** Rotate the refresh token once, across tabs. Null when the session is gone (sign in again). */
 export function refreshSession(stale: Session): Promise<Session | null> {
   refreshing ??= withLock(async () => {
@@ -136,12 +156,12 @@ export function refreshSession(stale: Session): Promise<Session | null> {
     if (now && now.refresh_token !== stale.refresh_token) return now;
     if (!now) return null;
     try {
-      const pair = await raw("refresh", { body: { refresh_token: now.refresh_token } }, null);
+      const pair = await refreshWithRetry(now.refresh_token);
       const s = fromPair(pair);
       writeSession(s);
       return s;
     } catch (e) {
-      // Refused (reuse detected, expired, revoked): the session is over. A network failure keeps it.
+      // Refused (reuse detected, expired, revoked): the session is over. No answer twice keeps it.
       if (e instanceof ApiFailure && e.kind === "http" && (e.status === 401 || e.status === 400)) writeSession(null);
       throw e;
     }

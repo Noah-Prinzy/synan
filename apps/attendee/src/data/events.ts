@@ -7,6 +7,7 @@ import { backend } from "./backend";
 export type EventState = "live" | "upcoming" | "closed";
 
 export type EventSummary = {
+  id: string;
   slug: string;
   title: string;
   startsAt: string;
@@ -33,6 +34,8 @@ export type EventDetail = EventSummary & {
   sessions: {
     id: string;
     day: string;
+    /** Its live count comes from data/occupancy (GET /events/:id/occupancy). */
+    roomId: string;
     room: string;
     title: string;
     startsIso: string;
@@ -40,8 +43,6 @@ export type EventDetail = EventSummary & {
     /** HH:MM in the event's time zone */
     startsAt: string;
     endsAt: string;
-    /** The session's room, live. 0 when the room has no public count. */
-    occupancy: number;
     capacity: number;
   }[];
 };

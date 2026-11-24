@@ -148,6 +148,31 @@ export const occupancy_adjustments = pgTable(
 );
 
 /**
+ * Correction records for scans (0028): a scanner undid a mistaken admission (06 S3). The scan itself
+ * stays (append-only); the projection treats a voided scan as if it had not happened, and the count
+ * change is written as `scan_undo` occupancy adjustments so SQL derivations agree. One per scan.
+ * Movement data: deleted with the event's scans at the purge.
+ */
+export const scan_voids = pgTable(
+  "scan_voids",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    event_id: uuid("event_id")
+      .notNull()
+      .references(() => events.id),
+    /** scans.id (no FK: scans is partitioned and dropped at the purge). */
+    scan_id: uuid("scan_id").notNull(),
+    voided_by: uuid("voided_by").references(() => users.id),
+    reason: text("reason"),
+    voided_at: tstz("voided_at").notNull().defaultNow(),
+  },
+  (t) => [
+    unique("scan_voids_scan_uq").on(t.event_id, t.scan_id),
+    check("scan_voids_reason_len", sql`${t.reason} IS NULL OR length(${t.reason}) <= 200`),
+  ],
+);
+
+/**
  * Security alerts. Kept 12 months after the event (D-03), including credential_id (O-11).
  * `scan_ids` names the scans involved (D-13); they dangle after the purge by design.
  */

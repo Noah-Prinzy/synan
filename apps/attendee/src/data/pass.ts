@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AttendeeTier } from "@synan/contracts/enums";
 import type { MyCredential, PortalCode, PortalCodeBatch } from "@synan/contracts/rest";
-import { backend } from "./backend";
+import { backend, type LostOutcome, type PassChoice } from "./backend";
 import { failureKind } from "./failure";
 import { useDataVersion } from "./live";
 
@@ -32,11 +32,16 @@ export type Pass = {
   holder: string;
   tier: AttendeeTier;
   eventId: string;
-  event: { slug: string; title: string; startsAt: string; timezone: string; venue: string };
+  /** `venue` is empty when the event has none on record; `startsAt` is null only for an event with no dates yet. */
+  event: { slug: string; title: string; startsAt: string | null; timezone: string; venue: string };
   state: CredentialState;
   band: { uid: string; hint: string } | null;
+  /** No live band, and the last one was reported lost (by the attendee or the desk). */
+  bandLost: boolean;
   nearestDesk: string;
 };
+
+export type { LostOutcome, PassChoice } from "./backend";
 
 export type { PortalCodeBatch };
 
@@ -109,8 +114,19 @@ export function emailPassCopy(): Promise<void> {
   return backend.emailPassCopy();
 }
 
-export function reportLostBand(): Promise<void> {
+/** POST /me/credential/report-lost for the pass shown now: the band stops opening doors at once. */
+export function reportLostBand(): Promise<LostOutcome> {
   return backend.reportLostBand();
+}
+
+/** The passes this person holds (GET /me/registrations), as last loaded. Read during a render that follows usePass. */
+export function passChoices(): PassChoice[] {
+  return backend.passChoices();
+}
+
+/** Show another of this person's passes; follow with the pass resource's retry() to fetch it. */
+export function selectPass(eventId: string): void {
+  backend.selectPass(eventId);
 }
 
 /** /stream/me: called when the pass's state changes while subscribed. */

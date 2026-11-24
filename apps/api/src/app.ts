@@ -32,6 +32,7 @@ import { PgBossJobs } from "./lib/pgboss-jobs.js";
 import { registerJobs } from "./jobs.js";
 import { reportRoutes } from "./routes/reports.js";
 import { meRoutes } from "./routes/me.js";
+import { attendeeSelfRoutes } from "./routes/attendee-self.js";
 import { RateLimiter } from "./http/rate-limit.js";
 import { mountNotImplemented } from "./http/route.js";
 import { systemClock, type Clock } from "./lib/clock.js";
@@ -113,6 +114,12 @@ export interface RunningApp {
   close(): Promise<void>;
 }
 
+/**
+ * A request path fit for a log line: the invitation token of the deprecated
+ * `POST /invitations/:token/rsvp` is replaced, so a link's secret never reaches the logs.
+ */
+export const loggablePath = (path: string) => path.replace(/\/invitations\/[^/]+\/rsvp/, "/invitations/:token/rsvp");
+
 function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
   const requestId = (res.getHeader("X-Request-Id") as string | undefined) ?? undefined;
   let body: ApiError;
@@ -127,7 +134,7 @@ function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunc
     status = 413;
     body = { error: { code: "VALIDATION_FAILED", message: "Body too large.", request_id: requestId } };
   } else {
-    console.error(`[api] ${req.method} ${req.path} failed`, err);
+    console.error(`[api] ${req.method} ${loggablePath(req.path)} failed`, err);
     status = 500;
     body = { error: { code: "INTERNAL", message: ERROR_COPY.INTERNAL.message, request_id: requestId } };
   }
@@ -179,7 +186,7 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<RunningApp
   const telemetry = new TelemetryHub(clock, { kAnon: config.kAnon });
   const notifications = new NotificationService({ repos, clock });
   const credentials = new CredentialService(repos, qr, audit, mail, config, clock, notifications);
-  const scans = new ScanService(repos, qr, alerts, audit, telemetry, clock, { offlineSyncGraceMs: config.offlineSyncGraceS * 1000, checkpointScansPerMin: config.checkpointScansPerMin }, notifications);
+  const scans = new ScanService(repos, qr, alerts, audit, telemetry, clock, { offlineSyncGraceMs: config.offlineSyncGraceS * 1000, checkpointScansPerMin: config.checkpointScansPerMin, offlineLateSyncMs: config.offlineLateSyncS * 1000, undoWindowMs: config.scanUndoWindowS * 1000 }, notifications);
   const rateLimiter = new RateLimiter(() => clock.now());
   const webhooks = new WebhookService(repos, clock, opts.webhookTransport, opts.webhookResolver);
   webhooks.attach(alerts);
@@ -189,7 +196,7 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<RunningApp
   const reportExports = new ReportExporter(repos, reportStorage, config, clock, cipher);
 
   const ctx: AppContext = {
-    config, clock, repos, mailer, mail, notifications, scannerTrust: new ScannerTrust({ repos, alerts, audit, clock }), gates: new GateService({ repos, clock, rateLimited: (cp, now) => scans.rateLimitedRecently(cp, now) }), keys, qr, auth, audit, alerts, credentials, scans, telemetry, rateLimiter, webhooks, reportExports, reportStorage, jobs,
+    config, clock, repos, mailer, mail, notifications, scannerTrust: new ScannerTrust({ repos, alerts, audit, clock }), gates: new GateService({ repos, clock, alerts, rateLimited: (cp, now) => scans.rateLimitedRecently(cp, now) }), keys, qr, auth, audit, alerts, credentials, scans, telemetry, rateLimiter, webhooks, reportExports, reportStorage, jobs,
     reportSchedules: null as unknown as ReportScheduler,
     mounted: new Set(),
   };
@@ -245,6 +252,7 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<RunningApp
   deviceRoutes(x, ctx);
   reportRoutes(x, ctx);
   meRoutes(x, ctx);
+  attendeeSelfRoutes(x, ctx);
   webhookRoutes(x, ctx);
 
   // Every contract endpoint without a real handler is mounted with full auth/RBAC, answering 501.

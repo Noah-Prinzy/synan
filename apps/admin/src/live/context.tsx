@@ -8,7 +8,7 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSession } from "../access/session";
-import { api, connect } from "./backend";
+import { api, connect, mode } from "./backend";
 import { CommandStore } from "./store";
 import type { CommandEvent, OperatorContext } from "./transport";
 
@@ -53,13 +53,23 @@ export function CommandProvider({ children }: { children: ReactNode }) {
   const scope = session.eventScope;
   const watches = session.can("live.view");
 
+  // The mock: once, at start. The real API: per signed-in person (none before sign-in; another
+  // person's list never lingers after a sign-out), and an empty list rather than a spinner on failure.
+  const listFor = mode === "api" ? (operator?.id ?? null) : "mock";
   useEffect(() => {
+    if (listFor === null) {
+      setAll(null);
+      return;
+    }
     let cancelled = false;
-    api.events().then((list) => !cancelled && setAll(list));
+    api.events().then(
+      (list) => !cancelled && setAll(list),
+      () => !cancelled && mode === "api" && setAll([]),
+    );
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [listFor]);
 
   const events = useMemo(() => (all && scope ? all.filter((e) => scope.has(e.id)) : all), [all, scope]);
 

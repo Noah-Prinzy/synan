@@ -332,6 +332,16 @@ export const ZoneMap = memo(function ZoneMap({
 
   return (
     <div ref={wrap} className="relative size-full overflow-hidden" data-stale={stale || undefined}>
+      {placed && placed.zones.length === 0 && placed.rooms.length === 0 ? (
+        // Zones and rooms exist but none has a shape on the grid yet (a venue set up without the
+        // spatial editor): say so, rather than show an empty panel that looks broken.
+        <div className="absolute inset-0 grid place-items-center p-6">
+          <p className="max-w-96 text-center text-13 leading-relaxed text-muted-foreground">
+            No floor plan is drawn for this venue yet. Rooms and gates are live in the panels alongside; draw zones and rooms in the venue&apos;s
+            spatial editor to see them here.
+          </p>
+        </div>
+      ) : null}
       {placed && size ? (
         <>
           <svg width={size.w} height={size.h} className="absolute inset-0" aria-hidden="true">

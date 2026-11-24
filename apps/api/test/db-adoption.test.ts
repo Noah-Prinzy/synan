@@ -219,6 +219,7 @@ describe("Step C: sign-in state lives in the database", () => {
     const t1 = await h.login(h.seed.emails.organiser);
     const t2 = (await h.call<TokenPair>("POST", "/auth/refresh", { body: { refresh_token: t1.refresh_token } })).body;
     expect(t2.refresh_token).toBeTruthy();
+    h.clock.advance((h.app.ctx.config.refreshReuseGraceS + 1) * 1000); // past the reuse grace (A3)
     expect(errCode((await h.call("POST", "/auth/refresh", { body: { refresh_token: t1.refresh_token } })).body)).toBe("UNAUTHENTICATED");
     expect((await h.call("POST", "/auth/refresh", { body: { refresh_token: t2.refresh_token } })).status).toBe(401);
     const rows = await q<{ family_id: string; revoke_reason: string | null }>(repos,

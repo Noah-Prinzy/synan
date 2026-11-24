@@ -125,6 +125,8 @@ export const devices = pgTable(
     last_queue_depth: integer("last_queue_depth"),
     last_ip_prefix: cidr("last_ip_prefix"),
     app_version: text("app_version"),
+    /** `issued_at` of the signed allowlist the device reported holding at its last heartbeat (0028). */
+    allowlist_issued_at: tstz("allowlist_issued_at"),
     created_at: tstz("created_at").notNull().defaultNow(),
     retired_at: tstz("retired_at"),
   },

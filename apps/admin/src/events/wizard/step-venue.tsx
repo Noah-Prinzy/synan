@@ -5,6 +5,7 @@
  */
 import { useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
+import { useCan } from "../../access/session";
 import type { Room } from "@synan/contracts/rest";
 import type { EventRecord, VenueDetail, VenueRow } from "@synan/mock/command";
 import { Button, Checkbox, Dialog, Field, Select, TextInput, cn, type SelectOption } from "@synan/ui/components";
@@ -62,6 +63,8 @@ export function VenueStep({ record, forms, setForm, saved, goto, close, loadVenu
   const [pendingVenue, setPendingVenue] = useState<string | null>(null);
 
   const venues = useResource(() => configure.venues(), []);
+  // Venues are an admin's (D-23): an organiser picks one but is not offered to create or draw one.
+  const canEditVenues = useCan()("venues.edit");
   const detail = useResource<VenueDetail | null>(() => (form.venue_id ? loadVenue(form.venue_id) : Promise.resolve(null)), [form.venue_id]);
 
   const update = (next: VenueForm, clear: string[] = []) => {
@@ -182,10 +185,16 @@ export function VenueStep({ record, forms, setForm, saved, goto, close, loadVenu
             <Notice>
               <span>
                 There are no venues yet.{" "}
-                <Link to="/venues/new" className={linkClass}>
-                  Create a venue
-                </Link>{" "}
-                first; your draft is kept.
+                {canEditVenues ? (
+                  <>
+                    <Link to="/venues/new" className={linkClass}>
+                      Create a venue
+                    </Link>{" "}
+                    first; your draft is kept.
+                  </>
+                ) : (
+                  "An admin sets up venues; your draft is kept until one is ready."
+                )}
               </span>
             </Notice>
           ) : null}
@@ -196,9 +205,11 @@ export function VenueStep({ record, forms, setForm, saved, goto, close, loadVenu
               error={errors.venue_id}
               hint="Venues with no rooms drawn yet cannot be chosen."
               aside={
-                <Link to="/venues/new" className={linkClass}>
-                  New venue
-                </Link>
+                canEditVenues ? (
+                  <Link to="/venues/new" className={linkClass}>
+                    New venue
+                  </Link>
+                ) : undefined
               }
             >
               <Select options={options} value={form.venue_id} onChange={chooseVenue} placeholder="Choose a venue" invalid={Boolean(errors.venue_id)} />
@@ -224,10 +235,16 @@ export function VenueStep({ record, forms, setForm, saved, goto, close, loadVenu
               <Notice tone="warning">
                 <span>
                   {venue.venue.name} has no rooms drawn yet.{" "}
-                  <Link to={`/venues/${venue.venue.id}?edit=1`} className={linkClass}>
-                    Draw its rooms
-                  </Link>
-                  , then come back to this draft.
+                  {canEditVenues ? (
+                    <>
+                      <Link to={`/venues/${venue.venue.id}?edit=1`} className={linkClass}>
+                        Draw its rooms
+                      </Link>
+                      , then come back to this draft.
+                    </>
+                  ) : (
+                    "Ask an admin to draw its rooms, then come back to this draft."
+                  )}
                 </span>
               </Notice>
             ) : null}

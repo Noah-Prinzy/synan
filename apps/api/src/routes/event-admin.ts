@@ -70,6 +70,7 @@ export async function adminDto(app: AppContext, e: EventRow): Promise<EventAdmin
     created_at: iso(e.created_at) ?? undefined,
     updated_at: iso(e.updated_at) ?? undefined,
     updated_by: await operatorRef(app, e.updated_by),
+    contact: e.contact_name || e.contact_email ? { name: e.contact_name ?? null, email: e.contact_email ?? null } : null,
   };
 }
 
@@ -218,6 +219,7 @@ export function eventAdminRoutes(x: Express, app: AppContext) {
       starts_at: starts, ends_at: ends, timezone: body.timezone, state: "draft", listed_bool: body.listed, grace_buffer: body.grace_buffer_hours,
       pass_template_jsonb: (body.pass_template ?? null) as Json | null, profile_schema_jsonb: body.profile_schema ?? [],
       access_rules_version: 0, revocation_epoch: 0, closed_at: null, wizard_step: body.wizard_step ?? "basics", published_at: null, updated_by: ctx!.sub,
+      ...(body.contact ? { contact_name: body.contact.name ?? null, contact_email: body.contact.email ?? null } : {}),
     };
     await app.repos.fixtures.event(row);
     for (const r of rooms) await app.repos.fixtures.eventRoom({ ...r, event_id: id });
@@ -239,7 +241,7 @@ export function eventAdminRoutes(x: Express, app: AppContext) {
     timesInOrder(starts, ends);
     if (body.venue_id !== undefined && body.venue_id !== e.venue_id) {
       if (!draft) throw new ContractError("CONFLICT", "The venue is fixed once the event is published.");
-      if (!(await app.repos.venues.venue(body.venue_id))) throw invalid("body.venue_id", "venue not found");
+      if (body.venue_id !== null && !(await app.repos.venues.venue(body.venue_id))) throw invalid("body.venue_id", "venue not found");
       // A new venue means new rooms: the draft's rooms go, with their sessions and access rules.
       e = await app.repos.events.setVenue(e.id, body.venue_id);
       app.scans.forgetProjections();
@@ -270,6 +272,9 @@ export function eventAdminRoutes(x: Express, app: AppContext) {
       ...(body.pass_template !== undefined ? { pass_template_jsonb: body.pass_template as Json | null } : {}),
       ...(body.profile_schema !== undefined ? { profile_schema_jsonb: body.profile_schema } : {}),
       ...(body.wizard_step !== undefined ? { wizard_step: furthest(e.wizard_step, body.wizard_step) } : {}),
+      ...(body.contact === null ? { contact_name: null, contact_email: null } : {}),
+      ...(body.contact?.name !== undefined ? { contact_name: body.contact.name } : {}),
+      ...(body.contact?.email !== undefined ? { contact_email: body.contact.email } : {}),
       updated_by: ctx!.sub,
     });
     await audit(ctx!.sub, "event.update", `event:${e.id}`, { fields: Object.keys(body) });

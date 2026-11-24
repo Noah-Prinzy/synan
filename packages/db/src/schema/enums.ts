@@ -90,6 +90,7 @@ export const occupancyAdjustmentReason = pgEnum("occupancy_adjustment_reason", [
   "session_end",
   "recount",
   "sync_conflict",
+  "scan_undo",
 ]);
 
 /* ---------------------------------------------------------------------- alerts */
@@ -116,6 +117,7 @@ export const alertKind = pgEnum("alert_kind", [
   "rogue_scanner",
   "stale_allowlist",
   "reconciliation_fault",
+  "band_reported_lost",
 ]);
 
 /* --------------------------------------------------------------------- reports */

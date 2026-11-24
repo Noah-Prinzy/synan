@@ -1,7 +1,7 @@
 /** Staff, reports, dashboard (02 §5). */
 import { z } from "zod";
 import { Email, Id, IsoDateTime, Ok, pageOf, PageQuery } from "../common.js";
-import { AttendeeTier, EventState, ReportCadence, ReportKind, ReportScheduleState, ReportState, Role, Severity } from "../enums/index.js";
+import { AttendeeTier, CheckpointDirection, EventState, ReportCadence, ReportKind, ReportScheduleState, ReportState, Role, Severity } from "../enums/index.js";
 import { ADMIN_ONLY, endpoint, IdParam, OPERATORS, PUBLIC, SCANNERS, SUPERVISE } from "./endpoint.js";
 
 /** PATCH /staff/:id (admin, MFA, audited): a user's role. Takes effect when their access token next refreshes. */
@@ -29,6 +29,21 @@ export const StaffAssignment = z.object({
   checkpoint_label: z.string().optional(),
   /** Additive (operator lists): the staff member's display name, else their email. */
   staff_name: z.string().optional(),
+  /** Additive (GET /me/assignments): the gate itself, so the scanner can pair without another call. */
+  checkpoint: z
+    .object({
+      id: Id,
+      label: z.string(),
+      perimeter: z.boolean(),
+      direction: CheckpointDirection,
+      zone_id: Id,
+      zone_name: z.string(),
+      room_id: Id.nullable(),
+      room_name: z.string().nullable(),
+    })
+    .optional(),
+  /** Additive (GET /me/assignments): the event this shift works (the assignment's, else the venue's event running in the shift); null when none. */
+  event: z.object({ id: Id, title: z.string() }).nullable().optional(),
 });
 export type StaffAssignment = z.infer<typeof StaffAssignment>;
 export const CreateStaffAssignment = z.object({
@@ -79,6 +94,11 @@ export const GateHeartbeat = z.object({
   queue_depth: z.number().int().min(0),
   clock_offset_ms: z.number().int(),
   online: z.boolean(),
+  /**
+   * Additive: `issued_at` of the signed allowlist the scanner holds (null: none). Over 15 minutes old
+   * raises a `stale_allowlist` alert once per gate, and shows in gate health (01 §8, O-05).
+   */
+  allowlist_issued_at: IsoDateTime.nullable().optional(),
 });
 
 /** MFA enrolment (O-22). The secret is shown once; enrolment completes when a code from it is confirmed. */
@@ -196,6 +216,14 @@ export const OperatorProfile = z.object({
   capabilities: z.array(z.string()).optional(),
   /** Additive (D-23): for a desk clerk, the events their current assignments cover. */
   desk_event_ids: z.array(Id).optional(),
+  /** Additive: the name given at invitation (users.display_name); null when none was given (show the email). */
+  display_name: z.string().nullable().optional(),
+  /**
+   * Additive: a label for the shift in progress — the gate's label, then the event's title when the
+   * shift works one ("North gate · Tech Summit"). Null when there is no current shift; the server never
+   * invents one.
+   */
+  shift_label: z.string().nullable().optional(),
 });
 export type OperatorProfile = z.infer<typeof OperatorProfile>;
 

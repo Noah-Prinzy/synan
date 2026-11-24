@@ -99,6 +99,13 @@ export default function WorkspaceAttendees() {
   }, [event.id, query, attempt]);
 
   const [openId, setOpenId] = useState<string | null>(null);
+  // After a decision on a pass, the row shows what the server returned.
+  const replaceRow = (row: AttendeeListRow) =>
+    setLoad((current) =>
+      current.status === "ready"
+        ? { ...current, items: current.items.map((item) => (item.registration_id === row.registration_id ? { ...item, ...row } : item)) }
+        : current,
+    );
 
   if (load.status === "loading") return <LoadingState label="Loading attendees…" rows={10} />;
   if (load.status === "error") {
@@ -278,7 +285,7 @@ export default function WorkspaceAttendees() {
                 }
               />
               <AttendeeFacts row={selected} timeZone={event.timezone} />
-              <AttendeeActions />
+              <AttendeeActions row={selected} eventId={event.id} onChange={replaceRow} />
             </div>
           </aside>
         ) : null}
@@ -298,7 +305,7 @@ export default function WorkspaceAttendees() {
         {selected ? (
           <>
             <AttendeeFacts row={selected} timeZone={event.timezone} />
-            <AttendeeActions />
+            <AttendeeActions row={selected} eventId={event.id} onChange={replaceRow} />
           </>
         ) : null}
       </Dialog>

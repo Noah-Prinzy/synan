@@ -1,29 +1,44 @@
 /**
  * The scanner against the real API (roadmap Phase 3). Owns: the session, the gates from
- * GET /me/assignments, the clock offset (GET /time, D-14), the public keys and the signed
- * allowlist (verified before use, kept in IndexedDB), the durable queue and its sync, REST
- * heartbeats and `/stream/scans`, and the link state.
+ * GET /me/assignments, the clock offset and QR leeway (GET /time, D-14), the public keys and the
+ * signed allowlist (verified before use, kept in IndexedDB), the durable queue and its sync (including
+ * scans an earlier shift left on this device), undo, REST heartbeats and `/stream/scans`, and the
+ * link state.
  *
  * It never imports the screens' store: data/store.ts hands it a small `Host` to write the state
  * the screens already read (scans, last sync, pass-list age, clock offset, link).
  */
 import { parseSignedQr } from "@synan/contracts/qr";
 import type { ScanDirection } from "@synan/contracts/enums";
-import type { EventSummary, ScanSubmission, SignedAllowlist, SigningKey, StaffAssignment } from "@synan/contracts/rest";
+import type { ScanSubmission, SignedAllowlist, SigningKey, StaffAssignment } from "@synan/contracts/rest";
 import type { Gate } from "../mock";
 import type { Presented, Scan } from "../store";
 import { ApiFailure, call, currentSession, onSession, signIn as clientSignIn, signOut as clientSignOut } from "./client";
 import {
   ALLOWLIST_REFRESH_MS,
   CLOCK_REFRESH_MS,
+  DEFAULT_QR_LEEWAY_S,
   ONLINE_VERDICT_TIMEOUT_MS,
   REST_HEARTBEAT_MS,
   SYNC_BATCH,
 } from "./config";
-import { AllowlistRejected, ed25519Supported, importKeys, nfcHash, verifyAllowlistJws, verifyQr, type TrustedKey } from "./crypto";
+import { AllowlistRejected, ed25519Supported, emailCidHash, importKeys, nfcHash, verifyAllowlistJws, verifyQr, type TrustedKey } from "./crypto";
 import { decideLocally, indexAllowlist, type AllowlistIndex, type LocalCheckpoint, type Resolution } from "./decide";
 import { Idb, KV } from "./idb";
-import { historyOf, isConflict, resultOf, ScanQueue, syncQueue, type QueueRecord, type SendResult } from "./queue";
+import {
+  canSend,
+  due,
+  historyOf,
+  isConflict,
+  resultOf,
+  ScanQueue,
+  syncQueue,
+  undoUntil,
+  unsent,
+  type QueueRecord,
+  type SendResult,
+  type Signer,
+} from "./queue";
 import { ScanStream, type StreamState } from "./stream";
 
 /* ------------------------------------------------------------ host */
@@ -51,8 +66,20 @@ export interface Conflict {
   shown: Scan["result"];
   recorded: Scan["result"] | null;
   alerts: number;
-  /** Refused by the server (never counted), with its message. */
+  /** Refused by the server (never counted, or not yet), or an undo it would not take, with its message. */
   refused: string | null;
+}
+
+/** Scans another staff member's earlier shift left on this device (01 §8, A1). */
+export interface EarlierShift {
+  /** Still to send. */
+  waiting: number;
+  /** Refused for now (not on shift at that gate, or outside the shift): kept, tried again by the next signer. */
+  held: number;
+  /** Counted by the server under that shift after it had ended (`late_synced`). */
+  sentLate: number;
+  /** The signed-in staff member can send the waiting ones (on shift at their gate). */
+  canSend: boolean;
 }
 
 export interface ApiState {
@@ -67,8 +94,7 @@ export interface ApiState {
   ed25519: boolean | null;
   allowlistError: string | null;
   conflicts: Conflict[];
-  /** Queued scans that belong to another signed-in user (they sync when that user signs in). */
-  heldForOtherUser: number;
+  earlier: EarlierShift;
 }
 
 let api: ApiState = {
@@ -83,7 +109,7 @@ let api: ApiState = {
   ed25519: null,
   allowlistError: null,
   conflicts: [],
-  heldForOtherUser: 0,
+  earlier: { waiting: 0, held: 0, sentLate: 0, canSend: false },
 };
 const apiListeners = new Set<() => void>();
 function setApi(p: Partial<ApiState>) {
@@ -110,19 +136,20 @@ export function newIdemKey(): string {
 }
 
 const DEVICE_KEY = "syn.scanner.device.v1";
-function deviceId(): string {
+function readDeviceLs(): string | null {
   try {
-    let id = localStorage.getItem(DEVICE_KEY);
-    if (!id) {
-      id = `scanner-${newIdemKey()}`;
-      localStorage.setItem(DEVICE_KEY, id);
-    }
-    return id;
+    return localStorage.getItem(DEVICE_KEY);
   } catch {
-    return (memDevice ??= `scanner-${newIdemKey()}`);
+    return null;
   }
 }
-let memDevice: string | null = null;
+function writeDeviceLs(id: string) {
+  try {
+    localStorage.setItem(DEVICE_KEY, id);
+  } catch {
+    /* storage blocked: IndexedDB keeps it */
+  }
+}
 
 const hhmm = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
 
@@ -149,6 +176,12 @@ interface AllowlistCache {
 interface KeysCache {
   keys: SigningKey[];
   fetched_at: number;
+  qr_leeway_s?: number;
+}
+interface ClockCache {
+  offset: number;
+  at: number;
+  qr_leeway_s?: number;
 }
 
 interface Trusted {
@@ -157,6 +190,46 @@ interface Trusted {
   checkpointId: string;
   issuedAtMs: number;
   fetchedAt: number;
+}
+
+/**
+ * GET /me/assignments → the gates this person may choose: one row per checkpoint (the current shift,
+ * else the next one). Each item carries its checkpoint and event; a shift between events (no event)
+ * has nothing to scan for and is left out. Handed-over and ended shifts are not listed by the server.
+ */
+export function gatesFromAssignments(items: readonly StaffAssignment[], nowServerMs: number): { gates: Gate[]; event: { id: string; title: string } | null } {
+  const live = (a: StaffAssignment) => Date.parse(a.shift_start) <= nowServerMs && nowServerMs < Date.parse(a.shift_end);
+  const byCp = new Map<string, StaffAssignment>();
+  for (const a of [...items].sort((x, y) => Date.parse(x.shift_start) - Date.parse(y.shift_start))) {
+    if (!a.checkpoint || !a.event_id || a.handed_over_at || Date.parse(a.shift_end) <= nowServerMs) continue;
+    const prev = byCp.get(a.checkpoint_id);
+    if (!prev || (live(a) && !live(prev))) byCp.set(a.checkpoint_id, a);
+  }
+  const gates: Gate[] = [];
+  for (const a of byCp.values()) {
+    const cp = a.checkpoint!;
+    const ev = { id: a.event_id!, title: a.event && a.event.id === a.event_id ? a.event.title : "" };
+    gates.push({
+      id: cp.id,
+      label: cp.label,
+      perimeter: cp.perimeter,
+      roomId: cp.room_id,
+      roomName: cp.room_name,
+      shift: { starts: "", ends: "", now: false },
+      api: {
+        eventId: ev.id,
+        eventTitle: ev.title,
+        zoneId: cp.zone_id,
+        direction: cp.direction,
+        assignmentId: a.id,
+        shiftStart: Date.parse(a.shift_start),
+        shiftEnd: Date.parse(a.shift_end),
+      },
+    });
+  }
+  // The event named on S1: the one of the shift on now, else of the next shift.
+  const pick = gates.find((g) => g.api!.shiftStart <= nowServerMs) ?? gates[0];
+  return { gates, event: pick ? { id: pick.api!.eventId, title: pick.api!.eventTitle } : null };
 }
 
 /* ------------------------------------------------------------ runtime */
@@ -170,15 +243,26 @@ class Runtime {
   private keysFetchedAt = 0;
   private allow: Trusted | null = null;
   private offset = 0;
+  /** The server's QR clock leeway (GET /time, GET /auth/signing-keys). */
+  private leewayS = DEFAULT_QR_LEEWAY_S;
   private stream: ScanStream | null = null;
   private timers: ReturnType<typeof setInterval>[] = [];
   private probe: ReturnType<typeof setTimeout> | null = null;
   private probeAttempt = 0;
   private channel: BroadcastChannel | null = null;
   private syncing: Promise<void> | null = null;
-  /** Stable id of this scanner install (created on first use, API mode only). */
+  private deviceIdValue: string | null = null;
+  /**
+   * Stable id of this scanner install, the same on POST /scans and both heartbeats, for every user
+   * who signs in on it: the server lets the next staff member at a gate sync a queue only from the
+   * install it was made on. Kept in localStorage and IndexedDB.
+   */
   private get device(): string {
-    return deviceId();
+    if (!this.deviceIdValue) {
+      this.deviceIdValue = readDeviceLs() ?? `scanner-${newIdemKey()}`;
+      writeDeviceLs(this.deviceIdValue);
+    }
+    return this.deviceIdValue;
   }
   private initDone: Promise<void> | null = null;
 
@@ -203,9 +287,13 @@ class Runtime {
     try {
       this.idb = await Idb.open();
       this.queue = new ScanQueue(this.idb);
+      await this.restoreDevice(this.idb);
       await this.queue.prune(Date.now(), 24 * 3600_000, 2000);
-      const clock = await this.idb.get<{ offset: number }>(KV, "clock");
-      if (clock) this.setOffset(clock.offset);
+      const clock = await this.idb.get<ClockCache>(KV, "clock");
+      if (clock) {
+        this.setOffset(clock.offset);
+        if (typeof clock.qr_leeway_s === "number") this.leewayS = clock.qr_leeway_s;
+      }
       const gates = await this.idb.get<GateCache>(KV, "gates");
       if (gates && gates.user === s?.sub) setApi({ event: gates.event, gates: this.refreshShift(gates.gates), roomNames: gates.roomNames });
       await this.loadKeysFromCache();
@@ -224,7 +312,12 @@ class Runtime {
     window.addEventListener("online", () => this.probeNow());
     window.addEventListener("offline", () => this.host.patch({}));
     // Shift windows move with the clock; the pair screen re-reads them.
-    this.timers.push(setInterval(() => setApi({ gates: this.refreshShift(api.gates) }), 30_000));
+    this.timers.push(
+      setInterval(() => {
+        setApi({ gates: this.refreshShift(api.gates) });
+        this.publish();
+      }, 30_000),
+    );
     this.timers.push(setInterval(() => void this.tick(), 15_000));
     this.timers.push(setInterval(() => void this.restHeartbeat(), REST_HEARTBEAT_MS));
     setApi({ ready: true });
@@ -232,6 +325,21 @@ class Runtime {
     if (this.linkUp() && api.session) void this.loadGates();
     const gate = this.currentGate();
     if (gate) this.startGate(gate);
+  }
+
+  /** The device id survives a cleared localStorage (IndexedDB copy), and the other way round. */
+  private async restoreDevice(idb: Idb) {
+    const stored = await idb.get<string>(KV, "device");
+    const ls = readDeviceLs();
+    if (ls) {
+      this.deviceIdValue = ls;
+      if (stored !== ls) await idb.put(KV, ls, "device");
+    } else if (stored) {
+      this.deviceIdValue = stored;
+      writeDeviceLs(stored);
+    } else {
+      await idb.put(KV, this.device, "device");
+    }
   }
 
   /* ---------------------------------------------------------- link */
@@ -243,7 +351,10 @@ class Runtime {
 
   private setReachable(up: boolean) {
     const was = this.host.get().apiReachable;
-    if (was !== up) this.host.patch({ apiReachable: up });
+    if (was !== up) {
+      this.host.patch({ apiReachable: up });
+      this.publish(); // what Undo can offer depends on the link
+    }
     if (!up) this.scheduleProbe();
     else {
       this.probeAttempt = 0;
@@ -267,7 +378,7 @@ class Runtime {
     void this.probeOnce();
   }
 
-  /** GET /time: a reachability probe that also measures the clock offset (D-14). */
+  /** GET /time: a reachability probe that also measures the clock offset (D-14) and reads the QR leeway. */
   private async probeOnce(): Promise<boolean> {
     if (this.host.get().forceOffline) return false;
     try {
@@ -275,7 +386,8 @@ class Runtime {
       const r = await call("time", {}, { auth: false, timeoutMs: 5000 });
       const t1 = Date.now();
       this.setOffset(r.epoch_ms - (t0 + t1) / 2);
-      void this.idb?.put(KV, { offset: this.offset, at: t1 }, "clock");
+      if (typeof r.qr_leeway_s === "number") this.leewayS = r.qr_leeway_s;
+      void this.idb?.put(KV, { offset: this.offset, at: t1, qr_leeway_s: this.leewayS } satisfies ClockCache, "clock");
       this.setReachable(true);
       return true;
     } catch {
@@ -301,6 +413,7 @@ class Runtime {
 
   /** Dev flag ?offline=1|0. */
   forceOffline(on: boolean) {
+    this.publish();
     if (on) {
       this.stream?.stop();
     } else {
@@ -310,11 +423,14 @@ class Runtime {
     }
   }
 
-  /** Every 15 s: drain what is due, refresh what is old. */
+  /** Every 15 s: drain what is due, settle undos, refresh what is old. */
   private async tick() {
     if (!this.linkUp()) return;
     const gate = this.currentGate();
-    if (this.records.some((r) => r.state === "pending" && r.user === api.session?.sub)) await this.syncNow().catch(() => undefined);
+    const signer = this.signer();
+    const now = Date.now();
+    if (signer && this.records.some((r) => due(r, signer, now))) await this.syncNow().catch(() => undefined);
+    else await this.settleUndos();
     if (gate && (!this.allow || Date.now() - this.allow.fetchedAt > ALLOWLIST_REFRESH_MS)) await this.refreshAllowlist(gate).catch(() => undefined);
     if (Date.now() - this.clockAt > CLOCK_REFRESH_MS) {
       this.clockAt = Date.now();
@@ -328,91 +444,81 @@ class Runtime {
   async signIn(email: string, password: string): Promise<void> {
     const s = await clientSignIn(email, password);
     setApi({ session: { sub: s.sub, email: s.email } });
+    // The held list was issued for the previous shift's window: still trusted offline, refetched now.
+    if (this.allow) this.allow = { ...this.allow, fetchedAt: 0 };
     this.setReachable(true);
     await this.loadGates();
   }
 
+  /**
+   * Sign out. The device lets go of the gate, but every scan not yet sent stays on it: the same
+   * person can send it when they sign in again, and the next staff member on shift at that gate can
+   * send it from this device (it names its assignment).
+   */
   async signOut(): Promise<void> {
     this.stopGate();
     this.host.patch({ gateId: null });
     await clientSignOut();
     setApi({ session: null, gates: [], event: null, roomNames: {} });
     await this.idb?.put(KV, null, "gates");
+    this.publish();
   }
 
-  /** GET /me/assignments, then the checkpoints and the live event they belong to. */
+  /** The signed-in person and the gates they are on shift at now (server time). */
+  private signer(): Signer | null {
+    const s = currentSession();
+    if (!s) return null;
+    const now = Date.now() + this.offset;
+    const onShift = new Map<string, string>();
+    for (const g of api.gates) if (g.api && g.api.shiftStart <= now && now < g.api.shiftEnd) onShift.set(g.id, g.api.assignmentId);
+    return { user: s.sub, onShift };
+  }
+
+  /** GET /me/assignments: each item names its gate and event, so pairing needs nothing else. */
   async loadGates(): Promise<void> {
     const s = currentSession();
     if (!s) return;
     setApi({ gatesLoading: true, gatesError: null });
     try {
-      const [assignments, checkpoints, live] = await Promise.all([
-        call("myAssignments"),
-        call("listCheckpoints", { query: { limit: 500 } }),
-        call("listEvents", { query: { state: "live", limit: 100 } }),
-      ]);
-      const cps = new Map(checkpoints.items.map((c) => [c.id, c]));
-      const events = new Map<string, EventSummary>(live.items.map((e) => [e.id, e]));
-      const roomNames: Record<string, string> = {};
-      const details = new Map<string, Promise<void>>();
-      const detail = (e: EventSummary) => {
-        if (!details.has(e.id)) {
-          details.set(
-            e.id,
-            call("getEvent", { params: { slug: e.slug } }).then(
-              (d) => {
-                for (const r of d.rooms) roomNames[r.room_id] = r.name;
-              },
-              () => undefined,
-            ),
-          );
-        }
-        return details.get(e.id)!;
-      };
-      // One row per checkpoint: the current shift, else the next one.
-      const now = Date.now() + this.offset;
-      const byCp = new Map<string, StaffAssignment>();
-      for (const a of [...assignments.items].sort((x, y) => Date.parse(x.shift_start) - Date.parse(y.shift_start))) {
-        const prev = byCp.get(a.checkpoint_id);
-        const current = Date.parse(a.shift_start) <= now && now < Date.parse(a.shift_end);
-        if (!prev || (current && !(Date.parse(prev.shift_start) <= now && now < Date.parse(prev.shift_end)))) byCp.set(a.checkpoint_id, a);
-      }
-      const gates: Gate[] = [];
-      let event: { id: string; title: string } | null = null;
-      for (const a of byCp.values()) {
-        const cp = cps.get(a.checkpoint_id);
-        if (!cp) continue;
-        // NOT IN CONTRACTS: assignments carry no event when event_id is null; the live event at the venue stands in.
-        const ev = (a.event_id ? events.get(a.event_id) : undefined) ?? [...events.values()].find((e) => e.venue.id === cp.venue_id) ?? null;
-        const eventId = a.event_id ?? ev?.id ?? null;
-        if (!eventId) continue;
-        if (ev) await detail(ev);
-        event ??= { id: eventId, title: ev?.title ?? "" };
-        gates.push({
-          id: cp.id,
-          label: cp.label,
-          perimeter: cp.perimeter,
-          roomId: cp.room_id,
-          roomName: null,
-          shift: { starts: "", ends: "", now: false },
-          api: {
-            eventId,
-            venueId: cp.venue_id,
-            zoneId: cp.zone_id,
-            direction: cp.direction,
-            assignmentId: a.id,
-            shiftStart: Date.parse(a.shift_start),
-            shiftEnd: Date.parse(a.shift_end),
-          },
-        });
-      }
-      for (const g of gates) g.roomName = g.roomId ? (roomNames[g.roomId] ?? null) : null;
+      const res = await call("myAssignments");
+      const { gates, event } = gatesFromAssignments(res.items, Date.now() + this.offset);
+      const roomNames: Record<string, string> = { ...(api.session?.sub === s.sub ? api.roomNames : {}) };
+      for (const g of gates) if (g.roomId && g.roomName) roomNames[g.roomId] = g.roomName;
       const fresh = this.refreshShift(gates);
-      setApi({ gates: fresh, event, roomNames, gatesLoading: false, gatesError: assignments.items.length > 0 && gates.length === 0 ? "No live event for your gates." : null });
+      setApi({ gates: fresh, event, roomNames, gatesLoading: false, gatesError: res.items.length > 0 && gates.length === 0 ? "No live event for your gates." : null });
       await this.idb?.put(KV, { user: s.sub, event, roomNames, gates: fresh } satisfies GateCache, "gates");
+      this.publish();
+      void this.loadRoomNames([...new Set(gates.map((g) => g.api!.eventId))]);
+      // Scans this person (or an earlier shift at these gates) left queued on the device.
+      if (this.linkUp()) void this.syncNow().catch(() => undefined);
     } catch (e) {
       setApi({ gatesLoading: false, gatesError: failureMessage(e) });
       if (e instanceof ApiFailure && e.ambiguous) this.setReachable(false);
+    }
+  }
+
+  /**
+   * Names for the ADMITTED room chips (ids come from the outcome or the allowlist). NOT IN CONTRACTS:
+   * an assignment names its event's id and title but neither its slug nor its rooms, so the names
+   * come from the public event page, found by id in the public list. Best effort: pairing and
+   * verdicts never wait on it; without it the chips are left out.
+   */
+  private async loadRoomNames(eventIds: string[]) {
+    if (eventIds.length === 0) return;
+    try {
+      const list = await call("listEvents", { query: { state: "live", limit: 100 } }, { auth: false });
+      const names: Record<string, string> = {};
+      for (const e of list.items.filter((x) => eventIds.includes(x.id))) {
+        const d = await call("getEvent", { params: { slug: e.slug } }, { auth: false });
+        for (const r of d.rooms) names[r.room_id] = r.name;
+      }
+      if (Object.keys(names).length === 0) return;
+      const roomNames = { ...api.roomNames, ...names };
+      setApi({ roomNames });
+      const s = currentSession();
+      if (s) await this.idb?.put(KV, { user: s.sub, event: api.event, roomNames, gates: api.gates } satisfies GateCache, "gates");
+    } catch {
+      /* chips stay unnamed */
     }
   }
 
@@ -449,7 +555,7 @@ class Runtime {
       this.stream = new ScanStream({
         eventId,
         checkpointId: gate.id,
-        heartbeat: () => ({ queue_depth: this.depth(), clock_offset_ms: Math.round(this.offset), online: this.linkUp(), device_id: this.device }),
+        heartbeat: () => this.heartbeatBody(gate.id),
         onState: (st) => setApi({ stream: st }),
         onAlive: () => {
           if (!this.host.get().apiReachable) this.setReachable(true);
@@ -457,7 +563,7 @@ class Runtime {
       });
       if (!this.host.get().forceOffline) this.stream.start();
     }
-    if (!this.allow || this.allow.checkpointId !== gate.id) void this.refreshAllowlist(gate).catch(() => undefined);
+    if (!this.allow || this.allow.checkpointId !== gate.id || this.allow.fetchedAt === 0) void this.refreshAllowlist(gate).catch(() => undefined);
     void this.restHeartbeat();
   }
   private streamFor: string | null = null;
@@ -468,10 +574,11 @@ class Runtime {
     this.streamFor = null;
   }
 
-  /** Shift end (docs/06 §3.1): hand the shift over on the server when the link allows. */
+  /** Shift end (docs/06 §3.1): send what can be sent, then hand the shift over on the server. */
   async endShift(gate: Gate | null): Promise<void> {
     this.stopGate();
     if (gate?.api && this.linkUp()) {
+      await this.syncNow().catch(() => undefined);
       await call("handover", { params: { id: gate.api.assignmentId } }).catch(() => undefined);
     }
   }
@@ -479,7 +586,23 @@ class Runtime {
   /* ---------------------------------------------------------- heartbeat */
 
   private depth(): number {
-    return this.records.filter((r) => r.state === "pending").length;
+    return this.records.filter(unsent).length;
+  }
+
+  /** `issued_at` of the trusted allowlist for this gate (null: none), for gate health and stale alerts. */
+  private allowlistIssuedAt(checkpointId: string): string | null {
+    return this.allow && this.allow.checkpointId === checkpointId ? new Date(this.allow.issuedAtMs).toISOString() : null;
+  }
+
+  /** One heartbeat body for both channels: same device id, queue depth, offset, allowlist age. */
+  private heartbeatBody(checkpointId: string) {
+    return {
+      queue_depth: this.depth(),
+      clock_offset_ms: Math.round(this.offset),
+      online: this.linkUp(),
+      device_id: this.device,
+      allowlist_issued_at: this.allowlistIssuedAt(checkpointId),
+    };
   }
 
   private async restHeartbeat() {
@@ -487,9 +610,7 @@ class Runtime {
     if (!gate?.api || !this.linkUp() || !api.session) return;
     if (this.stream?.state === "open") return; // the stream carries it
     try {
-      await call("gateHeartbeat", {
-        body: { checkpoint_id: gate.id, device_id: this.device, queue_depth: this.depth(), clock_offset_ms: Math.round(this.offset), online: true },
-      });
+      await call("gateHeartbeat", { body: { checkpoint_id: gate.id, ...this.heartbeatBody(gate.id), online: true } });
     } catch (e) {
       if (e instanceof ApiFailure && e.ambiguous) this.setReachable(false);
     }
@@ -502,6 +623,7 @@ class Runtime {
     if (c) {
       this.keys = await importKeys(c.keys);
       this.keysFetchedAt = c.fetched_at;
+      if (typeof c.qr_leeway_s === "number") this.leewayS = c.qr_leeway_s;
     }
   }
 
@@ -509,7 +631,8 @@ class Runtime {
     const r = await call("signingKeys", {}, { auth: false });
     this.keys = await importKeys(r.keys);
     this.keysFetchedAt = Date.now();
-    await this.idb?.put(KV, { keys: r.keys, fetched_at: this.keysFetchedAt } satisfies KeysCache, "keys");
+    if (typeof r.qr_leeway_s === "number") this.leewayS = r.qr_leeway_s;
+    await this.idb?.put(KV, { keys: r.keys, fetched_at: this.keysFetchedAt, qr_leeway_s: this.leewayS } satisfies KeysCache, "keys");
   }
 
   private async loadAllowlistFromCache() {
@@ -568,6 +691,9 @@ class Runtime {
     await this.idb?.put(KV, cache, "allowlist");
     this.trust(payload, cache);
     this.channel?.postMessage({ type: "allowlist" });
+    // Gate health shows the list's age at once.
+    if (this.stream?.state === "open") this.stream.heartbeatNow();
+    else void this.restHeartbeat();
   }
 
   private rejectList(e: unknown) {
@@ -585,7 +711,14 @@ class Runtime {
     this.publish();
   }
 
-  private toScan(r: QueueRecord): Scan {
+  private toScan(r: QueueRecord, signer: Signer | null): Scan {
+    const o = r.outcome;
+    const undoNote =
+      r.undo?.state === "refused"
+        ? `Undo not recorded: ${r.undo.message ?? "the server refused it."}`
+        : r.undo?.state === "requested"
+          ? "Undo is sent when the link is back."
+          : null;
     return {
       id: r.idem_key,
       at: r.at,
@@ -594,32 +727,61 @@ class Runtime {
       medium: r.display.medium,
       identifier: r.display.identifier,
       name: null,
-      tier: r.outcome?.tier ?? r.display.tier,
-      rooms: r.display.rooms,
-      lastInAt: r.display.lastInAt,
+      tier: o?.tier ?? r.display.tier,
+      // Online: the rooms the server names (perimeter) or the gate's own room; offline: the allowlist's.
+      rooms: o?.permitted_room_ids ?? (o?.room_id ? [o.room_id] : r.display.rooms),
+      // `last_in_at` is server time; shown against `at`, in device time.
+      lastInAt: o?.last_in_at ? Date.parse(o.last_in_at) - r.offline.clock_offset_ms : r.display.lastInAt,
       offline: r.decided_by === "local",
-      synced: r.state !== "pending",
+      synced: !unsent(r),
       undone: r.undone,
       credential: r.credential_key,
-      refused: r.rejection?.message ?? null,
+      refused: r.state === "rejected" || r.state === "held" ? (r.rejection?.message ?? "Refused by the server.") : null,
+      // A scan the server has (or may have) is undone there, so only while the link is up.
+      undoUntil: r.state === "pending" && r.online === null ? undoUntil(r, signer) : this.linkUp() ? undoUntil(r, signer) : null,
+      undoNote,
+      heldBack: r.state === "withheld",
+      lateSynced: o?.late_synced === true,
+      earlierShift: Boolean(signer && r.user !== signer.user),
     };
   }
 
   private publish() {
+    const signer = this.signer();
     const sorted = [...this.records].sort((a, b) => b.at - a.at);
-    const pending = sorted.filter((r) => r.state === "pending");
-    const rest = sorted.filter((r) => r.state !== "pending").slice(0, 300);
-    const scans = [...pending, ...rest].sort((a, b) => b.at - a.at).map((r) => this.toScan(r));
+    const waiting = sorted.filter(unsent);
+    const rest = sorted.filter((r) => !unsent(r)).slice(0, 300);
+    const scans = [...waiting, ...rest].sort((a, b) => b.at - a.at).map((r) => this.toScan(r, signer));
     const sent = this.records.filter((r) => r.synced_at !== null);
     const lastSyncAt = sent.reduce<number | null>((m, r) => (m === null || r.synced_at! > m ? r.synced_at : m), this.host.get().lastSyncAt);
     this.host.patch({ scans, lastSyncAt });
-    const me = api.session?.sub;
+    const others = this.records.filter((r) => r.user !== signer?.user);
     setApi({
       conflicts: sorted
         .filter(isConflict)
         .slice(0, 50)
-        .map((r) => ({ id: r.idem_key, at: r.at, identifier: r.display.identifier, shown: r.shown, recorded: r.outcome?.result ?? null, alerts: r.outcome?.alert_ids.length ?? 0, refused: r.rejection?.message ?? null })),
-      heldForOtherUser: pending.filter((r) => r.user !== me).length,
+        .map((r) => ({
+          id: r.idem_key,
+          at: r.at,
+          identifier: r.display.identifier,
+          shown: r.shown,
+          recorded: r.outcome?.result ?? null,
+          alerts: r.outcome?.alert_ids.length ?? 0,
+          refused:
+            r.state === "held"
+              ? `${r.rejection?.message ?? "Refused for now."} Kept on this device; it is tried again when someone on shift at this gate signs in.`
+              : r.state === "rejected"
+                ? (r.rejection?.message ?? "Refused by the server.")
+                : r.undo?.state === "refused"
+                  ? `Undo not recorded: ${r.undo.message ?? "the server refused it."}`
+                  : null,
+        })),
+      earlier: {
+        waiting: others.filter((r) => r.state === "pending").length,
+        held: others.filter((r) => r.state === "held").length,
+        sentLate: others.filter((r) => r.outcome?.late_synced).length,
+        canSend: Boolean(signer && others.some((r) => r.state === "pending" && canSend(r, signer))),
+      },
     });
     this.stream?.heartbeatNow();
   }
@@ -644,12 +806,21 @@ class Runtime {
       const identifier = q.kind === "email" ? "Emailed code" : "App pass";
       const unknown = { r: { known: false, credentialKey: q.ref } as Resolution, identifier };
       if (!idx || !trustedCrypto) return unknown;
-      const check = await verifyQr(q, this.keys, correctedNow);
+      const check = await verifyQr(q, this.keys, correctedNow, this.leewayS);
       if (!check.ok) return unknown;
       const entry = idx.byCredential.get(q.ref);
       if (!entry) return unknown;
+      const email = q.kind === "email";
       return {
-        r: { known: true, credentialKey: entry.credential_hash, carrier: q.kind === "email" ? "qr_email" : "qr_portal", entry, deadBand: false, emailCid: q.kind === "email" ? q.cid : null },
+        r: {
+          known: true,
+          credentialKey: entry.credential_hash,
+          carrier: email ? "qr_email" : "qr_portal",
+          entry,
+          deadBand: false,
+          emailCid: email ? q.cid : null,
+          emailHash: email ? await emailCidHash(q.cid) : null,
+        },
         identifier,
       };
     }
@@ -685,7 +856,9 @@ class Runtime {
     const cp: LocalCheckpoint = { id: gate.id, perimeter: gate.perimeter, zoneId: gate.api.zoneId, roomId: gate.roomId };
     const { r, identifier } = await this.resolve(presented, gate, corrected);
     const spent = new Set(
-      this.records.filter((x) => x.email_cid && x.state !== "rejected" && x.direction === "in" && !x.undone && (resultOf(x) === "admitted" || resultOf(x) === "already_inside")).map((x) => x.email_cid!),
+      this.records
+        .filter((x) => x.email_cid && x.state !== "rejected" && x.direction === "in" && !x.undone && (resultOf(x) === "admitted" || resultOf(x) === "already_inside"))
+        .map((x) => x.email_cid!),
     );
     const local = decideLocally({ resolution: r, medium: presented.medium, checkpoint: cp, direction, nowMs: corrected, history: historyOf(this.records), spentEmailCids: spent });
 
@@ -703,9 +876,11 @@ class Runtime {
       idem_key: idem,
       at: now,
       user,
+      assignment_id: gate.api.assignmentId,
       event_id: gate.api.eventId,
       device_id: this.device,
-      offline: { ...base, offline: true, local_result: local.result },
+      // The queued form names the assignment, so it still counts after a sign-out or handover (A1).
+      offline: { ...base, offline: true, local_result: local.result, assignment_id: gate.api.assignmentId },
       online: online ? { ...base, offline: false } : null,
       send_as: "offline",
       state: "pending",
@@ -722,11 +897,13 @@ class Runtime {
       direction,
       email_cid: r.known ? r.emailCid : null,
       undone: false,
+      undo: null,
       display: {
         medium: presented.medium,
         identifier,
         tier: r.known ? r.entry.tier : null,
-        rooms: r.known ? r.entry.permitted_room_ids : [],
+        // Offline chips: at a perimeter gate the event rooms the pass may enter; inside, the gate's room.
+        rooms: r.known ? (gate.perimeter ? (r.entry.perimeter_room_ids ?? r.entry.permitted_room_ids) : r.entry.permitted_room_ids) : [],
         lastInAt: local.lastInAtMs !== null ? local.lastInAtMs - offset : null,
       },
     };
@@ -757,7 +934,7 @@ class Runtime {
       this.replace(record);
     }
     this.changed();
-    return this.toScan(this.records.find((x) => x.idem_key === idem)!);
+    return this.toScan(this.records.find((x) => x.idem_key === idem)!, this.signer());
   }
 
   private replace(r: QueueRecord) {
@@ -767,11 +944,78 @@ class Runtime {
     this.publish();
   }
 
-  /** S3 Undo. NOT IN CONTRACTS: there is no correction endpoint, so the undo is local only. */
-  async undo(id: string) {
-    const r = await this.queue?.setUndone(id);
-    if (r) this.replace(r);
+  /* ---------------------------------------------------------- undo (S3) */
+
+  /**
+   * Undo a mistaken admission. Offered only while it can succeed (`undoUntil`). A scan that never
+   * left the device is withheld: never sent, which is what the server's own undo amounts to (the
+   * holder reads as if the scan had not happened), and the record stays here marked undone. A scan
+   * the server has, or may have (an online attempt in flight), is undone on the server with
+   * POST /scans/:id/undo — at once when sent, else right after it syncs. Rejects when it could not be.
+   */
+  async undo(id: string): Promise<void> {
+    await this.whenReady();
+    const queue = this.queue;
+    const r = this.records.find((x) => x.idem_key === id);
+    if (!queue || !r) throw new Error("scan not found");
+    const until = undoUntil(r, this.signer());
+    if (until === null || Date.now() >= until) throw new Error("The undo window for this scan has passed.");
+    const next = await queue.undoLocally(id, Date.now());
+    if (!next) throw new Error("scan not found");
+    this.replace(next);
     this.changed();
+    if (next.state === "withheld") return;
+    if (this.linkUp()) {
+      if (next.state === "pending") await this.syncNow().catch(() => undefined); // settles undos after it
+      else await this.settleUndos();
+    }
+    const after = this.records.find((x) => x.idem_key === id);
+    if (after?.undo?.state === "refused") throw new Error(after.undo.message ?? "Undo refused");
+  }
+
+  /** Undos waiting on the server: send them for scans that have synced; drop the ones that need none. */
+  private async settleUndos() {
+    const queue = this.queue;
+    const s = currentSession();
+    if (!queue || !s) return;
+    const wanted = this.records.filter((r) => r.undo?.state === "requested");
+    if (wanted.length === 0) return;
+    for (const r of wanted) {
+      let next: QueueRecord | undefined;
+      if (r.state === "held") {
+        // The server does not have it (it refused to store it): keep it here, never sent.
+        next = await queue.update(r.idem_key, (x) => (x.state === "held" ? { ...x, state: "withheld", undo: { ...x.undo!, state: "withheld" } } : undefined));
+      } else if (r.state === "rejected") {
+        next = await queue.update(r.idem_key, (x) => ({ ...x, undo: { ...x.undo!, state: "withheld" } }));
+      } else if (r.state === "sent" && r.outcome && r.user === s.sub && this.linkUp()) {
+        if (r.outcome.result !== "admitted") {
+          next = await queue.settleUndo(r.idem_key, false, Date.now(), "the server recorded this scan as something other than an admission.");
+        } else {
+          next = await this.undoOnServer(r);
+        }
+      }
+      if (next) this.replace(next);
+    }
+    this.changed();
+  }
+
+  /** POST /scans/:id/undo; a lost answer is retried once (the server's undo is idempotent). */
+  private async undoOnServer(r: QueueRecord): Promise<QueueRecord | undefined> {
+    const queue = this.queue!;
+    const send = () => call("undoScan", { params: { id: r.outcome!.scan_id }, body: { event_id: r.event_id } });
+    try {
+      await send().catch((e: unknown) => {
+        if (e instanceof ApiFailure && e.ambiguous) return send();
+        throw e;
+      });
+      return queue.settleUndo(r.idem_key, true, Date.now());
+    } catch (e) {
+      if (e instanceof ApiFailure && e.ambiguous) {
+        this.setReachable(false);
+        return undefined; // still requested: tried again when the link is back
+      }
+      return queue.settleUndo(r.idem_key, false, Date.now(), e instanceof ApiFailure ? e.message : "the server refused it.");
+    }
   }
 
   /* ---------------------------------------------------------- sync */
@@ -798,17 +1042,18 @@ class Runtime {
   }
 
   private async runSync() {
-    const s = currentSession();
-    if (!s || !this.queue) throw new Error("signed out");
+    const signer = this.signer();
+    if (!signer || !this.queue) throw new Error("signed out");
     const queue = this.queue;
-    const run = () => syncQueue({ queue, send: (b) => this.send(b), now: Date.now, user: s.sub, batch: SYNC_BATCH });
+    const run = () => syncQueue({ queue, send: (b) => this.send(b), now: Date.now, signer, batch: SYNC_BATCH });
     const locks = navigator.locks;
     // One tab syncs at a time; idempotency keys make a second one harmless anyway.
     const rep = locks ? await locks.request("synan-scanner-sync", { ifAvailable: true }, (lock) => (lock ? run() : null)) : await run();
     await this.reloadRecords();
+    await this.settleUndos();
     this.changed();
     if (!rep) return;
-    if (rep.sent > 0 || rep.rejected > 0) {
+    if (rep.sent > 0 || rep.rejected > 0 || rep.held > 0) {
       this.host.patch({ lastSyncAt: Date.now() });
       // D-14: the offset is re-measured at every sync.
       void this.probeOnce();

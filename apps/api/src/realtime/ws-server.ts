@@ -22,9 +22,11 @@ import { WS_SUBPROTOCOL, WS_TICKET_PREFIX, type BreachAlert } from "@synan/contr
 import { ClientMessage, WS_CLOSE } from "@synan/contracts/ws";
 import type { AppContext } from "../app.js";
 import type { AuthContext } from "../domain/principal.js";
-import { currentAssignments } from "../domain/scope.js";
+import { currentAssignments, noteScanner } from "../domain/scope.js";
 import { canSeeEvent } from "../routes/events.js";
+import { shiftEvent } from "../routes/staff.js";
 import { ChannelHub, type Envelope, type View } from "./channel-hub.js";
+import { startGateHealthFeed } from "./gate-health-feed.js";
 import type { TelemetryScope } from "./telemetry-hub.js";
 
 const CHANNELS: ReadonlySet<string> = new Set(["/stream/scans", "/stream/telemetry", "/stream/alerts", "/stream/me"]);
@@ -125,7 +127,9 @@ export function createHubs(app: AppContext) {
       () => undefined,
     );
   });
-  return { scans, alerts, me };
+  // gate.health frames: polled while anyone follows /stream/alerts (gate-health-feed.ts).
+  const gateFeed = startGateHealthFeed(app, alerts);
+  return { scans, alerts, me, gateFeed };
 }
 
 function reject(socket: Duplex, status: number, text: string) {
@@ -188,7 +192,7 @@ export function attachWebSockets(server: Server, app: AppContext) {
           view = (e) => {
             if (!byEvent(e) || !inScope(e.meta.checkpoint_id)) return null;
             // Staff never receive the credential link (as GET /breach-alerts).
-            return ctx.kind === "operator" ? env(e) : { ...env(e), data: { ...(e.data as BreachAlert), credential_id: null } };
+            return ctx.kind === "operator" || e.type === "gate.health" ? env(e) : { ...env(e), data: { ...(e.data as BreachAlert), credential_id: null } };
           };
         } else {
           hub = hubs.me;
@@ -218,6 +222,7 @@ export function attachWebSockets(server: Server, app: AppContext) {
     close: () =>
       new Promise<void>((resolve) => {
         clearInterval(heartbeat);
+        hubs.gateFeed.stop();
         for (const ws of wss.clients) ws.terminate();
         wss.close(() => resolve());
       }),
@@ -225,7 +230,7 @@ export function attachWebSockets(server: Server, app: AppContext) {
 }
 
 /** Shared framing: hello within 5 s, ping/pong, slow-consumer cut-off. */
-function frame(app: AppContext, ws: WebSocket, onHello: (lastEventId: string | undefined) => void, onHeartbeat?: (m: { queue_depth: number; clock_offset_ms: number; online: boolean; device_id?: string }) => void) {
+function frame(app: AppContext, ws: WebSocket, onHello: (lastEventId: string | undefined) => void, onHeartbeat?: (m: { queue_depth: number; clock_offset_ms: number; online: boolean; device_id?: string; allowlist_issued_at?: string | null }) => void) {
   const w = ws as WebSocket & { alive?: boolean };
   w.alive = true;
   ws.on("pong", () => (w.alive = true));
@@ -291,12 +296,19 @@ function onChannel(app: AppContext, ws: WebSocket, channel: WsChannel, g: Channe
             const r = await app.gates.phoneHeartbeat({
               userId, venueId: cp.venue_id, checkpointId: cp.id, clientDeviceId: m.device_id ?? "stream",
               clockOffsetMs: m.clock_offset_ms, queueDepth: m.queue_depth, online: m.online,
+              allowlistIssuedAt: m.allowlist_issued_at ? new Date(m.allowlist_issued_at) : null,
             });
             if (r !== "ok") {
               // An operator retired this phone's scanner: drop the stream and alert (03 §8.2).
               await app.scannerTrust.refused({ reason: "scanner_retired", channel: "ws /stream/scans", ip: remoteIp, userId, checkpointId: cp.id });
               ws.close(WS_CLOSE.POLICY, "scanner retired");
+              return;
             }
+            const shift = (await currentAssignments(app, userId)).find((a) => a.checkpoint_id === cp.id);
+            if (!shift) return;
+            await noteScanner(app.repos, shift, m.device_id);
+            const event = await shiftEvent(app, shift, cp.venue_id);
+            await app.gates.allowlistReported({ eventId: event?.id ?? null, checkpointId: cp.id, roomId: cp.room_id, issuedAt: m.allowlist_issued_at ? new Date(m.allowlist_issued_at) : null });
           })().catch((e: unknown) => console.error(`[ws] heartbeat failed: ${e instanceof Error ? e.message.slice(0, 120) : "error"}`));
         }
       : undefined,

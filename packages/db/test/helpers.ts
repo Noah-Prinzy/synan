@@ -59,6 +59,7 @@ export async function dropEncryptionEnforcement(db: TestDb): Promise<void> {
     alter table pii_vault.attendees drop constraint if exists attendees_email_encrypted;
     alter table pii_vault.attendees drop constraint if exists attendees_full_name_encrypted;
     alter table pii_vault.attendees drop constraint if exists attendees_profile_encrypted;
+    alter table pii_vault.attendees drop constraint if exists attendees_phone_encrypted;
     alter table public.users drop constraint if exists users_mfa_secret_encrypted;
     alter table public.signing_keys drop constraint if exists signing_keys_private_key_encrypted;
     alter table public.users drop constraint if exists users_email_encrypted;

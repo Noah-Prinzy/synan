@@ -27,6 +27,8 @@ import {
 } from "../kit";
 import { configure } from "../live/backend";
 import { useCommand } from "../live/context";
+import { useCan } from "../access/session";
+import { WORKSPACE_TAB_NEED } from "../routes";
 import { WorkspaceProvider, type WorkspaceValue } from "./parts/context";
 
 const TABS = [
@@ -42,6 +44,8 @@ const TABS = [
 
 export default function EventWorkspace() {
   const { id = "" } = useParams();
+  // Tabs are the role's own (D-23): an organiser has no Staff tab.
+  const can = useCan();
   const resource = useResource(() => configure.event(id), [id]);
   const venueId = resource.status === "ready" ? resource.data.venue_id : null;
   const venue = useResource(() => (venueId ? configure.venue(venueId) : Promise.resolve(null)), [venueId]);
@@ -90,7 +94,7 @@ export default function EventWorkspace() {
         <WorkspaceHeader value={value} />
         <RouteTabs
           label="Event workspace"
-          items={TABS.map(([path, label]) => ({ to: `/events/${id}/${path}`, label }))}
+          items={TABS.filter(([path]) => can(WORKSPACE_TAB_NEED[path])).map(([path, label]) => ({ to: `/events/${id}/${path}`, label }))}
         />
         <div className="min-w-0 flex-1">
           <Outlet />

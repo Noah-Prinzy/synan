@@ -10,11 +10,14 @@ import {
   emailPassCopy,
   getCodes,
   initialCodes,
+  passChoices,
+  selectPass,
   tierLabel,
   usePass,
   watchPass,
   type CredentialState,
   type Pass,
+  type PassChoice,
   type PortalCodeBatch,
 } from "../data/pass";
 import { formatDay, formatTime } from "../data/format";
@@ -160,7 +163,7 @@ function QrBlock({ holder, online }: { holder: string; online: boolean }) {
   );
 }
 
-function BandRow({ band, nearestDesk }: { band: Pass["band"]; nearestDesk: string }) {
+function BandRow({ band, bandLost, nearestDesk }: { band: Pass["band"]; bandLost: boolean; nearestDesk: string }) {
   return (
     <div className="flex items-center justify-between gap-4 px-5 py-5 sm:px-6">
       <div className="min-w-0">
@@ -170,6 +173,14 @@ function BandRow({ band, nearestDesk }: { band: Pass["band"]; nearestDesk: strin
             <span className="size-1.5 bg-success" aria-hidden />
             Bound <span className="font-mono text-15 text-muted-foreground">{band.hint}</span>
           </p>
+        ) : bandLost ? (
+          <>
+            <p className="mt-1 flex items-center gap-2 text-17">
+              <span className="size-1.5 bg-warning" aria-hidden />
+              Reported lost
+            </p>
+            <p className="mt-0.5 text-15 text-muted-foreground">It no longer opens doors. Collect a new one at {nearestDesk}</p>
+          </>
         ) : (
           <>
             <p className="mt-1 text-17">Not bound yet</p>
@@ -179,7 +190,7 @@ function BandRow({ band, nearestDesk }: { band: Pass["band"]; nearestDesk: strin
       </div>
       {!band ? (
         <Link to="/pass/pair" className={buttonClass("secondary", "sm", "shrink-0")}>
-          Bind a band
+          {bandLost ? "Bind a new band" : "Bind a band"}
         </Link>
       ) : null}
     </div>
@@ -248,10 +259,18 @@ export function PassTicket({
             <Wordmark small />
           </p>
           <p className="font-display text-21 leading-tight">{pass.event.title}</p>
-          <p className="mt-1 text-15 text-muted-foreground">
-            <span className="font-mono">{formatDay(pass.event.startsAt, pass.event.timezone)}</span> · doors{" "}
-            <span className="font-mono">{formatTime(pass.event.startsAt, pass.event.timezone)}</span> · {pass.event.venue}
-          </p>
+          {pass.event.startsAt || pass.event.venue ? (
+            <p className="mt-1 text-15 text-muted-foreground">
+              {pass.event.startsAt ? (
+                <>
+                  <span className="font-mono">{formatDay(pass.event.startsAt, pass.event.timezone)}</span> · doors{" "}
+                  <span className="font-mono">{formatTime(pass.event.startsAt, pass.event.timezone)}</span>
+                </>
+              ) : null}
+              {pass.event.startsAt && pass.event.venue ? " · " : null}
+              {pass.event.venue}
+            </p>
+          ) : null}
         </div>
         <Badge tone={toneFor[pass.state]} dot className="shrink-0">
           {pass.state}
@@ -271,7 +290,7 @@ export function PassTicket({
 
       {bandFirst ? (
         <div className="border-b border-border">
-          <BandRow band={pass.band} nearestDesk={pass.nearestDesk} />
+          <BandRow band={pass.band} bandLost={pass.bandLost} nearestDesk={pass.nearestDesk} />
           <p className="px-5 pb-5 text-15 text-muted-foreground sm:px-6">{descriptionFor.READY}</p>
         </div>
       ) : null}
@@ -339,10 +358,45 @@ export function PassTicket({
 
       {!bandFirst ? (
         <div className="border-t border-border">
-          <BandRow band={pass.band} nearestDesk={pass.nearestDesk} />
+          <BandRow band={pass.band} bandLost={pass.bandLost} nearestDesk={pass.nearestDesk} />
         </div>
       ) : null}
     </article>
+  );
+}
+
+/**
+ * Someone holding passes for several events chooses which one to show: a row of ruled cells on
+ * the ticket's top edge, the current one underlined in the brand colour (as the filters on A1).
+ * Absent for the usual single pass.
+ */
+function PassSwitch({ choices, current, onSelect }: { choices: PassChoice[]; current: string | null; onSelect: (eventId: string) => void }) {
+  return (
+    <div role="group" aria-label="Your passes" className="mx-auto flex w-full max-w-130 overflow-x-auto border border-b-0 border-border bg-background scrollbar-none">
+      {choices.map((choice) => {
+        const selected = choice.eventId === current;
+        return (
+          <button
+            key={choice.eventId}
+            type="button"
+            aria-pressed={selected}
+            onClick={() => onSelect(choice.eventId)}
+            className={`relative flex min-h-14 min-w-36 flex-1 flex-col items-start justify-center gap-0.5 px-4 py-2 text-left not-first:border-l not-first:border-border transition-colors duration-120 ease-standard motion-reduce:transition-none ${
+              selected ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <span className="w-full truncate text-15">{choice.title}</span>
+            {choice.startsAt ? <span className="font-mono text-13 text-muted-foreground">{formatDay(choice.startsAt, choice.timezone)}</span> : null}
+            <span
+              aria-hidden="true"
+              className={`absolute inset-x-0 -bottom-px h-px origin-left bg-brand transition-transform duration-180 ease-standard motion-reduce:transition-none ${
+                selected ? "scale-x-100" : "scale-x-0"
+              }`}
+            />
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -356,12 +410,24 @@ export default function Pass() {
   const pass = resource.status === "ready" ? resource.data : null;
   const online = useOnline();
   const [notice, setNotice] = useState<string | null>(null);
+  const choices = passChoices();
+  const [picked, setPicked] = useState<string | null>(null);
+  const choose = (eventId: string) => {
+    if (eventId === pass?.eventId) return;
+    setPicked(eventId);
+    setNotice(null);
+    selectPass(eventId);
+    resource.retry();
+  };
+  const passSwitch =
+    choices.length > 1 ? <PassSwitch choices={choices} current={pass?.eventId ?? picked} onSelect={choose} /> : null;
   const showNotice = useCallback((message: string) => setNotice(message), []);
 
   // stream/me: a revocation or hold lands here while the screen is open (P-16).
   const [announcement, setAnnouncement] = useState("");
-  const firstState = useRef<CredentialState | null>(null);
-  if (pass && firstState.current === null) firstState.current = pass.state;
+  // The state each pass first showed in this visit: a later change is news ("Revoked just now").
+  const firstState = useRef(new Map<string, CredentialState>());
+  if (pass && !firstState.current.has(pass.eventId)) firstState.current.set(pass.eventId, pass.state);
   useEffect(() => {
     return watchPass((state) => {
       if (state === "revoked") setAnnouncement("Your pass was revoked.");
@@ -374,6 +440,7 @@ export default function Pass() {
     return (
       <PageShell bleed>
         <h1 className="sr-only">My pass</h1>
+        {passSwitch ? <div className="px-4 pt-4 sm:px-6 sm:pt-10 md:px-10 md:pt-14">{passSwitch}</div> : null}
         {resource.status === "loading" ? (
           <SkeletonCells count={1} />
         ) : resource.status === "none" ? (
@@ -394,8 +461,9 @@ export default function Pass() {
       <p role="status" aria-live="assertive" className="sr-only">
         {announcement}
       </p>
-      <div className="enter">
-        <PassTicket pass={pass} online={online} liveChange={pass.state !== firstState.current} onNotice={showNotice} />
+      {passSwitch}
+      <div key={pass.eventId} className="enter">
+        <PassTicket pass={pass} online={online} liveChange={pass.state !== firstState.current.get(pass.eventId)} onNotice={showNotice} />
       </div>
       <p role="status" className="mx-auto mt-3 min-h-5 w-full max-w-130 text-15 text-muted-foreground">
         {notice}

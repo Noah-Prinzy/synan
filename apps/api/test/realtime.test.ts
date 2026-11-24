@@ -67,7 +67,8 @@ describe("slice 10 · /stream/scans", () => {
     await again.waitFor((m) => m.type === "scan.result");
     // Heartbeat frames feed gate health.
     // Heartbeat frames feed gate health through the phone's device row (written asynchronously).
-    again.ws.send(JSON.stringify({ type: "heartbeat", queue_depth: 3, clock_offset_ms: 10, online: true, device_id: "phone-1" }));
+    const listAt = new Date(h.clock.now() - 20 * 60_000).toISOString(); // the frame also says how old the phone's allowlist is (A4)
+    again.ws.send(JSON.stringify({ type: "heartbeat", queue_depth: 3, clock_offset_ms: 10, online: true, device_id: "phone-1", allowlist_issued_at: listAt }));
     const event = (await h.app.ctx.repos.events.byId(h.seed.eventId))!;
     let expo;
     for (let i = 0; i < 50; i++) {
@@ -75,7 +76,13 @@ describe("slice 10 · /stream/scans", () => {
       if (expo?.queue_depth === 3) break;
       await new Promise((r) => setTimeout(r, 20));
     }
-    expect(expo).toMatchObject({ queue_depth: 3, link_state: "degraded", clock_offset_ms: 10 });
+    expect(expo).toMatchObject({ queue_depth: 3, link_state: "degraded", clock_offset_ms: 10, allowlist_issued_at: listAt, allowlist_stale: true });
+    let stale: { kind: string }[] = [];
+    for (let i = 0; i < 50 && stale.length === 0; i++) {
+      stale = (await h.app.ctx.repos.alerts.list({ eventId: h.seed.eventId, checkpointIds: [h.seed.checkpoints.expo], limit: 100 })).filter((a) => a.kind === "stale_allowlist");
+      if (!stale.length) await new Promise((r) => setTimeout(r, 20));
+    }
+    expect(stale).toHaveLength(1);
     for (const c of [again, ops]) c.ws.close();
   });
 });

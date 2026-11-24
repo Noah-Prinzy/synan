@@ -65,10 +65,17 @@ export const staff_assignments = pgTable(
     handed_over_at: tstz("handed_over_at"),
     created_by: uuid("created_by").references(() => users.id),
     created_at: tstz("created_at").notNull().defaultNow(),
+    /**
+     * Scanner installs the assignee used during the shift: base64url SHA-256 of each client device id,
+     * at most 8 (0028). A scan queued under this shift may later be synced from one of these installs
+     * by another staff member on shift at the same checkpoint (01 §8).
+     */
+    scanner_device_hashes: text("scanner_device_hashes").array().notNull().default(sql`'{}'::text[]`),
   },
   (t) => [
     index("staff_assignments_checkpoint_idx").on(t.checkpoint_id, t.shift_start),
     index("staff_assignments_user_idx").on(t.user_id, t.shift_start),
     check("staff_assignments_shift_order", sql`${t.shift_end} > ${t.shift_start}`),
+    check("staff_assignments_device_hashes", sql`cardinality(${t.scanner_device_hashes}) <= 8`),
   ],
 );

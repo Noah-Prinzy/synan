@@ -10,7 +10,7 @@
  */
 import { base64urlDecode, base64urlEncode, type ParsedQr } from "@synan/contracts/qr";
 import type { AllowlistPayload, SigningKey } from "@synan/contracts/rest";
-import { QR_LEEWAY_S, RETIRED_KEY_GRACE_MS } from "./config";
+import { DEFAULT_QR_LEEWAY_S, RETIRED_KEY_GRACE_MS } from "./config";
 
 const subtle = (): SubtleCrypto | null => (typeof crypto !== "undefined" && crypto.subtle ? crypto.subtle : null);
 const ascii = (s: string) => new TextEncoder().encode(s);
@@ -59,6 +59,11 @@ export async function nfcHash(uid: string): Promise<string> {
   return base64urlEncode(await sha256(ascii(`nfc:${uid.toUpperCase()}`)));
 }
 
+/** base64url SHA-256 of an emailed code's `cid` text: the allowlist's `qr_email_hashes` (apps/api credential-service). */
+export async function emailCidHash(cid: string): Promise<string> {
+  return base64urlEncode(await sha256(ascii(cid)));
+}
+
 const hex = (b: Uint8Array) => [...b].map((v) => v.toString(16).padStart(2, "0")).join("");
 
 /** A signing key the scanner may use: right purpose, `qr_kid` consistent with `x`, not retired past grace. */
@@ -100,7 +105,7 @@ export type QrCheck =
  * Verify a parsed compact QR (`@synan/contracts/qr`) at `nowMs` (server-corrected time), exactly as
  * apps/api QrService.verify does: signature by a `qr` key named by its short id, then the window.
  */
-export async function verifyQr(p: ParsedQr, keys: readonly TrustedKey[], nowMs: number, leewayS = QR_LEEWAY_S): Promise<QrCheck> {
+export async function verifyQr(p: ParsedQr, keys: readonly TrustedKey[], nowMs: number, leewayS = DEFAULT_QR_LEEWAY_S): Promise<QrCheck> {
   const s = subtle();
   const k = keys.find((x) => x.purpose === "qr" && x.qrKid === p.kid && usable(x, nowMs));
   if (!s || !k) return { ok: false, reason: "bad_signature" };
@@ -155,6 +160,9 @@ export function checkAllowlistPayload(v: unknown): AllowlistPayload {
     if (!(e.tier === null || (isStr(e.tier) && TIERS.has(e.tier)))) fail("entries[].tier");
     if (typeof e.revoked !== "boolean" || typeof e.qr_email_spent !== "boolean") fail("entries[].flags");
     if (!isStr(e.state) || !STATES.has(e.state)) fail("entries[].state");
+    // Additive fields: absent on older lists, string arrays when present.
+    if (e.qr_email_hashes !== undefined && !isStrArr(e.qr_email_hashes)) fail("entries[].qr_email_hashes");
+    if (e.perimeter_room_ids !== undefined && !isStrArr(e.perimeter_room_ids)) fail("entries[].perimeter_room_ids");
   }
   return p as unknown as AllowlistPayload;
 }

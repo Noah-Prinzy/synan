@@ -11,6 +11,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ERROR_COPY } from "@synan/contracts/copy";
 import { surfaceName } from "@synan/ui/brand";
 import { SignalShape, formatNumber } from "@synan/ui/data";
+import { useCan } from "../access/session";
 import { useCommand } from "../live/context";
 import { useSlice, useSliceValue } from "../live/slice";
 import type { VenueLayout } from "../live/transport";
@@ -300,6 +301,7 @@ function LoadError({ message, onRetry }: { message: string; onRetry: () => void 
 
 function NotLive() {
   const { events, event, selectEvent } = useCommand();
+  const can = useCan();
   const live = (events ?? []).filter((e) => e.state === "live");
   if (!event) return null;
   const starts = new Date(event.starts_at);
@@ -338,7 +340,7 @@ function NotLive() {
           )}
           The Command Center shows live counts, gates and alerts only while an event is live.
         </p>
-        {event.state === "closed" || event.state === "archived" ? (
+        {(event.state === "closed" || event.state === "archived") && can("reports.view") ? (
           <p className="mt-4">
             <Link
               to={`/events/${event.id}/summary`}

@@ -42,7 +42,8 @@ export function registerJobs(app: AppContext) {
     },
   });
   // Expired sign-in state, desk codes and invites.
-  app.jobs.register({ name: JOB.authCleanup, everyMs: 10 * 60_000, run: () => app.auth.cleanup() });
+  // Pending self-service registrations go with their expired link (unused: purged, 03 §6).
+  app.jobs.register({ name: JOB.authCleanup, everyMs: 10 * 60_000, run: async () => { await app.auth.cleanup(); await app.repos.pendingRegistrations.cleanup(now()); } });
   app.jobs.register({ name: JOB.invitationExpiry, everyMs: 60 * 60_000, run: () => app.repos.maintenance.expireInvitations(now()) });
   app.jobs.register({ name: JOB.webhookDelivery, everyMs: 5_000, run: () => app.webhooks.drain() });
   app.jobs.register({ name: JOB.reportExport, everyMs: 30_000, run: () => app.reportExports.drain() });

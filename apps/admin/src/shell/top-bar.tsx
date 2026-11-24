@@ -9,7 +9,8 @@ import { Wordmark, surfaceName } from "@synan/ui/brand";
 import { LivePill, formatClock, formatNumber, formatUtcOffset, type LiveState } from "@synan/ui/data";
 import { TopBar, TopBarCell } from "@synan/ui/shell";
 import type { DashboardData } from "@synan/mock";
-import { api } from "../live/backend";
+import { api, auth } from "../live/backend";
+import { requestEnrolment } from "../access/mfa-bus";
 import { useSession } from "../access/session";
 import { useCommand, useTimeZone } from "../live/context";
 import { useNow } from "../live/hooks";
@@ -193,6 +194,35 @@ function ShiftLabel() {
 
 /* ------------------------------------------------------------ operator menu */
 
+/** Real API only: whether the second factor is set up, and until when a step-up lasts. */
+function SecondFactorItems({ close, zone }: { close: () => void; zone: string }) {
+  const session = auth?.session();
+  if (!session) return null;
+  if (!session.mfa_enrolled) {
+    return (
+      <MenuItem
+        onSelect={() => {
+          close();
+          requestEnrolment();
+        }}
+      >
+        <span>
+          <span className="block">Set up authenticator</span>
+          <span className="block text-12 text-muted-foreground">Some actions ask for its code</span>
+        </span>
+      </MenuItem>
+    );
+  }
+  const until = session.mfa_until;
+  if (!until || until <= Date.now()) return null;
+  return (
+    <MenuNote>
+      Code confirmed until{" "}
+      <span className="font-mono text-foreground tabular-nums">{formatClock(new Date(until).toISOString(), zone, { seconds: false })}</span>
+    </MenuNote>
+  );
+}
+
 function OperatorMenu() {
   const { user: operator, roleLabel, can, signOut } = useSession();
   const navigate = useNavigate();
@@ -227,7 +257,8 @@ function OperatorMenu() {
             {operator ? (
               <MenuNote>
                 <span className="block text-13 text-foreground">{operator.name}</span>
-                <span className="block truncate">{operator.email}</span>
+                {/* The real API has no display name yet: the email stands in, so it is not repeated. */}
+                {operator.email !== operator.name ? <span className="block truncate">{operator.email}</span> : null}
                 <span className="mt-1.5 block">
                   <span className="text-foreground">{roleLabel}</span> · {operator.shift.label}{" "}
                   <span className="font-mono tabular-nums">
@@ -237,6 +268,7 @@ function OperatorMenu() {
                 </span>
               </MenuNote>
             ) : null}
+            {auth ? <SecondFactorItems close={close} zone={zone} /> : null}
             {can("settings.manage") ? (
               <MenuItem
                 onSelect={() => {

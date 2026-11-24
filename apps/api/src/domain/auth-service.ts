@@ -27,6 +27,21 @@ import { kindForRole, type AuthContext } from "./principal.js";
 const ISSUER = API_BRAND.tokenIssuer;
 const AUDIENCE = API_BRAND.tokenAudience;
 
+/** What a session records about its client (03 §3): a shortened user agent and the address (stored as a prefix only). */
+export interface ClientContext {
+  userAgent: string | null;
+  ip: string | null;
+}
+
+/** A self-service registration kept with an emailed sign-in link (POST /users/register). */
+export interface PendingRegistrationInput {
+  eventId: string;
+  eventTitle: string;
+  zonePresenceConsent: boolean;
+  /** Name, profile answers, phone: identity, held encrypted until the link is redeemed. */
+  answers: Record<string, unknown>;
+}
+
 export interface WsTicketGrant {
   ctx: AuthContext;
   channel: WsChannel;
@@ -136,7 +151,7 @@ export class AuthService {
   }
 
   /** Start a new refresh-token family (login, email-link sign-in, MFA step-up). Stored only as a hash. */
-  private async startFamily(ctx: Omit<AuthContext, "sid">, row: UserRow | AttendeeRow): Promise<TokenPair> {
+  private async startFamily(ctx: Omit<AuthContext, "sid">, row: UserRow | AttendeeRow, client?: ClientContext): Promise<TokenPair> {
     const familyId = randomUUID();
     const refresh = randomToken(32);
     const now = new Date(this.now());
@@ -147,6 +162,8 @@ export class AuthService {
       tokenHash: sha256b64url(refresh),
       expiresAt,
       mfaAt: ctx.mfaAt ? new Date(ctx.mfaAt) : null,
+      userAgent: client?.userAgent ?? null,
+      ip: client?.ip ?? null,
       now,
     });
     return this.tokens({ ...ctx, sid: familyId }, row, refresh, expiresAt);
@@ -154,25 +171,25 @@ export class AuthService {
 
   /* ------------------------------------------------------------------ flows */
 
-  async login(email: string, password: string): Promise<TokenPair> {
+  async login(email: string, password: string, client?: ClientContext): Promise<TokenPair> {
     const user = await this.repos.users.byEmail(email);
     // Always run the hash, so an unknown email costs the same time as a wrong password.
     const ok = await verifyPassword(password, user?.password_hash ?? this.dummyHash);
     if (!user || !ok) throw new ContractError("INVALID_CREDENTIALS");
-    return this.startFamily({ sub: user.id, kind: kindForRole(user.role), role: user.role, mfaAt: null }, user);
+    return this.startFamily({ sub: user.id, kind: kindForRole(user.role), role: user.role, mfaAt: null }, user, client);
   }
 
   /**
-   * Exchange a refresh token, strictly single-use (one atomic call on the SQL backend).
+   * Exchange a refresh token, single-use with rotation (one atomic call on the SQL backend).
    *
-   * Known behaviour, kept as built: two near-simultaneous refreshes of one token from the same client
-   * (two tabs, a retried request) are indistinguishable from theft — the second is reuse and ends the
-   * whole session. A grace window, if wanted, belongs in the rotate operation itself (the SQL function
-   * auth_rotate_session in @synan/db, and its in-memory mirror): when the presented row was rotated
-   * less than N seconds ago and its child has not itself been used, return the child instead of
-   * revoking. It must not be emulated here, outside the row lock.
+   * Reuse grace (REFRESH_REUSE_GRACE_S, default 10 s; 0029): a token presented again within the
+   * window after its exchange, by the same client (user agent and IP prefix of the exchange), while
+   * the token it was exchanged for is still unused, is a lost response — a fresh token is issued and
+   * the unused one is superseded (it counts as reuse if it ever comes back). Anything else — later,
+   * another client, or a child that was already used — is theft as before: the whole family is
+   * revoked. The decision is made in the store's locked exchange, never here.
    */
-  async refresh(refreshToken: string): Promise<TokenPair> {
+  async refresh(refreshToken: string, client?: ClientContext): Promise<TokenPair> {
     const now = new Date(this.now());
     const next = randomToken(32);
     // Operators and attendees have different refresh lifetimes; the store picks one by the token's
@@ -180,6 +197,9 @@ export class AuthService {
     const r = await this.repos.auth.rotateSession({
       tokenHash: sha256b64url(refreshToken),
       newTokenHash: sha256b64url(next),
+      userAgent: client?.userAgent ?? null,
+      ip: client?.ip ?? null,
+      graceSeconds: this.config.refreshReuseGraceS,
       ttl: { userSeconds: this.config.operatorRefreshTtlS, attendeeSeconds: this.config.attendeeRefreshTtlS },
       now,
     });
@@ -209,43 +229,57 @@ export class AuthService {
    * database lookup nor the mail provider makes a known address answer differently (slower, or 500)
    * from an unknown one. Failures are logged without the address.
    */
-  async requestEmailLink(email: string, returnTo?: string): Promise<void> {
-    this.mail.background("auth.link", () => this.issueEmailLink(email, returnTo));
+  async requestEmailLink(email: string, returnTo?: string, pending?: PendingRegistrationInput): Promise<void> {
+    this.mail.background("auth.link", () => this.issueEmailLink(email, returnTo, pending));
   }
 
-  private async issueEmailLink(email: string, returnTo?: string): Promise<void> {
+  /**
+   * `pending`: a self-service registration to keep with this link (pii_vault.pending_registrations,
+   * answers encrypted), completed when the link is redeemed and gone with the link if it is not.
+   */
+  private async issueEmailLink(email: string, returnTo?: string, pending?: PendingRegistrationInput): Promise<void> {
     const att = await this.repos.attendees.byEmail(email);
     if (!att || !att.email) return;
     const to = att.email;
     const token = randomToken(32);
     const now = new Date(this.now());
+    const expiresAt = new Date(now.getTime() + this.config.emailLinkTtlS * 1000);
     // Token in the fragment: never sent to a server in a request line, never in Referer.
     const qs = returnTo ? `&return_to=${encodeURIComponent(returnTo)}` : "";
     const link = `${this.config.attendeeAppOrigin}/auth/verify#token=${token}${qs}`;
+    if (pending) {
+      // Written first (the vault is its own connection on SQL): a link whose email fails leaves only a
+      // pending row that expires with it.
+      await this.repos.pendingRegistrations.create({
+        id: randomUUID(), link_token_hash: sha256b64url(token), attendee_id: att.id, event_id: pending.eventId,
+        zone_presence_consent: pending.zonePresenceConsent, answers: pending.answers, expires_at: expiresAt, created_at: now,
+      });
+    }
+    const confirm = pending ? `Opening it also confirms your registration for ${pending.eventTitle}.\n\n` : "";
     await this.repos.transaction(async (s) => {
-      await s.repos.auth.createLink({ tokenHash: sha256b64url(token), attendeeId: att.id, expiresAt: new Date(now.getTime() + this.config.emailLinkTtlS * 1000), now });
+      await s.repos.auth.createLink({ tokenHash: sha256b64url(token), attendeeId: att.id, expiresAt, now });
       await this.mail.send(
         {
           to,
           tag: "auth.link",
           subject: API_BRAND.mail.signInSubject,
-          text: `${API_BRAND.mail.signInIntro}\n\n${link}\n\nThis link works once and expires in ${Math.round(this.config.emailLinkTtlS / 60)} minutes. If you did not ask for it, ignore this email.`,
+          text: `${API_BRAND.mail.signInIntro}\n\n${link}\n\n${confirm}This link works once and expires in ${Math.round(this.config.emailLinkTtlS / 60)} minutes. If you did not ask for it, ignore this email.`,
         },
         s,
       );
     });
   }
 
-  async verifyEmailLink(token: string): Promise<TokenPair> {
+  async verifyEmailLink(token: string, client?: ClientContext): Promise<TokenPair> {
     const r = await this.repos.auth.redeemLink(sha256b64url(token), new Date(this.now()));
     if (r.status === "invalid") throw new ContractError("LINK_INVALID");
     if (r.status !== "redeemed" || !r.attendee_id) throw new ContractError("LINK_EXPIRED");
     const att = await this.repos.attendees.byId(r.attendee_id);
     if (!att) throw new ContractError("LINK_INVALID");
-    return this.startFamily({ sub: att.id, kind: "attendee", role: null, mfaAt: null }, att);
+    return this.startFamily({ sub: att.id, kind: "attendee", role: null, mfaAt: null }, att, client);
   }
 
-  async mfaVerify(ctx: AuthContext, code: string): Promise<TokenPair> {
+  async mfaVerify(ctx: AuthContext, code: string, client?: ClientContext): Promise<TokenPair> {
     if (ctx.kind === "attendee") throw new ContractError("FORBIDDEN");
     const user = await this.repos.users.byId(ctx.sub);
     if (!user) throw new ContractError("UNAUTHENTICATED");
@@ -261,7 +295,7 @@ export class AuthService {
     this.lastTotpStep.set(user.id, step);
     // Revoke the current family and start a stepped-up one, so the old refresh token cannot mint mfa tokens.
     await this.repos.auth.revokeFamily(ctx.sid, "mfa_step_up", new Date(now));
-    return this.startFamily({ sub: user.id, kind: ctx.kind, role: user.role, mfaAt: now }, user);
+    return this.startFamily({ sub: user.id, kind: ctx.kind, role: user.role, mfaAt: now }, user, client);
   }
 
   /**

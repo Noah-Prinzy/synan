@@ -73,3 +73,19 @@ export {
   type ScanPage,
   type TestRead,
 } from "./ops";
+export {
+  createDeskMock,
+  type DeskApi,
+  type DeskBindBody,
+  type DeskCarrier,
+  type DeskCodeBody,
+  type DeskCodeResult,
+  type DeskInventory,
+  type DeskMockControls,
+  type DeskMockOptions,
+  type DeskRebindBody,
+  type DeskRegistration,
+  type DeskRegistrationPage,
+  type DeskRegistrationQuery,
+  type MfaVerifyBody,
+} from "./desk";

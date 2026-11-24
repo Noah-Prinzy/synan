@@ -15,7 +15,8 @@ export type StreamState = "idle" | "connecting" | "open" | "closed";
 export interface StreamDeps {
   eventId: string;
   checkpointId: string;
-  heartbeat: () => { queue_depth: number; clock_offset_ms: number; online: boolean; device_id: string };
+  /** The heartbeat frame's body: the same stable device id as on REST, and the held allowlist's `issued_at`. */
+  heartbeat: () => { queue_depth: number; clock_offset_ms: number; online: boolean; device_id: string; allowlist_issued_at: string | null };
   onState: (s: StreamState, detail?: string) => void;
   /** Any frame from the server: the link is alive. */
   onAlive: () => void;
@@ -23,6 +24,11 @@ export interface StreamDeps {
 }
 
 const POLICY_CLOSE = 1008;
+
+/** The `heartbeat` client frame (contracts ws ClientHeartbeat). */
+export function heartbeatFrame(h: ReturnType<StreamDeps["heartbeat"]>) {
+  return { type: "heartbeat" as const, ...h };
+}
 
 export class ScanStream {
   private ws: WebSocket | null = null;
@@ -62,7 +68,7 @@ export class ScanStream {
 
   /** Send a heartbeat frame now (queue depth changed). */
   heartbeatNow() {
-    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: "heartbeat", ...this.d.heartbeat() }));
+    if (this.ws?.readyState === WebSocket.OPEN && this.state === "open") this.ws.send(JSON.stringify(heartbeatFrame(this.d.heartbeat())));
   }
 
   private set(s: StreamState, detail?: string) {

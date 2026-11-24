@@ -13,6 +13,7 @@ import { NOTE, type NotificationService } from "./notifications.js";
 import type { CarrierRow, CredentialRow, RegistrationRow, Repos } from "../repo/types.js";
 import type { AuditService } from "./audit.js";
 import { evaluateAccess } from "./decision.js";
+import { currentOf, eventRef } from "./event-ref.js";
 import type { AuthContext } from "./principal.js";
 import type { QrService } from "./qr.js";
 
@@ -82,19 +83,28 @@ export class CredentialService {
     return row;
   }
 
-  /** Resolve the attendee's registration for an event (or their only/next one). */
+  /**
+   * Resolve the attendee's registration for an event; without one, their only pass, else the
+   * current one (the live event's, else the next to start, else the most recent).
+   */
   private async registrationFor(attendeeId: string, eventId?: string): Promise<RegistrationRow> {
     const regs = (await this.repos.registrations.forAttendee(attendeeId)).filter((r) => r.state === "confirmed");
-    const reg = eventId ? regs.find((r) => r.event_id === eventId) : regs.length === 1 ? regs[0] : undefined;
-    if (!reg) {
-      if (!eventId && regs.length > 1) throw new ContractError("VALIDATION_FAILED", "event_id is required when you hold several passes", [{ path: "query.event_id", message: "required" }]);
-      throw new ContractError("NO_CREDENTIAL");
+    let reg = eventId ? regs.find((r) => r.event_id === eventId) : regs.length === 1 ? regs[0] : undefined;
+    if (!eventId && regs.length > 1) {
+      const items = [];
+      for (const r of regs) {
+        const event = await this.repos.events.byId(r.event_id);
+        if (event) items.push({ item: r, event });
+      }
+      reg = currentOf(items, this.clock.now()) ?? undefined;
     }
+    if (!reg) throw new ContractError("NO_CREDENTIAL");
     return reg;
   }
 
   async myCredential(attendeeId: string, eventId?: string): Promise<MyCredential> {
     const reg = await this.registrationFor(attendeeId, eventId);
+    const event = await this.repos.events.byId(reg.event_id);
     const cred = await this.repos.credentials.forRegistration(reg.id);
     if (!cred) throw new ContractError("NO_CREDENTIAL");
     const carriers = await this.repos.carriers.forCredential(cred.id);
@@ -118,6 +128,7 @@ export class CredentialService {
       state: cred.state,
       carriers: carriers.filter((c) => c.state !== "retired").map((c) => ({ kind: c.kind, state: c.state, identifier_hint: hint(c) })),
       permitted_room_ids: permitted,
+      ...(event ? { event: await eventRef(this.repos, event) } : {}),
     };
   }
 

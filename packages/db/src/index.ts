@@ -37,6 +37,7 @@ export * from "./layout";
 export * from "./short-codes";
 export * from "./summary";
 export * from "./delivery";
+export * from "./pending-registrations";
 export * from "./crypto/files";
 export { MIGRATIONS_FOLDER, runMigrations } from "./migrate";
 

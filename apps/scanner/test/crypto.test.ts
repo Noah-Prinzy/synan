@@ -1,7 +1,8 @@
 /** QR and allowlist verification (D-12, 03 §2 and §4). */
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { parseSignedQr } from "@synan/contracts/qr";
-import { AllowlistRejected, ed25519Supported, importKeys, nfcHash, verifyAllowlistJws, verifyQr } from "../src/data/api/crypto";
+import { AllowlistRejected, ed25519Supported, emailCidHash, importKeys, nfcHash, verifyAllowlistJws, verifyQr } from "../src/data/api/crypto";
 import { emailCode, entry, makeKey, nfcId, payload, portalCode, ref16, signJws } from "./helpers";
 
 const nowS = 1_800_000_000;
@@ -70,8 +71,29 @@ describe("portal and emailed QR", () => {
     expect(await verifyQr(p, rk, at(nowS))).toEqual({ ok: false, reason: "bad_signature" });
   });
 
-  it("hashes a band UID exactly as the API stores it", async () => {
+  it("hashes a band UID exactly as the API stores it: SHA-256 of `nfc:` + the UID in upper-case hex", async () => {
     expect(await nfcHash("04a29f31c7d0e2")).toBe(nfcId("04A29F31C7D0E2"));
+    expect(await nfcHash("04a29f31c7d0e2")).toBe(createHash("sha256").update("nfc:04A29F31C7D0E2").digest("base64url"));
+  });
+
+  it("hashes an emailed code's cid exactly as the allowlist's qr_email_hashes (apps/api sha256b64url(cid))", async () => {
+    const k = await makeKey("qr");
+    const cid = ref16(9);
+    const p = parseSignedQr(await emailCode(k, ref16(2), cid, nowS + 3600))!;
+    if (p.kind !== "email") throw new Error("email expected");
+    expect(p.cid).toBe(cid);
+    expect(await emailCidHash(p.cid)).toBe(createHash("sha256").update(cid).digest("base64url"));
+  });
+
+  it("uses the leeway the server publishes (qr_leeway_s), not a fixed one", async () => {
+    const k = await makeKey("qr");
+    const keys = await importKeys([k.published]);
+    const p = parseSignedQr(await portalCode(k, ref16(1), nowS, 60))!;
+    if (p.kind !== "portal") throw new Error("portal expected");
+    expect(await verifyQr(p, keys, at(p.exp + 1), 0)).toEqual({ ok: false, reason: "expired" });
+    expect(await verifyQr(p, keys, at(p.exp + 29), 30)).toEqual({ ok: true });
+    expect(await verifyQr(p, keys, at(p.exp - p.ttl - 29), 30)).toEqual({ ok: true });
+    expect(await verifyQr(p, keys, at(p.exp - p.ttl - 1), 0)).toEqual({ ok: false, reason: "not_yet_valid" });
   });
 });
 
@@ -111,5 +133,17 @@ describe("signed allowlist", () => {
     await rejects(async () => verifyAllowlistJws(await signJws(k, list), "another-kid", keys, Date.now()), "kid");
     await rejects(async () => verifyAllowlistJws(await signJws(k, { ...list, entries: [{ credential_hash: 1 }] }), k.published.kid, keys, Date.now()), "payload.entries[].fields");
     await rejects(async () => verifyAllowlistJws("a.b", k.published.kid, keys, Date.now()), "not a compact JWS");
+  });
+
+  it("accepts the additive fields (qr_email_hashes, perimeter_room_ids) and refuses them malformed", async () => {
+    const k = await makeKey("allowlist");
+    const keys = await importKeys([k.published]);
+    const withExtras = payload([entry({ credential_hash: ref16(1), qr_email_hashes: ["h"], perimeter_room_ids: ["r1", "r2"] })]);
+    const p = await verifyAllowlistJws(await signJws(k, withExtras), k.published.kid, keys, Date.now());
+    expect(p.entries[0]).toMatchObject({ qr_email_hashes: ["h"], perimeter_room_ids: ["r1", "r2"] });
+    const bad = { ...withExtras, entries: [{ ...withExtras.entries[0], perimeter_room_ids: "r1" }] };
+    await rejects(async () => verifyAllowlistJws(await signJws(k, bad), k.published.kid, keys, Date.now()), "payload.entries[].perimeter_room_ids");
+    const bad2 = { ...withExtras, entries: [{ ...withExtras.entries[0], qr_email_hashes: [1] }] };
+    await rejects(async () => verifyAllowlistJws(await signJws(k, bad2), k.published.kid, keys, Date.now()), "payload.entries[].qr_email_hashes");
   });
 });

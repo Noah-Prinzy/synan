@@ -149,9 +149,12 @@ describe("GET /me/credential", () => {
     );
   });
 
-  it("requires event_id when the attendee holds several passes", async () => {
+  it("without event_id, answers with the current pass when the attendee holds several (the live event's), with its event", async () => {
     const t = await attendee(devEmail("private"));
-    expect((await h.call("GET", "/me/credential", { token: t })).status).toBe(400);
-    expect((await h.call("GET", `/me/credential?event_id=${h.seed.eventId}`, { token: t })).status).toBe(200);
+    const r = await h.call<{ event_id: string; event?: { id: string; slug: string; timezone: string; venue_name: string | null } }>("GET", "/me/credential", { token: t });
+    expect(r.status).toBe(200);
+    expect(r.body.event_id).toBe(h.seed.eventId);
+    expect(r.body.event).toMatchObject({ id: h.seed.eventId, slug: h.seed.eventSlug, timezone: "Africa/Kampala" });
+    expect(r.body.event!.venue_name).toBeTruthy();
   });
 });

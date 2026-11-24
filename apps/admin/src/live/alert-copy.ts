@@ -23,6 +23,7 @@ export const ALERT_KIND_LABEL = {
   rogue_scanner: "Scanner outside assignment",
   stale_allowlist: "Stale allowlist",
   reconciliation_fault: "Count reconciliation",
+  band_reported_lost: "Wristband reported lost",
 } as const satisfies Record<AlertKind, string>;
 
 export const SEVERITY_ORDER: readonly Severity[] = ["critical", "high", "medium", "low"];

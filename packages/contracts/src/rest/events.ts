@@ -1,6 +1,6 @@
 /** Event endpoints (02 §5 "Events", 01 §9). */
 import { z } from "zod";
-import { IanaTimezone, Id, IsoDateTime, Ok, pageOf, PageQuery, Slug } from "../common.js";
+import { Email, IanaTimezone, Id, IsoDateTime, Ok, pageOf, PageQuery, Slug } from "../common.js";
 import { AccessEffect, AccessSubjectKind, AttendeeTier, CredentialState, EventState, WizardStep } from "../enums/index.js";
 import { endpoint, IdParam, OPERATORS, PUBLIC, SlugParam, type Access } from "./endpoint.js";
 
@@ -23,8 +23,28 @@ export const EventSummary = z.object({
    * the minimum crowd size (k-anonymity, O-08) — the same rule as public telemetry.
    */
   on_site: z.number().int().min(0).nullable(),
+  /* ---- additive; always present in server responses ---- */
+  /** Sum of the capacities in force of the event's rooms; null when the event has no rooms. */
+  capacity: z.number().int().min(0).nullable().optional(),
+  /** Number of sessions in the programme. */
+  session_count: z.number().int().min(0).optional(),
+  /** The event's image; null until event photos exist. */
+  image_url: z.url().nullable().optional(),
 });
 export type EventSummary = z.infer<typeof EventSummary>;
+
+/** A short reference to an event, carried on attendee self-service items (passes, registrations). */
+export const EventRef = z.object({
+  id: Id,
+  slug: Slug,
+  title: z.string(),
+  starts_at: IsoDateTime.nullable(),
+  ends_at: IsoDateTime.nullable(),
+  timezone: IanaTimezone,
+  state: EventState,
+  venue_name: z.string().nullable(),
+});
+export type EventRef = z.infer<typeof EventRef>;
 
 export const EventRoom = z.object({
   room_id: Id,
@@ -44,6 +64,13 @@ export const EventSession = z.object({
   title: z.string(),
   starts_at: IsoDateTime,
   ends_at: IsoDateTime,
+  /* ---- additive: set on GET /me/sessions items (the attendee's agenda across events) ---- */
+  event_slug: Slug.optional(),
+  event_title: z.string().optional(),
+  event_timezone: IanaTimezone.optional(),
+  room_name: z.string().optional(),
+  /** The room's capacity in force for the event. */
+  room_capacity: z.number().int().min(0).optional(),
 });
 export type EventSession = z.infer<typeof EventSession>;
 
@@ -81,6 +108,8 @@ export const EventAdmin = EventDetail.extend({
   /** Last change to the event, its rooms, sessions or access rules. */
   updated_at: IsoDateTime.optional(),
   updated_by: OperatorRef.nullable().optional(),
+  /** Additive: the organiser contact shown on invitations; null when none was set. */
+  contact: z.lazy(() => EventContact).nullable().optional(),
 });
 export type EventAdmin = z.infer<typeof EventAdmin>;
 
@@ -188,6 +217,8 @@ export const CreateEvent = z.object({
   pass_template: z.record(z.string(), z.unknown()).nullable().optional(),
   /** Attendee profile fields collected at registration. */
   profile_schema: z.array(z.lazy(() => ProfileField)).max(50).optional(),
+  /** Additive: the organiser contact shown on invitations (EventContactInput). */
+  contact: z.lazy(() => EventContactInput).optional(),
 });
 /**
  * PATCH body: every field optional and NO defaults (a `.partial()` of CreateEvent would still apply
@@ -201,8 +232,11 @@ export const UpdateEvent = z.object({
   starts_at: IsoDateTime.nullable().optional(),
   ends_at: IsoDateTime.nullable().optional(),
   timezone: IanaTimezone.optional(),
-  /** Drafts only. A different venue clears the draft's rooms, with their sessions and access rules. */
-  venue_id: Id.optional(),
+  /**
+   * Drafts only. A different venue clears the draft's rooms, with their sessions and access rules.
+   * Additive: null clears the draft's venue (and so its rooms, sessions and access rules).
+   */
+  venue_id: Id.nullable().optional(),
   /** The wizard step reached; the stored step only moves forward (the furthest step is kept). */
   wizard_step: WizardStep.optional(),
   listed: z.boolean().optional(),
@@ -210,7 +244,19 @@ export const UpdateEvent = z.object({
   rooms: z.array(z.object({ room_id: Id, capacity_override: z.number().int().min(0).nullable().optional() })).optional(),
   pass_template: z.record(z.string(), z.unknown()).nullable().optional(),
   profile_schema: z.array(z.lazy(() => ProfileField)).max(50).optional(),
+  /** Additive: the organiser contact shown on invitations; null removes it. */
+  contact: z.lazy(() => EventContactInput).nullable().optional(),
 });
+/**
+ * The organiser contact for an event (shown to invitees before they reply): a display name and an
+ * address chosen for the event — never an operator's sign-in address unless typed in here.
+ */
+export const EventContactInput = z.object({
+  name: z.string().trim().min(1).max(200).nullable().optional(),
+  email: Email.nullable().optional(),
+});
+export const EventContact = z.object({ name: z.string().nullable(), email: Email.nullable() });
+export type EventContact = z.infer<typeof EventContact>;
 /** Not in 02 §5: the rest of the guarded lifecycle (publish has its own endpoint). */
 export const EventTransition = z.object({ state: z.enum(["live", "closed", "archived"]) });
 
@@ -335,6 +381,12 @@ export const AllowlistEntry = z.object({
    * offline gate answers `pass_spent` for any other emailed code of the pass.
    */
   qr_email_hashes: z.array(z.string()).optional(),
+  /**
+   * Additive, perimeter checkpoints only: the event's rooms this pass may enter at some time in the
+   * window (ids only), for the verdict's room chips while offline. Not an admission rule: a perimeter
+   * gate with no room admits any valid pass.
+   */
+  perimeter_room_ids: z.array(Id).optional(),
 });
 export type AllowlistEntry = z.infer<typeof AllowlistEntry>;
 export const AllowlistPayload = z.object({

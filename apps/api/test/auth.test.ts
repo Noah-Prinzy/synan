@@ -54,7 +54,8 @@ describe("operator login and tokens", () => {
     const r2 = await h.call<TokenPair>("POST", "/auth/refresh", { body: { refresh_token: t1.refresh_token } });
     expect(r2.status).toBe(200);
     expect(r2.body.refresh_token).not.toBe(t1.refresh_token);
-    // Replaying the old one is treated as theft: refused, and the new one dies too.
+    // Replaying the old one (past the few-second reuse grace, A3) is treated as theft: refused, and the new one dies too.
+    h.clock.advance((h.app.ctx.config.refreshReuseGraceS + 1) * 1000);
     const replay = await h.call("POST", "/auth/refresh", { body: { refresh_token: t1.refresh_token } });
     expect(replay.status).toBe(401);
     const after = await h.call("POST", "/auth/refresh", { body: { refresh_token: r2.body.refresh_token } });

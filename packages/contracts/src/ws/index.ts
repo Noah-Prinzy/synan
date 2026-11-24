@@ -33,6 +33,8 @@ export const ClientHeartbeat = z.object({
   online: z.boolean(),
   /** The phone's stable scanner id (the same one it sends to POST /gates/heartbeat and /scans), so both feed one device row. */
   device_id: z.string().min(1).max(128).optional(),
+  /** Additive: `issued_at` of the allowlist the scanner holds (as on POST /gates/heartbeat). */
+  allowlist_issued_at: IsoDateTime.nullable().optional(),
 });
 
 export const ClientMessage = z.discriminatedUnion("type", [ClientHello, ClientPing, ClientHeartbeat]);

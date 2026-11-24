@@ -3,11 +3,14 @@
  * attendee console (D7) will carry. Those actions are shown so the operator knows where they
  * live, but disabled with the reason: they need D7's second-factor prompt and audit trail.
  */
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@synan/ui/components";
 import { SignalShape } from "@synan/ui/data";
 import type { AttendeeListRow } from "@synan/mock/command";
+import { useCan } from "../../access/session";
 import { KeyValues, TIER_LABEL, formatStamp, linkClass } from "../../kit";
+import { ReviewPass } from "../../people/review-pass";
 import { CREDENTIAL_VIEW, REGISTRATION_VIEW } from "./copy";
 
 const ACTIONS = [
@@ -58,15 +61,48 @@ export function AttendeeFacts({ row, timeZone }: { row: AttendeeListRow; timeZon
   );
 }
 
-export function AttendeeActions() {
+/** A pass under review gets its decision here; the rest waits for D7. */
+export function AttendeeActions({
+  row,
+  eventId,
+  onChange,
+}: {
+  row: AttendeeListRow;
+  eventId: string;
+  onChange: (row: AttendeeListRow) => void;
+}) {
+  const can = useCan();
+  // Keep the block (and its confirmation) on screen after the pass leaves review.
+  const [decided, setDecided] = useState<string | null>(null);
+  return (
+    <>
+      {(row.credential_state === "suspended_review" || decided === row.registration_id) && can("credentials.review") ? (
+        <ReviewPass
+          key={row.registration_id}
+          eventId={eventId}
+          registrationId={row.registration_id}
+          onDone={(next) => {
+            setDecided(next.registration_id);
+            onChange(next);
+          }}
+          className="border-t border-border px-4 py-4"
+        />
+      ) : null}
+      {can("attendees.manage") ? <LaterActions /> : null}
+    </>
+  );
+}
+
+function LaterActions() {
   return (
     <div className="border-t border-border px-4 py-3">
       <p className="text-12 text-muted-foreground">
-        These actions arrive with the attendee console (
-        <Link to="/attendees" className={linkClass}>
-          D7
+        These actions arrive with the attendee console (D7), which asks for your second factor and records each one in
+        the audit log. Bands and resends are done at the{" "}
+        <Link to="/desk" className={linkClass}>
+          wristband desk
         </Link>
-        ), which asks for your second factor and records each one in the audit log.
+        .
       </p>
       <ul className="mt-3 flex flex-col gap-2">
         {ACTIONS.map(([label, detail]) => (

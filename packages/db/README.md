@@ -61,7 +61,9 @@ sign-in links (which store only the hash) have expired.
 ## Sign-in state
 
 `src/auth.ts`: `hashToken`, `startSession`, `rotateSession` (detects reuse and revokes the family),
-`revokeFamily`, `revokeHolderSessions` (`rotateSession` takes either `expiresAt` or `ttl: { userSeconds, attendeeSeconds }`), `createLink` / `redeemLink` (single use),
+`revokeFamily`, `revokeHolderSessions` (`rotateSession` takes either `expiresAt` or `ttl: { userSeconds, attendeeSeconds }`,
+and optionally `graceSeconds` with `userAgent`/`ip`: a token presented again within the grace by the same client
+while its child is unused is re-issued, `reissued: true`, and the unused child is superseded; 0029), `createLink` / `redeemLink` (single use),
 `mintWsTicket` / `consumeWsTicket` (single use), `cleanupAuthState` (schedule it, e.g. every 10 minutes).
 
 ## Reports, allowlist, access rules, carriers
@@ -234,6 +236,10 @@ live in hand-written migrations that `push` does not know about.
 | `0025_layout_publish_drafts.sql` | Hand-written: backfill, layout-version trigger on zones and rooms, `venue_layout_publish`, `event_delete_draft`, `event_duplicate` without dates |
 | `0026_roles_supervisor_desk_clerk.sql` | Generated: `user_role` gains `supervisor` and `desk_clerk` (D-23); the access-rule role check accepts them |
 | `0027_allowlist_live_codes.sql` | Hand-written: `allowlist_credentials` leaves out `assigned` bands and adds `qr_email_hashes` (emailed codes still usable) |
+| `0028_scanner_attendee_gaps.sql` | Generated: `scan_voids` (scanner undo correction records), `staff_assignments.scanner_device_hashes` (≤ 8), `devices.allowlist_issued_at`, `occupancy_adjustment_reason` gains `scan_undo`, `pii_vault.pending_registrations` (answers encrypted) |
+| `0029_scanner_attendee_functions.sql` | Hand-written: `auth_rotate_session(_by_kind)` with a reuse grace (`p_grace`, `reissued`); `device_heartbeat` records the allowlist held; `gate_health` adds `allowlist_issued_at` / `allowlist_stale`; forced RLS and app_vault grants on `pending_registrations`; `scan_voids` append-only |
+| `0030_attendee_phone.sql` | Generated: `pii_vault.attendees.phone` (optional, AES-256-GCM envelope like `email`, `attendees_phone_encrypted`); written and read through `src/secrets.ts`, re-encrypted by `reencryptSecrets` |
+| `0031_attendee_phone_erasure.sql` | Hand-written: `erase_attendee` also nulls `phone` and deletes the attendee's `pending_registrations` |
 
 ## SQL functions
 

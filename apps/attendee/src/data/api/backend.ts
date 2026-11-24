@@ -8,13 +8,13 @@
  * first use — after the pass is on screen.
  */
 import type { Notification, PortalCodeBatch } from "@synan/contracts/rest";
-import type { Backend } from "../backend";
+import type { Backend, PassChoice } from "../backend";
 import { ApiFailure } from "../failure";
 import type { Pass } from "../pass";
 import { clearResources } from "../resource";
 import type { Remote } from "./remote";
 import { createSessionStore } from "./session";
-import { CODES_KEY, PASS_KEY, PENDING_KEY, readJson, writeJson, type CoreState, type Kept } from "./store";
+import { CHOICES_KEY, CHOSEN_KEY, CODES_KEY, LEGACY_PENDING_KEY, PASS_KEY, readJson, writeJson, type CoreState, type Kept } from "./store";
 
 export function createApiBackend(baseUrl: string): Backend {
   const origin = baseUrl.replace(/\/+$/, "").replace(/\/api\/v1$/, "");
@@ -29,7 +29,14 @@ export function createApiBackend(baseUrl: string): Backend {
     return kept && current && kept.sub === current.sub ? kept : null;
   }
 
+  // Answers kept by an earlier build until its emailed link was opened: the API holds them now.
+  writeJson(LEGACY_PENDING_KEY, null);
+
   let pass: Pass | null = mine<Pass>(PASS_KEY)?.value ?? null;
+  /** Passes loaded during this page's life, by event: switching back to one is instant (and works offline). */
+  const passes = new Map<string, Pass>(pass ? [[pass.eventId, pass]] : []);
+  let choices: PassChoice[] = mine<PassChoice[]>(CHOICES_KEY)?.value ?? [];
+  let chosen: string | null = mine<string>(CHOSEN_KEY)?.value ?? null;
   let notifications: Notification[] | null = null;
   /** Server time minus device time, from the last code batch (D-14): codes rotate on the server's clock. */
   let offsetMs = mine<PortalCodeBatch>(CODES_KEY)?.offset ?? 0;
@@ -40,9 +47,25 @@ export function createApiBackend(baseUrl: string): Backend {
     pass: () => pass,
     setPass(next) {
       pass = next;
+      if (next) passes.set(next.eventId, next);
       const current = session.read();
       writeJson(PASS_KEY, next && current ? ({ sub: current.sub, value: next } satisfies Kept<Pass>) : null);
       state.bump();
+    },
+    knownPass: (eventId) => passes.get(eventId) ?? null,
+    choices: () => choices,
+    setChoices(next) {
+      if (JSON.stringify(next) === JSON.stringify(choices)) return;
+      choices = next;
+      const current = session.read();
+      writeJson(CHOICES_KEY, current && next.length > 0 ? ({ sub: current.sub, value: next } satisfies Kept<PassChoice[]>) : null);
+      state.bump();
+    },
+    chosen: () => chosen,
+    choose(eventId) {
+      chosen = eventId;
+      const current = session.read();
+      writeJson(CHOSEN_KEY, current && eventId ? ({ sub: current.sub, value: eventId } satisfies Kept<string>) : null);
     },
     notifications: () => notifications,
     setNotifications(items) {
@@ -60,9 +83,14 @@ export function createApiBackend(baseUrl: string): Backend {
     },
     forgetPerson() {
       pass = null;
+      passes.clear();
+      choices = [];
+      chosen = null;
       notifications = null;
       writeJson(PASS_KEY, null);
       writeJson(CODES_KEY, null);
+      writeJson(CHOICES_KEY, null);
+      writeJson(CHOSEN_KEY, null);
       remoteNow?.closeStream();
       clearResources();
       state.bump();
@@ -101,6 +129,7 @@ export function createApiBackend(baseUrl: string): Backend {
 
     getEvents: async () => (await remote()).getEvents(),
     getEventDetail: async (slug) => (slug ? (await remote()).getEventDetail(slug) : null),
+    getOccupancy: async (eventId) => (await remote()).getOccupancy(eventId),
 
     loadRegistration: async (slug) => (await remote()).loadRegistration(slug),
     // The API answers the same for a known and an unknown address (no enumeration), by design.
@@ -114,6 +143,19 @@ export function createApiBackend(baseUrl: string): Backend {
     },
     emailedLinkFor: () => null,
 
+    readInvitation: async (token) => (await remote()).readInvitation(token),
+    async rsvp(token, reply) {
+      try {
+        const outcome = await (await remote()).rsvp(token, reply);
+        // A new pass may now exist for whoever is signed in: what was loaded is stale.
+        if (outcome.ok && outcome.reply === "accepted") clearResources();
+        return outcome;
+      } catch {
+        return { ok: false, reason: navigator.onLine ? "error" : "offline" };
+      }
+    },
+    devInvitedEmail: null,
+
     readSession() {
       const current = session.read();
       return current ? { email: current.email, name: current.name ?? current.email } : null;
@@ -126,19 +168,29 @@ export function createApiBackend(baseUrl: string): Backend {
         return { ok: false, problem: "unreachable" };
       }
     },
-    updateName: async (name) => (await remote()).updateName(name.trim()),
     signOut() {
       // The device forgets at once; the session family is ended on the server with the tokens
       // captured here (best effort: offline, the refresh token simply expires unused).
       const ending = session.read();
       session.clear();
-      writeJson(PENDING_KEY, null);
       state.forgetPerson();
       if (ending) void remote().then((r) => r.logout(ending)).catch(() => undefined);
     },
 
+    loadProfile: async () => (await remote()).loadProfile(),
+    updateProfile: async (change) => (await remote()).updateProfile(change),
+
     peekPass: () => pass,
     loadPass: async () => (await remote()).loadPass(),
+    passChoices: () => choices,
+    selectPass(eventId) {
+      if (eventId === pass?.eventId && chosen === eventId) return;
+      state.choose(eventId);
+      // The pass shows at once when it was loaded earlier; otherwise the screen waits for loadPass().
+      const known = passes.get(eventId) ?? null;
+      pass = known;
+      state.bump();
+    },
     initialCodes() {
       const kept = state.keptCodes();
       return kept && kept.codes.some((code) => Date.parse(code.expires_at) > Date.now() + offsetMs) ? kept : null;
@@ -152,10 +204,7 @@ export function createApiBackend(baseUrl: string): Backend {
       return (await remote()).getCodes();
     },
     emailPassCopy: async () => (await remote()).emailPassCopy(),
-    async reportLostBand() {
-      // GAP: no attendee endpoint reports a lost band (operators use POST /carriers/:id/rebind).
-      throw new ApiFailure("NOT_IMPLEMENTED", 501);
-    },
+    reportLostBand: async () => (await remote()).reportLostBand(),
     watchPass(onState) {
       let stop: (() => void) | null = null;
       let cancelled = false;

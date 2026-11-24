@@ -25,6 +25,7 @@ import {
   errorCode,
   errorCopy,
   fieldErrors,
+  serverCode,
   formatDate,
   linkClass,
   useDocumentTitle,
@@ -154,6 +155,8 @@ function Editor({
   const [publishOpen, setPublishOpen] = useState(false);
   const [problem, setProblem] = useState<ReactNode>(null);
   const [serverIssues, setServerIssues] = useState<Issue[]>([]);
+  /** The server's issues are "still in use" (its 409, re-coded), not a stale version or bad input. */
+  const [inUse, setInUse] = useState(false);
   const [showIssues, setShowIssues] = useState(false);
   const [justPublished, setJustPublished] = useState<number | null>(null);
   const canvasBox = useRef<HTMLDivElement>(null);
@@ -446,7 +449,15 @@ function Editor({
         setPublishOpen(false);
         const first = firstIssueSelection(found);
         if (first) setSelection(first);
-        say(`The layout was not published: ${found.length} ${found.length === 1 ? "thing needs" : "things need"} fixing.`);
+        // The real API: a zone or room an event still uses cannot be removed (the server's 409,
+        // re-coded so the editor can mark it). Not a stale version: the draft stays as it is.
+        const blocked = serverCode(error) === "CONFLICT";
+        setInUse(blocked);
+        if (blocked) {
+          say(`The layout was not published: ${found.length} ${found.length === 1 ? "zone or room is" : "zones or rooms are"} still in use.`);
+        } else {
+          say(`The layout was not published: ${found.length} ${found.length === 1 ? "thing needs" : "things need"} fixing.`);
+        }
       } else {
         const copy = errorCopy(error);
         setProblem(<Notice tone="danger">{`${copy.title}. ${copy.message}`}</Notice>);
@@ -480,8 +491,16 @@ function Editor({
       </Notice>,
     );
   }
+  if (showIssues && inUse && serverIssues.length > 0) {
+    notices.push(
+      <Notice key="in-use" tone="warning">
+        The layout was not published: the server keeps zones, rooms and gates that are still in use. Put back what is listed below, or move its
+        gates and events elsewhere first. The rest of your draft is kept; nothing changed for attendees.
+      </Notice>,
+    );
+  }
   if (showIssues && issues.length > 0) {
-    notices.push(<IssueList key="issues" issues={issues} draft={draft} onSelect={setSelection} />);
+    notices.push(<IssueList key="issues" issues={issues} draft={draft} published={published} onSelect={setSelection} />);
   }
 
   return (
@@ -681,14 +700,29 @@ function deleteZoneWords(layout: Layout, zoneId: string): string {
 
 /* ------------------------------------------------------------------ parts */
 
-function IssueList({ issues, draft, onSelect }: { issues: Issue[]; draft: Layout; onSelect: (selection: Selection) => void }) {
+function IssueList({
+  issues,
+  draft,
+  published,
+  onSelect,
+}: {
+  issues: Issue[];
+  draft: Layout;
+  /** What is published: the server can name a zone or room this draft no longer has. */
+  published: Layout;
+  onSelect: (selection: Selection) => void;
+}) {
   return (
     <div role="alert" className="border border-destructive/40 px-3 py-2 text-12">
       <p className="text-destructive">Fix {issues.length === 1 ? "this" : `these ${issues.length}`} before publishing:</p>
       <ul className="mt-1 flex flex-col gap-0.5">
         {issues.map((issue, index) => {
-          const target: Selection = issue.kind === "zone" || issue.kind === "room" ? { kind: issue.kind, id: issue.id } : null;
-          const name = target ? nameOf(draft, target) : issue.kind === "floor" ? "Floors" : "Layout";
+          const ref: Selection = issue.kind === "zone" || issue.kind === "room" ? { kind: issue.kind, id: issue.id } : null;
+          const inDraft = ref ? (ref.kind === "zone" ? draft.zones : draft.rooms).some((item) => item.id === ref.id) : false;
+          const removed = ref !== null && !inDraft && (ref.kind === "zone" ? published.zones : published.rooms).some((item) => item.id === ref.id);
+          const target: Selection = inDraft ? ref : null;
+          // A removed zone or room cannot be selected; the server's message names it already.
+          const name = removed ? "Removed in this draft" : ref ? nameOf(draft, ref) : issue.kind === "floor" ? "Floors" : "Layout";
           return (
             <li key={`${issue.id}:${issue.field}:${index}`} className="text-muted-foreground">
               {target ? (

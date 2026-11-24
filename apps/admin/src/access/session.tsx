@@ -5,11 +5,16 @@
  *
  * Nothing role-dependent renders until the session is known, so a deep link to a screen the
  * role may not open never shows that screen's content, not even for a frame.
+ *
+ * On the mock, signing in takes no credentials and the dev tools can preview any role. On the
+ * real API (live/backend.ts `mode === "api"`), signing in is email and password, the role and
+ * its capabilities come from GET /me/operator, and the server can end the session at any time
+ * (expired, revoked, signed out in another tab): the console then shows sign-in, saying why.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { OperatorContext } from "@synan/mock/command";
 import { errorCode } from "../kit/errors";
-import { api, backend, DEV_TOOLS, rememberDevRole } from "../live/backend";
+import { api, auth, DEV_TOOLS, mockBackend, mode, rememberDevRole } from "../live/backend";
 import {
   ROLE_LABEL,
   capabilitiesOf,
@@ -20,9 +25,15 @@ import {
   type ConsoleRole,
 } from "./capabilities";
 
+/**
+ * Why nobody is signed in: `fresh` (no session on this device yet), `signed-out` (this person
+ * signed out here), `expired` (the server refused the session), `elsewhere` (another tab signed out).
+ */
+export type SignedOutReason = "fresh" | "signed-out" | "expired" | "elsewhere";
+
 type SessionState =
   | { status: "loading" }
-  | { status: "signed-out" }
+  | { status: "signed-out"; reason: SignedOutReason }
   | { status: "error"; error: unknown }
   | { status: "ready"; user: OperatorContext };
 
@@ -43,9 +54,10 @@ export interface SessionValue {
   /** Events the user may work; null means every event. */
   eventScope: ReadonlySet<string> | null;
   signOut: () => Promise<void>;
-  signIn: () => Promise<void>;
+  /** Mock: no credentials. Real API: email and password (POST /auth/login), then GET /me/operator. */
+  signIn: (credentials?: { email: string; password: string }) => Promise<OperatorContext>;
   retry: () => void;
-  /** Development only: become another role at once. Undefined in a production build. */
+  /** Development only, mock only: become another role at once. Undefined otherwise. */
   preview?: (role: ConsoleRole) => Promise<void>;
 }
 
@@ -56,36 +68,80 @@ const NONE: ReadonlySet<Capability> = new Set();
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<SessionState>({ status: "loading" });
   const generation = useRef(0);
+  const current = useRef(state);
+  current.current = state;
+  /** This tab is signing out on purpose: the session store's "cleared" is not news. */
+  const leaving = useRef(false);
 
   const load = useCallback(() => {
     const mine = ++generation.current;
+    // Real API with nothing stored: straight to sign-in, without asking the server.
+    if (auth && !auth.session()) {
+      setState({ status: "signed-out", reason: "fresh" });
+      return;
+    }
     api.operator().then(
       (user) => mine === generation.current && setState({ status: "ready", user }),
       (error: unknown) => {
         if (mine !== generation.current) return;
         const code = errorCode(error);
-        setState(code === "UNAUTHENTICATED" || code === "TOKEN_EXPIRED" ? { status: "signed-out" } : { status: "error", error });
+        setState(
+          code === "UNAUTHENTICATED" || code === "TOKEN_EXPIRED"
+            ? { status: "signed-out", reason: auth ? "expired" : "signed-out" }
+            : { status: "error", error },
+        );
       },
     );
   }, []);
 
   useEffect(load, [load]);
 
-  const signOut = useCallback(async () => {
-    generation.current++;
-    await api.signOut();
-    setState({ status: "signed-out" });
+  // Real API: the server can end the session, and another tab can sign out.
+  useEffect(() => {
+    if (!auth) return;
+    const offServer = auth.onSignedOut(() => {
+      generation.current++;
+      setState({ status: "signed-out", reason: "expired" });
+    });
+    const offSession = auth.onSession((session) => {
+      if (session || leaving.current || current.current.status !== "ready") return;
+      generation.current++;
+      setState({ status: "signed-out", reason: "elsewhere" });
+    });
+    return () => {
+      offServer();
+      offSession();
+    };
   }, []);
 
-  const signIn = useCallback(async () => {
+  const signOut = useCallback(async () => {
+    generation.current++;
+    leaving.current = true;
+    try {
+      await api.signOut();
+    } finally {
+      leaving.current = false;
+    }
+    setState({ status: "signed-out", reason: "signed-out" });
+  }, []);
+
+  const signIn = useCallback(async (credentials?: { email: string; password: string }) => {
     const mine = ++generation.current;
-    const user = await api.signIn();
+    let user: OperatorContext;
+    if (auth) {
+      if (!credentials) throw new Error("UNAUTHENTICATED");
+      await auth.signIn(credentials.email, credentials.password);
+      user = await api.operator();
+    } else {
+      user = await api.signIn();
+    }
     if (mine === generation.current) setState({ status: "ready", user });
+    return user;
   }, []);
 
   const preview = useCallback(
     async (role: ConsoleRole) => {
-      backend.setPersona(role);
+      mockBackend?.setPersona(role);
       rememberDevRole(role);
       setState({ status: "loading" });
       load();
@@ -114,7 +170,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setState({ status: "loading" });
         load();
       },
-      preview: DEV_TOOLS ? preview : undefined,
+      preview: DEV_TOOLS && mode === "mock" ? preview : undefined,
     };
   }, [state, signOut, signIn, load, preview]);
 

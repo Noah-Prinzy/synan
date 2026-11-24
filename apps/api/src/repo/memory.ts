@@ -48,6 +48,8 @@ import type {
   Repos,
   RoomRow,
   ScanRow,
+  ScanVoidRow,
+  PendingRegistrationRow,
   SessionRow,
   SigningKeyRow,
   StaffAssignmentRow,
@@ -110,6 +112,22 @@ export class MemoryTables {
   authLinks = new Map<string, { attendee_id: string; created_at: Date; expires_at: Date; redeemed_at: Date | null }>();
   /** ticket hash → ticket (mirrors public.ws_tickets). */
   wsTickets = new Map<string, MemTicket>();
+  /** Mirrors public.scan_voids (0028). */
+  scanVoids: ScanVoidRow[] = [];
+  /** link token hash → pending registration (mirrors pii_vault.pending_registrations, 0028). */
+  pendingRegistrations = new Map<string, PendingRegistrationRow>();
+}
+
+/** Coarse network context, as public.auth_ip_prefix: /24 for IPv4, /48 for IPv6 (IPv4-mapped IPv6 as IPv4). */
+export function ipPrefix(ip: string | null | undefined): string | null {
+  if (!ip) return null;
+  const v4 = /^(?:::ffff:)?(\d+)\.(\d+)\.(\d+)\.\d+$/i.exec(ip);
+  if (v4) return `${v4[1]}.${v4[2]}.${v4[3]}.0/24`;
+  const parts = ip.split("::");
+  const head = parts[0] ? parts[0].split(":") : [];
+  const tail = parts.length > 1 && parts[1] ? parts[1].split(":") : [];
+  const full = [...head, ...Array(Math.max(0, 8 - head.length - tail.length)).fill("0"), ...tail];
+  return `${full.slice(0, 3).map((h) => parseInt(h || "0", 16).toString(16)).join(":")}::/48`;
 }
 
 interface MemSession {
@@ -121,6 +139,10 @@ interface MemSession {
   rotated_at: Date | null;
   expires_at: Date;
   revoked_at: Date | null;
+  /** Token hash of the row this one was exchanged from (auth_sessions.parent_id). */
+  parent?: string | null;
+  user_agent?: string | null;
+  ip_prefix?: string | null;
 }
 interface MemTicket {
   user_id: string | null;
@@ -170,6 +192,7 @@ const eventOut = (e: EventRow): EventRow =>
   clone({
     ...e, wizard_step: e.wizard_step ?? "basics", published_at: e.published_at ?? null, updated_by: e.updated_by ?? null,
     created_at: e.created_at ?? new Date(0), updated_at: e.updated_at ?? e.created_at ?? new Date(0),
+    contact_name: e.contact_name ?? null, contact_email: e.contact_email ?? null,
   });
 
 function memoryFixtures(t: MemoryTables): FixtureWriter {
@@ -263,6 +286,27 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
     reports: memoryReports(t, auditAppend),
     reportSchedules: memoryReportSchedules(t),
     dataRequests: memoryDataRequests(t, auditAppend),
+    // Mirrors @synan/db pending-registrations.ts (0028–0029).
+    pendingRegistrations: {
+      async create(row) {
+        t.pendingRegistrations.set(row.link_token_hash, clone(row));
+      },
+      async take(linkTokenHash, now) {
+        const r = t.pendingRegistrations.get(linkTokenHash);
+        t.pendingRegistrations.delete(linkTokenHash);
+        return r && r.expires_at.getTime() > now.getTime() ? clone(r) : null;
+      },
+      async cleanup(now) {
+        let n = 0;
+        for (const [k, r] of t.pendingRegistrations) if (r.expires_at.getTime() <= now.getTime()) (t.pendingRegistrations.delete(k), n++);
+        return n;
+      },
+      async deleteFor(attendeeId) {
+        let n = 0;
+        for (const [k, r] of t.pendingRegistrations) if (r.attendee_id === attendeeId) (t.pendingRegistrations.delete(k), n++);
+        return n;
+      },
+    },
     maintenance: {
       async eventsDueForPurge(now) {
         return [...t.events.values()]
@@ -623,6 +667,10 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
         const r = t.registrations.get(id);
         if (r && !r.checked_in_at) r.checked_in_at = at;
       },
+      async clearCheckedIn(id, at) {
+        const r = t.registrations.get(id);
+        if (r && r.checked_in_at?.getTime() === at.getTime()) r.checked_in_at = null;
+      },
       async forAttendee(attendeeId) {
         return [...t.registrations.values()].filter((r) => r.attendee_id === attendeeId).map(clone);
       },
@@ -693,6 +741,12 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       },
       async handoverSummary(id) {
         return memoryHandoverSummary(t, id);
+      },
+      async noteDevice(id, deviceHash) {
+        const a = t.staffAssignments.get(id);
+        if (!a) return;
+        const have = a.scanner_device_hashes ?? [];
+        if (!have.includes(deviceHash) && have.length < 8) a.scanner_device_hashes = [...have, deviceHash];
       },
     },
     credentials: {
@@ -896,6 +950,10 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
         }
         return v;
       },
+      async credentialFor(eventId, ephemeralId) {
+        for (const [k, v] of t.ephemeralIds) if (v === ephemeralId && k.startsWith(`${eventId}:`)) return k.slice(eventId.length + 1);
+        return null;
+      },
     },
     scans: {
       async byIdemKey(eventId, idemKey) {
@@ -923,12 +981,35 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
         }
         return { byResult, offline };
       },
-      async page(eventId, { checkpointId, result, ephemeralId, limit, before }) {
+      async byId(eventId, scanId) {
+        const s = t.scans.get(scanId);
+        return s && s.event_id === eventId ? clone(s) : null;
+      },
+      async insertVoid(row) {
+        if (t.scanVoids.some((v) => v.event_id === row.event_id && v.scan_id === row.scan_id)) return "duplicate";
+        t.scanVoids.push(clone(row));
+        return "ok";
+      },
+      async voids(eventId) {
+        return t.scanVoids.filter((v) => v.event_id === eventId).map(clone);
+      },
+      async page(eventId, { checkpointId, result, ephemeralId, limit, before, checkpointIds, ephemeralIds }) {
         const all = [...t.scans.values()]
-          .filter((s) => s.event_id === eventId && (!checkpointId || s.checkpoint_id === checkpointId) && (!result || s.result === result) && (!ephemeralId || s.ephemeral_id === ephemeralId))
+          .filter((s) => s.event_id === eventId && (!checkpointId || s.checkpoint_id === checkpointId) && (!result || s.result === result) && (!ephemeralId || s.ephemeral_id === ephemeralId)
+            && (!checkpointIds || checkpointIds.includes(s.checkpoint_id)) && (!ephemeralIds || (s.ephemeral_id !== null && ephemeralIds.includes(s.ephemeral_id))))
           .sort((a, b) => b.received_at.getTime() - a.received_at.getTime() || b.id.localeCompare(a.id));
         const start = before ? all.findIndex((s) => s.id === before) + 1 : 0;
         return all.slice(start, start + limit).map(clone);
+      },
+      async logStats(eventId, { checkpointIds, result, ephemeralIds, cap }) {
+        const mine = [...t.scans.values()].filter((s) => s.event_id === eventId);
+        const n = mine.filter((s) => (!checkpointIds || checkpointIds.includes(s.checkpoint_id)) && (!result || s.result === result)
+          && (!ephemeralIds || (s.ephemeral_id !== null && ephemeralIds.includes(s.ephemeral_id)))).length;
+        const oldest = mine.reduce<number | null>((m, s) => {
+          const c = s.occurred_at.getTime() + s.clock_offset_ms;
+          return m === null || c < m ? c : m;
+        }, null);
+        return { total: Math.min(n, cap), exact: n <= cap, oldest_at: oldest === null ? null : new Date(oldest) };
       },
     },
     occupancy: {
@@ -989,6 +1070,15 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       async all() {
         return t.audit.map(clone);
       },
+      async find({ actions, targets, actorId, since, limit }) {
+        const out: AuditRow[] = [];
+        for (let i = t.audit.length - 1; i >= 0 && out.length < limit; i--) {
+          const r = t.audit[i]!;
+          if (!actions.includes(r.action) || (targets && !targets.includes(r.target)) || (actorId && r.actor_id !== actorId) || (since && r.at.getTime() < since.getTime())) continue;
+          out.push(clone(r));
+        }
+        return out;
+      },
       async verify() {
         return verifyChain(t.audit, t.auditHead.prunedAnchor, t.auditHead.lastHash);
       },
@@ -1030,22 +1120,38 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
         t.authSessions.set(i.tokenHash, {
           family_id: i.familyId, user_id: i.holder.userId ?? null, attendee_id: i.holder.attendeeId ?? null,
           mfa_at: i.mfaAt, created_at: i.now, rotated_at: null, expires_at: i.expiresAt, revoked_at: null,
+          parent: null, user_agent: i.userAgent?.slice(0, 200) ?? null, ip_prefix: ipPrefix(i.ip),
         });
       },
-      async rotateSession({ tokenHash, newTokenHash, ttl, now }) {
+      async rotateSession({ tokenHash, newTokenHash, ttl, now, userAgent, ip, graceSeconds }) {
         const s = t.authSessions.get(tokenHash);
         if (!s) return { status: "invalid", family_id: null, user_id: null, attendee_id: null, mfa_at: null, expires_at: null };
         const out = { family_id: s.family_id, user_id: s.user_id, attendee_id: s.attendee_id, mfa_at: s.mfa_at, expires_at: s.expires_at };
         if (s.revoked_at) return { status: "revoked", ...out };
+        const ua = userAgent?.slice(0, 200) ?? null;
+        const net = ipPrefix(ip);
+        // Lifetime by holder kind, chosen in the same step (as auth_rotate_session_by_kind does).
+        const expiresAt = new Date(now.getTime() + (s.user_id ? ttl.userSeconds : ttl.attendeeSeconds) * 1000);
+        const child = () => ({ ...s, created_at: now, rotated_at: null, expires_at: expiresAt, revoked_at: null, parent: tokenHash, user_agent: ua, ip_prefix: net });
         if (s.rotated_at) {
+          // Grace (0029): a lost response, retried by the same client while the child is unused.
+          if ((graceSeconds ?? 0) > 0 && now.getTime() - s.rotated_at.getTime() < graceSeconds! * 1000) {
+            const kids = [...t.authSessions.values()]
+              .filter((x) => x.parent === tokenHash && !x.rotated_at && !x.revoked_at && x.expires_at.getTime() > now.getTime())
+              .sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
+            const c = kids[0];
+            if (c && (c.user_agent ?? null) === ua && (c.ip_prefix ?? null) === net) {
+              c.rotated_at = now; // superseded: presenting it later is reuse
+              t.authSessions.set(newTokenHash, child());
+              return { status: "rotated", ...out, expires_at: expiresAt, reissued: true };
+            }
+          }
           for (const x of t.authSessions.values()) if (x.family_id === s.family_id && !x.revoked_at) x.revoked_at = now;
           return { status: "reuse_detected", ...out };
         }
         if (s.expires_at.getTime() <= now.getTime()) return { status: "expired", ...out };
         s.rotated_at = now;
-        // Lifetime by holder kind, chosen in the same step (as auth_rotate_session_by_kind does).
-        const expiresAt = new Date(now.getTime() + (s.user_id ? ttl.userSeconds : ttl.attendeeSeconds) * 1000);
-        t.authSessions.set(newTokenHash, { ...s, created_at: now, rotated_at: null, expires_at: expiresAt, revoked_at: null });
+        t.authSessions.set(newTokenHash, child());
         return { status: "rotated", ...out, expires_at: expiresAt };
       },
       async revokeFamily(familyId, _reason, now) {
@@ -1278,7 +1384,7 @@ function memoryAllowlist(t: MemoryTables, e: EventRow, from: number, to: number,
 function memoryDevices(t: MemoryTables): DevicesRepo {
   const hash = (token: string) => createHash("sha256").update(token).digest("base64url");
   const pub = (d: MemDevice): DeviceRow => {
-    const { token_hash: _h, ...row } = d;
+    const { token_hash: _h, allowlist_issued_at: _a, ...row } = d;
     return clone(row);
   };
   return {
@@ -1314,11 +1420,12 @@ function memoryDevices(t: MemoryTables): DevicesRepo {
       const d = [...t.devices.values()].find((x) => x.token_hash === h && x.state === "active");
       return d ? pub(d) : null;
     },
-    async heartbeat({ deviceId, checkpointId, clockOffsetMs, queueDepth, now }) {
+    async heartbeat({ deviceId, checkpointId, clockOffsetMs, queueDepth, allowlistIssuedAt, now }) {
       const d = t.devices.get(deviceId);
       if (!d) return "unknown_device";
       if (d.state !== "active" && d.state !== "maintenance") return "not_active";
       Object.assign(d, { last_heartbeat_at: now, last_clock_offset_ms: clockOffsetMs, last_queue_depth: queueDepth });
+      if (allowlistIssuedAt) d.allowlist_issued_at = allowlistIssuedAt;
       const cp = checkpointId ?? d.checkpoint_id;
       if (cp) t.checkpointHealth.set(cp, { at: now, clockOffsetMs });
       return "ok";
@@ -1338,7 +1445,7 @@ function memoryDevices(t: MemoryTables): DevicesRepo {
     },
   };
 }
-type MemDevice = DeviceRow & { token_hash: string | null };
+type MemDevice = DeviceRow & { token_hash: string | null; allowlist_issued_at?: Date | null };
 
 /** Mirrors @synan/db webhook_enqueue / webhook_claim / webhook_record_attempt (migration 0014). */
 function memoryWebhookDeliveries(t: MemoryTables): WebhookDeliveriesRepo {
@@ -1437,11 +1544,13 @@ function memoryDataRequests(t: MemoryTables, audit: (e: Pick<AuditRow, "actor_id
       const ids = new Set(regs.map((r) => r.id));
       const creds = [...t.credentials.values()].filter((c) => c.registration_id && ids.has(c.registration_id))
         .map((c) => ({ id: c.id, registration_id: c.registration_id, state: c.state, issued_at: c.issued_at, revoked_at: c.revoked_at }));
-      return clone({ identity: a ? { id: a.id, user_id: a.user_id, email: a.email, full_name: a.full_name, profile: a.profile_jsonb } : null, registrations: regs, credentials: creds });
+      return clone({ identity: a ? { id: a.id, user_id: a.user_id, email: a.email, full_name: a.full_name, profile: a.profile_jsonb, phone: a.phone ?? null } : null, registrations: regs, credentials: creds });
     },
     async erase(request, actorId, now) {
       const a = t.attendees.get(request.attendee_id);
-      if (a) Object.assign(a, { email: null, full_name: null, profile_jsonb: {} });
+      if (a) Object.assign(a, { email: null, full_name: null, phone: null, profile_jsonb: {} });
+      // As pii_vault.erase_attendee (0031): pending self-service registrations go too.
+      for (const [k, p] of t.pendingRegistrations) if (p.attendee_id === request.attendee_id) t.pendingRegistrations.delete(k);
       eraseMemoryNotifications(t, request.attendee_id);
       audit({ actor_id: actorId, action: "attendee.erase", target: `attendee:${request.attendee_id}`, meta_jsonb: {}, at: now });
       await this.finish(request.id, { state: "completed", actorId, now });

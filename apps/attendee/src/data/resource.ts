@@ -26,6 +26,11 @@ export function clearResources(): void {
   cache.clear();
 }
 
+/** Replace what is kept for `key` (a screen saved a change it already holds the answer to). */
+export function primeResource<T>(key: string, value: T): void {
+  cache.set(key, value);
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

@@ -1,0 +1,2 @@
+ALTER TABLE "pii_vault"."attendees" ADD COLUMN "phone" text;--> statement-breakpoint
+ALTER TABLE "pii_vault"."attendees" ADD CONSTRAINT "attendees_phone_encrypted" CHECK ("pii_vault"."attendees"."phone" IS NULL OR "pii_vault"."attendees"."phone" ~ '^ev1\.[A-Za-z0-9_-]{1,32}\.[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{22,}$');

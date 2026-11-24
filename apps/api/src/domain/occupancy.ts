@@ -38,7 +38,7 @@ export class OccupancyProjection {
    */
   readonly perimeterOf = new Map<string, string>();
   /** ephemeral id → the perimeter passage that took the holder from OUTSIDE to INSIDE. */
-  readonly perimeterEntry = new Map<string, { checkpointId: string; scanId: string }>();
+  readonly perimeterEntry = new Map<string, { checkpointId: string; scanId: string; atMs?: number }>();
   /** ephemeral id → scan that redeemed the holder's emailed QR (for conflict alerts). */
   readonly emailRedeemScan = new Map<string, string>();
   /** `${eph}|${checkpoint}` → corrected ms of last passage. */

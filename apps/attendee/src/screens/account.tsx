@@ -2,17 +2,26 @@ import { pageTitle } from "@synan/ui/brand";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useSession, signOut } from "../data/auth";
-import { loadPass, reportLostBand, tierLabel, usePass, type Pass } from "../data/pass";
-import { requestDataExport, requestErasure } from "../data/account";
+import { loadPass, passChoices, reportLostBand, tierLabel, usePass, type Pass } from "../data/pass";
+import { loadProfile, requestDataExport, requestErasure, updateProfile, type Profile } from "../data/account";
 import { failureCopy } from "../data/failure-copy";
-import { useResource } from "../data/resource";
+import { isPhone } from "../data/registration";
+import { primeResource, useResource } from "../data/resource";
 import { PageHeader, PageShell, RuledRow } from "../components/page";
 import { ErrorState, OfflineState, SkeletonCells } from "../components/states";
 import { ActionButton, Badge, buttonClass } from "@synan/ui/components";
-import { updateName } from "../data/auth";
 import { fieldClass } from "../components/form-styles";
 
 const label = "text-13 font-medium text-muted-foreground";
+
+/** The pass (for the credential block) and GET /me (for the profile), together. */
+async function loadAccount(): Promise<Profile> {
+  const [, profile] = await Promise.all([loadPass(), loadProfile()]);
+  return profile;
+}
+
+/** "Report lost band": what happened, in words, with the way to a new band. */
+type LostReport = { status: "sending" } | { status: "done"; markedLost: boolean } | { status: "failed"; message: string };
 
 /** A native modal dialog: focus is trapped and Escape closes it. */
 function ConfirmDialog({
@@ -40,7 +49,10 @@ function ConfirmDialog({
     <dialog
       ref={dialogRef}
       aria-labelledby="confirm-title"
-      onClose={onClose}
+      // A close that the dialog has already been reopened past (React's development double effect) is not the person's.
+      onClose={() => {
+        if (!dialogRef.current?.open) onClose();
+      }}
       className="m-auto max-w-md border border-border bg-background p-6 text-foreground backdrop:bg-scrim"
     >
       <h2 id="confirm-title" className="font-display text-28">{title}</h2>
@@ -72,10 +84,11 @@ export default function Account() {
   const session = useSession();
   const navigate = useNavigate();
   const [confirmLost, setConfirmLost] = useState(false);
+  const [lost, setLost] = useState<LostReport | null>(null);
   const [confirmErase, setConfirmErase] = useState(false);
   const [requested, setRequested] = useState<string | null>(null);
   // Load once for the screen's loading/error/offline states; then read live.
-  const account = useResource("account", loadPass);
+  const account = useResource("account", loadAccount);
   const live = usePass();
   const pass = live.status === "ready" ? live.data : null;
 
@@ -97,8 +110,9 @@ export default function Account() {
       ) : (
         <AccountRows
           email={session.email}
-          name={(session.name.includes("@") || !session.name.includes(" ")) && pass ? pass.holder : session.name}
+          profile={account.data}
           pass={pass}
+          lost={lost}
           onLost={() => setConfirmLost(true)}
           onExport={() => setRequested("We'll email you a copy of your data, usually within a day.")}
           onErase={() => setConfirmErase(true)}
@@ -114,7 +128,13 @@ export default function Account() {
         <ConfirmDialog
           title="Mark your band as lost?"
           confirmLabel="Mark band lost"
-          onConfirm={() => void reportLostBand().catch((error: unknown) => setRequested(failureCopy(error).message))}
+          onConfirm={() => {
+            setLost({ status: "sending" });
+            reportLostBand().then(
+              (outcome) => setLost({ status: "done", markedLost: outcome.markedLost }),
+              (error: unknown) => setLost({ status: "failed", message: failureCopy(error).message }),
+            );
+          }}
           onClose={() => setConfirmLost(false)}
         >
           The band stops working at every door immediately. Your pass stays valid: collect a replacement band at the
@@ -143,8 +163,9 @@ export default function Account() {
 
 function AccountRows({
   email,
-  name,
+  profile,
   pass,
+  lost,
   onLost,
   onExport,
   onErase,
@@ -152,23 +173,27 @@ function AccountRows({
   onSignOut,
 }: {
   email: string;
-  name: string;
+  profile: Profile;
   /** Null only against the real API, for someone signed in with no pass issued. */
   pass: Pass | null;
+  lost: LostReport | null;
   onLost: () => void;
   onExport: () => void;
   onErase: () => void;
   requested: string | null;
   onSignOut: () => void;
 }) {
+  // Several passes: say which one this block is about (the one the pass screen shows).
+  const several = passChoices().length > 1;
   return (
     <>
       <RuledRow label="Profile">
-        <ProfileBlock name={name} email={email} />
+        <ProfileBlock profile={profile} email={email} />
       </RuledRow>
 
       {pass ? (
       <RuledRow label="Pass and wristband">
+        {several ? <p className="mb-5 text-15 text-muted-foreground">For {pass.event.title}</p> : null}
         <dl className="grid gap-5 sm:grid-cols-3">
           <div>
             <dt className={label}>Pass</dt>
@@ -191,9 +216,17 @@ function AccountRows({
                   Bound <span className="font-mono text-15 text-muted-foreground">{pass.band.hint}</span>
                 </span>
               ) : (
-                <Link to="/pass/pair" className="-my-3 inline-flex min-h-11 items-center underline underline-offset-4 hover:text-brand">
-                  Not bound yet — bind one
-                </Link>
+                <>
+                  {pass.bandLost ? (
+                    <span className="flex items-center gap-2">
+                      <span className="size-1.5 bg-warning" aria-hidden />
+                      Reported lost
+                    </span>
+                  ) : null}
+                  <Link to="/pass/pair" className="-my-3 inline-flex min-h-11 items-center underline underline-offset-4 hover:text-brand">
+                    {pass.bandLost ? "Bind a new one" : "Not bound yet — bind one"}
+                  </Link>
+                </>
               )}
             </dd>
           </div>
@@ -202,10 +235,28 @@ function AccountRows({
           <Link to="/pass" className={buttonClass("secondary", "sm")}>
             Open my pass
           </Link>
-          {pass.band ? (
+          {pass.band && lost?.status !== "sending" ? (
             <button type="button" onClick={onLost} className={buttonClass("danger", "sm")}>
               Report lost band
             </button>
+          ) : null}
+        </div>
+        <div role="status" className="mt-3 min-h-5 max-w-[62ch] text-15 leading-relaxed text-muted-foreground">
+          {lost?.status === "sending" ? (
+            "Marking your band lost…"
+          ) : lost?.status === "failed" ? (
+            <span className="text-destructive">
+              <span aria-hidden="true" className="mr-1.5 font-mono">✕</span>
+              {lost.message}
+            </span>
+          ) : lost?.status === "done" ? (
+            <>
+              <span className="text-foreground">
+                {lost.markedLost ? "Your band is marked lost. It no longer opens any door." : "There was no working band on this pass to mark."}
+              </span>{" "}
+              Your pass still works. Show it at {pass.nearestDesk} to collect a new band, or bind one here with the code the
+              desk gives you.
+            </>
           ) : null}
         </div>
       </RuledRow>
@@ -249,15 +300,20 @@ function AccountRows({
   );
 }
 
-/** Name is editable (PATCH /users/:id/profile); the email is the sign-in, so it is not. */
-function ProfileBlock({ name, email }: { name: string; email: string }) {
+/**
+ * Name and phone are editable (PATCH /me/profile); the email is the sign-in, so it is not. The
+ * phone comes back masked, so the field starts blank: blank keeps the number on file.
+ */
+function ProfileBlock({ profile: initial, email }: { profile: Profile; email: string }) {
+  const [profile, setProfile] = useState(initial);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(name);
-  const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState({ name: initial.name, phone: "" });
+  const [errors, setErrors] = useState<{ name?: string; phone?: string }>({});
   const [saved, setSaved] = useState(false);
+  const invalid = Boolean(errors.name || errors.phone);
   return (
     <>
-      <dl className="grid gap-5 sm:grid-cols-2">
+      <dl className="grid gap-5 sm:grid-cols-3">
         <div>
           <dt className={label}>{editing ? <label htmlFor="profile-name">Name on your pass</label> : "Name on your pass"}</dt>
           <dd className="mt-1 text-17">
@@ -268,26 +324,26 @@ function ProfileBlock({ name, email }: { name: string; email: string }) {
                   type="text"
                   autoComplete="name"
                   autoCapitalize="words"
-                  enterKeyHint="done"
-                  value={draft}
+                  enterKeyHint="next"
+                  value={draft.name}
                   onChange={(changeEvent) => {
-                    setDraft(changeEvent.target.value);
-                    setError(null);
+                    setDraft((current) => ({ ...current, name: changeEvent.target.value }));
+                    setErrors((current) => ({ ...current, name: undefined }));
                   }}
-                  aria-invalid={error ? true : undefined}
-                  aria-describedby={error ? "profile-name-error" : undefined}
-                  className={`${fieldClass} max-w-sm`}
+                  aria-invalid={errors.name ? true : undefined}
+                  aria-describedby={errors.name ? "profile-name-error" : undefined}
+                  className={fieldClass}
                 />
-                {error ? (
+                {errors.name ? (
                   <p id="profile-name-error" className="mt-2 text-15 text-destructive">
                     <span aria-hidden="true" className="mr-1.5 font-mono">✕</span>
-                    {error}
+                    {errors.name}
                   </p>
                 ) : null}
               </>
             ) : (
               <span className="inline-flex items-center gap-2">
-                {name}
+                {profile.name}
                 {saved ? <span className="text-13 text-muted-foreground">Saved</span> : null}
               </span>
             )}
@@ -297,6 +353,45 @@ function ProfileBlock({ name, email }: { name: string; email: string }) {
           <dt className={label}>Email</dt>
           <dd className="mt-1 text-17 break-all">{email}</dd>
         </div>
+        <div>
+          <dt className={label}>{editing ? <label htmlFor="profile-phone">Phone</label> : "Phone"}</dt>
+          <dd className="mt-1 text-17">
+            {editing ? (
+              <>
+                <input
+                  id="profile-phone"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  enterKeyHint="done"
+                  value={draft.phone}
+                  placeholder={profile.phoneMasked ?? "+256 700 000 000"}
+                  onChange={(changeEvent) => {
+                    setDraft((current) => ({ ...current, phone: changeEvent.target.value }));
+                    setErrors((current) => ({ ...current, phone: undefined }));
+                  }}
+                  aria-invalid={errors.phone ? true : undefined}
+                  aria-describedby={errors.phone ? "profile-phone-error" : "profile-phone-hint"}
+                  className={fieldClass}
+                />
+                {errors.phone ? (
+                  <p id="profile-phone-error" className="mt-2 text-15 text-destructive">
+                    <span aria-hidden="true" className="mr-1.5 font-mono">✕</span>
+                    {errors.phone}
+                  </p>
+                ) : (
+                  <p id="profile-phone-hint" className="mt-2 text-13 text-muted-foreground">
+                    {profile.phoneMasked ? "Leave it blank to keep the number on file." : "Optional."}
+                  </p>
+                )}
+              </>
+            ) : profile.phoneMasked ? (
+              <span className="font-mono text-15">{profile.phoneMasked}</span>
+            ) : (
+              <span className="text-muted-foreground">Not given</span>
+            )}
+          </dd>
+        </div>
       </dl>
       <div className="mt-5 flex flex-wrap items-center gap-3">
         {editing ? (
@@ -305,25 +400,32 @@ function ProfileBlock({ name, email }: { name: string; email: string }) {
               variant="primary"
               doneLabel="Saved"
               action={async () => {
-                if (draft.trim().length < 2) {
-                  setError("Enter your name as it should appear on your pass.");
-                  throw new Error("invalid");
+                const problems: { name?: string; phone?: string } = {};
+                if (draft.name.trim().length < 2) problems.name = "Enter your name as it should appear on your pass.";
+                if (draft.phone.trim() !== "" && !isPhone(draft.phone)) {
+                  problems.phone = "That number looks too short. Include the country code, or leave it blank.";
                 }
-                await updateName(draft);
+                setErrors(problems);
+                if (problems.name || problems.phone) throw new Error("invalid");
+                const next = await updateProfile({
+                  name: draft.name.trim() !== profile.name ? draft.name : undefined,
+                  phone: draft.phone.trim() || undefined,
+                });
+                setProfile(next);
+                primeResource("account", next);
                 setSaved(true);
                 window.setTimeout(() => setEditing(false), 700);
               }}
-              failedLabel={error ? "Check the name" : "Couldn't save. Try again"}
+              failedLabel={invalid ? "Check the details" : "Couldn't save. Try again"}
               className="min-h-11 px-4 text-13"
             >
-              Save name
+              Save details
             </ActionButton>
             <button
               type="button"
               onClick={() => {
                 setEditing(false);
-                setDraft(name);
-                setError(null);
+                setErrors({});
               }}
               className={buttonClass("quiet", "sm")}
             >
@@ -334,13 +436,14 @@ function ProfileBlock({ name, email }: { name: string; email: string }) {
           <button
             type="button"
             onClick={() => {
-              setDraft(name);
+              setDraft({ name: profile.name, phone: "" });
+              setErrors({});
               setSaved(false);
               setEditing(true);
             }}
             className={buttonClass("secondary", "sm")}
           >
-            Edit name
+            Edit details
           </button>
         )}
         <p className="text-15 text-muted-foreground">Your email is how you sign in, so it can't be changed here.</p>

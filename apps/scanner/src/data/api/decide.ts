@@ -3,8 +3,10 @@
  * know — the verified allowlist and this device's own scans. First failing step decides.
  *
  *   1. unknown token (no trusted allowlist, bad/expired QR, not on the list) → unknown_token  (fail closed)
- *   2. QR at an interior gate → wristband_required; spent emailed QR → pass_spent
- *   3. revoked / replaced / lost band → revoked; under review → suspended
+ *   2. QR at an interior gate → wristband_required; an emailed QR not named in `qr_email_hashes`
+ *      (or already admitted on this device) → pass_spent
+ *   3. revoked / replaced / lost band, cancelled registration → revoked; under review → suspended
+ *      (an `assigned` band is not on the list at all: it opens nothing, so it reads unknown_token)
  *   4. same credential, same gate, within 60 s of the last passage → duplicate_read
  *      (exits stop here: admitted)
  *   5. room not in the entry's permitted rooms → denied_room
@@ -49,6 +51,8 @@ export type Resolution =
       deadBand: boolean;
       /** Emailed QR: its carrier id (single use). */
       emailCid: string | null;
+      /** Emailed QR: base64url SHA-256 of `emailCid`, as the allowlist's `qr_email_hashes` names usable codes. */
+      emailHash?: string | null;
     };
 
 export interface LocalDecision {
@@ -139,8 +143,12 @@ export function decideLocally(input: LocalInput): LocalDecision {
 
   // 2 — carrier accepted here (D-11)?
   if (r.carrier !== "nfc" && !cp.perimeter) return out("wristband_required", 2);
-  if (r.carrier === "qr_email" && (r.entry.qr_email_spent || (r.emailCid !== null && input.spentEmailCids.has(r.emailCid)))) {
-    return out("pass_spent", 2);
+  if (r.carrier === "qr_email") {
+    // The list names the emailed codes still usable once (not used, not superseded by a resend); any
+    // other emailed code of the pass reads spent. Older lists carry only the pass-wide flag.
+    const usable = r.entry.qr_email_hashes;
+    const spentOnList = usable ? !(r.emailHash != null && usable.includes(r.emailHash)) : r.entry.qr_email_spent;
+    if (spentOnList || (r.emailCid !== null && input.spentEmailCids.has(r.emailCid))) return out("pass_spent", 2);
   }
 
   // 3 — state. A lost or retired band no longer opens anything.
