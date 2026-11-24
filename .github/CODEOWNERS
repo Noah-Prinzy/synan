@@ -1,0 +1,40 @@
+# Owners of the risky areas (docs/07-roadmap.md §2.6). A pull request that touches one of these
+# paths asks for the owner's review; with branch protection's "Require review from Code Owners",
+# it cannot merge without it. Later rules win over earlier ones for the same path.
+#
+# Agent owners (one agent at a time per area, §2.6) are recorded in the pull request; this file
+# names the people who approve.
+
+# Database migrations: locks, reversibility, the claimed migration number.
+/packages/db/migrations/                @Noah-Prinzy
+/packages/db/migration-checksums.json   @Noah-Prinzy
+/packages/db/drizzle.config.ts          @Noah-Prinzy
+/packages/db/src/schema/                @Noah-Prinzy
+/packages/db/src/migrate.ts             @Noah-Prinzy
+
+# Sign-in, row-level security and cryptography.
+/packages/db/src/crypto/                @Noah-Prinzy
+/packages/db/src/auth.ts                @Noah-Prinzy
+/packages/db/src/secrets.ts             @Noah-Prinzy
+/packages/db/src/client.ts              @Noah-Prinzy
+/packages/db/src/short-codes.ts         @Noah-Prinzy
+/apps/api/src/domain/auth-service.ts    @Noah-Prinzy
+/apps/api/src/domain/keys.ts            @Noah-Prinzy
+/apps/api/src/domain/qr.ts              @Noah-Prinzy
+/apps/api/src/domain/principal.ts       @Noah-Prinzy
+/apps/api/src/domain/scope.ts           @Noah-Prinzy
+/apps/api/src/domain/scanner-trust.ts   @Noah-Prinzy
+/apps/api/src/lib/crypto.ts             @Noah-Prinzy
+/apps/api/src/http/                     @Noah-Prinzy
+/apps/api/src/routes/auth.ts            @Noah-Prinzy
+/apps/api/src/config.ts                 @Noah-Prinzy
+/apps/scanner/src/data/api/crypto.ts    @Noah-Prinzy
+
+# The contracts package: every payload, enum and the role matrix.
+/packages/contracts/                    @Noah-Prinzy
+
+# The checks themselves: workflows, baselines and budgets must not be loosened unseen.
+/.github/                               @Noah-Prinzy
+/scripts/                               @Noah-Prinzy
+/package.json                           @Noah-Prinzy
+/pnpm-workspace.yaml                    @Noah-Prinzy

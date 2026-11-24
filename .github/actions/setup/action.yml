@@ -1,0 +1,37 @@
+name: Set up Node and pnpm
+description: >
+  Node 24, pnpm through corepack (the version in package.json "packageManager"), the pnpm store
+  cached by lockfile, and optionally `pnpm install --frozen-lockfile` (which also proves the
+  lockfile is in sync with every package.json).
+inputs:
+  install:
+    description: Run `pnpm install --frozen-lockfile` ("true" or "false").
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Set up Node 24
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+
+    - name: Enable pnpm through corepack
+      shell: bash
+      env:
+        COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+      run: |
+        corepack enable
+        echo "pnpm $(pnpm --version), node $(node --version)"
+        echo "PNPM_STORE=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+
+    - name: Cache the pnpm store
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ env.PNPM_STORE }}
+        key: pnpm-store-${{ runner.os }}-node24-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: pnpm-store-${{ runner.os }}-node24-
+
+    - name: Install dependencies (frozen lockfile)
+      if: inputs.install == 'true'
+      shell: bash
+      run: pnpm install --frozen-lockfile
