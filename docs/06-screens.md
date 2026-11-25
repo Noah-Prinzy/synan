@@ -10,21 +10,23 @@ Screen IDs (`A1`, `D1`, `S1`) are stable and are used in the roadmap and in code
 
 ## 1. Attendee Portal
 
-Editorial, mobile-first, neutral in either theme ([05 §3](05-design-system.md)). Discovery is
+Calm, mobile-first, neutral in either theme ([05 §3](05-design-system.md)). Discovery is
 public; everything else is authenticated. The theme switch (System · Light · Dark) sits in the
 footer and on the account screen.
 
-The structure of this surface is Direction A ([05 §2.1](05-design-system.md), D-19): a hairline
-page frame, navigation in ruled cells, a scroll-following side list on the event page, and a footer
-of ruled link columns. Where a screen description below still mentions tabs or a plain card grid,
-Direction A takes precedence; each description is rewritten as its screen is rebuilt.
+The structure of this surface is D-37 ([05 §2.1](05-design-system.md)): one statement per screen,
+generous space, soft tonal panels and no ruled lines, over the slow Gathering field. The event page
+alone is richer: its picture, the event's name set large, a glass card of key facts and a small
+"rooms now" panel. The hard rules in [05 §1](05-design-system.md) apply: square corners, tone
+instead of lines, and the brand colour never a large fill.
 
-This surface uses the redesigned layouts (D-01): hero sections, card grids, tabs, and imagery are
-allowed here and nowhere else. The hard rules in [05 §1](05-design-system.md) still apply — square
-corners, hairlines, and the brand colour never as a fill.
-
-A sticky site header carries the wordmark and navigation on every screen, collapsing to a `Menu`
-button on narrow widths. A sticky bottom bar offers `My pass` to anyone with a credential.
+One minimal **top bar** on every screen: the wordmark, `Events` and `My pass`, and one action:
+`Sign in`, or the holder's initials once signed in (they open the account). On a phone it keeps
+the wordmark and the action, and a `Menu` button opens a full-height menu of large words (Events,
+My pass, Agenda, Updates, Account or Sign in, each with one quiet line), `Show my pass`, and who is
+signed in; Escape or Close returns focus to the button. Agenda and Updates are reached from that
+menu and from the footer. The **footer** is two quiet lines of words and the theme switch. A tonal
+bottom bar offers `My pass` to anyone with a credential.
 
 ### 1.1 Route map
 
@@ -33,8 +35,8 @@ a half-finished registration survives a refresh and can be re-entered from an em
 
 | Route | Screen | Auth | Data | Key components |
 | --- | --- | --- | --- | --- |
-| `/` | A1 Discover | public | `GET /events?state=published,live` | `FeaturedEvent`, `EventCard`, filter tabs, `AnimatedBar`, `Badge`, `MyPassBar` |
-| `/events/:slug` | A2 Event detail | public | `GET /events/:slug`, `GET /events/:id/occupancy` (public scope), `GET /me/registration` | Hero, tabs, `SessionRow`, `StatsPanel`, `StatusPanel` |
+| `/` | A1 Discover | public | `GET /events?state=published,live` | statement, filter chips, `EventPicture`, `Badge`, `MyPassBar` |
+| `/events/:slug` | A2 Event detail | public | `GET /events/:slug`, `GET /events/:id/occupancy` (public scope), `GET /me/registration` | `EventPicture`, glass key facts, rooms now, `SessionRow` |
 | `/events/:slug/register` | A3 → redirect | public | — | redirects to `/identity` |
 | `/events/:slug/register/identity` | A3 step 1 | public | — | `RegistrationStepper`, `IdentityForm` |
 | `/events/:slug/register/profile` | A3 step 2 | public | `GET /events/:slug/profile-schema` | `DynamicProfileForm`, `ConsentRow` |
@@ -53,27 +55,29 @@ a half-finished registration survives a refresh and can be re-entered from an em
 ### 1.2 Screens
 
 **A1 · Discover `/`**
-A **featured event** leads the page: status badge, the title in Fraunces at display size, date and
-venue, and a hairline panel with live occupancy as a bar and a count. Below it, filters as a single
-horizontal rule of text tabs (All · Live · Upcoming · Near me) with an animated underline on the
-active one. Then the remaining events as a **card grid** — one column on phones, two on tablets,
-three on desktop. Each card: status badge, date in mono, title in Fraunces, venue and city, and an
-occupancy bar when the event is live. Cards are hairline-bordered and square; hover strengthens the
-border toward the brand colour and never fills.
+One centred statement, worked out from the listing ("Two events are on right now. Three more
+events are coming up."), with a quiet line above it (the greeting, the date). Under it the filters
+as tonal chips (All · Live · Upcoming, each with its count), the chosen one ink. Then the events in
+two shelves, **On now** and **Coming up**: each event is its picture (or its designed cover: the
+date set large on a soft light) with the state, title, venue and date set under it on the ground,
+no frame. Opening an event carries its picture into the event page where the browser can (a short
+morph; none under reduced motion).
 
 Only listed events appear. Private Invitation events are never shown here.
 
 States: empty (no published events), loading (skeleton cards), error (offline copy with retry).
 
 **A2 · Event detail `/events/:slug`**
-A **hero** opens the page: status badge, event title at display size, date with the local timezone
-labelled, venue, and optional event imagery. Below, **tabs** divide the content — overview (the
-description), schedule, and venue. The schedule is grouped by day; each session row shows room, time,
-and live occupancy as a bar (warn and stop colour past thresholds).
-
-A **sidebar** on ≥1024 (stacked beneath on phones) holds two panels: event statistics with animated
-counters and an occupancy bar, and `Your status` — not registered / registered / checked in, with the
-call to action. If the event is `closed`, the call to action becomes `View your pass`.
+The richer page. It opens on the event's **picture**, full width and full height, or the designed
+no-photo cover when the event has none. The top bar lies clear over the picture and turns solid as
+soon as the page moves; its action there is `Register` (`View your pass` once registered). On the
+picture: `All events`, a mono capital eyebrow (dates · venue), and the event's **name** set very
+large. At its foot a **glass card** of key facts (state, when, where, how busy it is right now) with
+the call to action, and on wide screens a small **Rooms now** panel (each room's word and bar). On a
+phone the rooms panel follows the picture. Below the picture, on the Gathering field: **About**, the
+**Programme** (today's sessions as a rhythm list; the session on now is lifted on a tonal step),
+**Venue** (a short list), and **Questions**. If the event is `closed`, the call to action becomes
+`View your pass`.
 
 Occupancy here and on A6 is the public view ([03 §5](03-security-privacy.md)), read without
 signing in and refreshed about every 10 seconds while the event is live, every minute otherwise,
@@ -83,8 +87,10 @@ on-site total is shown. On A6 the indicator reads `Full`, `Nearly full · N plac
 less), `N places left`, `Not open yet`, or `Places available` when the count is withheld.
 
 **A3 · Registration `/events/:slug/register`**
-Three steps with a hairline stepper: **Your details → A few questions → Check and send**. On phones
-the stepper is a three-part progress rule.
+Three steps: **Your details → A few questions → Check and send**. Each step's name is the
+screen's statement ("Your details. Your pass arrives by email."), with the event and "Step N of 3"
+above it and a stepper whose done part is a soft accent track. The form sits on one tonal panel in
+a single centred column; "You're registering for" and "What happens next" follow it.
 - Identity: full name, email, phone (optional, with the note "Only used if the desk needs to reach
   you on the day").
 - Profile: event-defined fields from `profile_jsonb` — rendered from a schema-driven form (text, select,
@@ -106,21 +112,22 @@ approval (D7), Private Invitation through A10, Public through A11
 ([01 §4](01-product.md)).
 
 **A4 · My pass `/pass` ★**
-The single most important attendee screen. One hairline card, centred, max 600:
-- **Pass switch.** Someone registered for more than one event sees a row of cells above the card,
-  one per pass (event title and day), soonest first; the chosen one carries the accent rule. The
+The single most important attendee screen, in one centred column: the state and the event on one
+line, the statement ("Your pass, Amara." and what it is for, muted), then the code on its card.
+- **Pass switch.** Someone registered for more than one event sees a row of chips above the code,
+  one per pass (event title and day), soonest first; the chosen one is ink. The
   choice is remembered on the device. Cancelled registrations and registrations without a pass are
   not offered.
 - Credential state verbatim: `READY` / `NOT YET BOUND` / `UNDER REVIEW` / `REVOKED` / `REPLACED`.
-- QR on pure white with a 1px ink frame and the holder's name + tier beneath. The name is the one on
+- QR on an opaque white card, black on white in both themes, with the holder's name + tier beneath. The name is the one on
   the account; without one, the start of the email address. The code **rotates** on a short
-  interval (D-05); a thin progress rule shows time to the next code, so the change never looks like
+  interval (D-05); a thin progress bar shows time to the next code, so the change never looks like
   a glitch.
 - The screen says what the QR is for: `Show this when you arrive to collect your wristband`. Once a
   band is bound, the wristband row moves to the top and the QR folds beneath it as "Arrival code,
   for the entrance and desk", because inside the venue the band is the key (D-11). At an event
   without wristbands (D-32), the QR is the pass at every gate, and the screen says so.
-- Wristband row, one of three: `Bound ••9F3A` (the band's last four characters, never the whole
+- Wristband line, one of three: `Bound ••9F3A` (the band's last four characters, never the whole
   UID) with a green dot; `Not bound yet`, with `Bind a band` and where to bind one; or `Reported
   lost`, with `Bind a new band`. Reporting a band lost is on A8.
 - Actions: `Email me a copy` and `Keep screen on` (a toggle remembered on the device; it stops the
@@ -139,7 +146,7 @@ still works.` line appears. If the phone stays offline past those codes, the scr
 needs a connection" and points to the emailed copy or the desk.
 
 **A5 · Bind wristband `/pass/pair`**
-Two modes in one screen: **Tap** (Web NFC, Android Chrome) — a pulsing target area, reads the UID, shows
+Two modes in one screen, chosen with a segmented tonal control: **Tap** (Web NFC, Android Chrome) — a pulsing target area, reads the UID, shows
 it in mono, confirm. **Desk code** — 6-character code from the provisioning clerk. On success, a
 confirmation panel with the band UID and a `this band is now you` line. Failure states are explicit:
 `Already bound to another attendee` (with a `get help` action), `Unknown band`, `NFC unavailable on this
@@ -148,15 +155,16 @@ device → use the desk`.
 **A6 · My agenda `/agenda`**
 Chronological list of the attendee's sessions, grouped `Now · Next · Later`, with sessions that have
 ended kept under `Earlier` and each day labelled. Each row: time (mono), title,
-room, and a live `space left` indicator sourced from telemetry. `Now` rows get a 2px foreground left rule.
+room, and a live `space left` indicator sourced from telemetry. The list is a rhythm of rows; `Now`
+rows are lifted on a tonal step.
 Tapping opens the event detail scrolled to the session.
 
 **A7 · Notifications `/notifications`**
 Chronological feed: room at capacity, schedule change, credential update, event-wide announcements.
-Unread uses a 2px foreground left rule. Empty state: `Nothing yet — we'll only message you when it matters.`
+Unread rows are lifted on a tonal step. Empty state: `Nothing yet — we'll only message you when it matters.`
 
 **A8 · Account `/account`**
-Sections as hairline blocks:
+Sections as titled tonal panels:
 - **Profile.** Name and phone, edited with `Edit details`; the email is shown but not editable. The
   phone is shown masked (`••••• 4567`); the field starts empty with the mask as its hint, and
   leaving it empty keeps the number on file.
@@ -170,7 +178,9 @@ Sections as hairline blocks:
 - Sign out.
 
 **A9 · Auth `/sign-in`, `/verify`**
-Email-only. Single field, `Email me a link`. The emailed link opens `/auth/verify` with the token
+Email-only. One statement ("Welcome back. Sign in with your email and we'll send you a link."),
+one field with the hint "No password needed. The link signs you in here.", `Email me a link`, and
+"First time here? Register for an event". The emailed link opens `/auth/verify` with the token
 after a `#`; `/verify` is the same screen. It handles the token, shows a 3-second confirmation,
 then routes to `/pass`, or back into a registration the link was sent for. No password anywhere on
 the attendee side.
@@ -201,12 +211,13 @@ not started (O-10).
 
 ## 2. Admin Command
 
-Neutral, in either theme, with the still ambient field behind it ([05 §5](05-design-system.md)).
+Neutral, in either theme, on a plain ground ([05 §5](05-design-system.md)).
 Desktop-first, 1440 target, dense 13px, with a phone layout below 640px. Every
 screen assumes a wall display is watching and a phone is in the operator's hand.
 
-This surface keeps the strict instrument rules (D-01): tables, rails, and hairline panels. No hero
-sections, no imagery, no decorative cards, no entrance animation.
+This surface is the instrument (D-01, D-37): a full-width top bar, the figures in one instrument
+strip, tonal panels, tables without rules, mono times and ids. No hero imagery, no decorative
+cards, and no animation at all.
 
 **Sign-in and the second factor.** Operators sign in with email and password. The sign-in screen
 replaces whatever screen was asked for, and returns to it afterwards if the role may open it;
@@ -233,7 +244,7 @@ the server says the role may call, never widens them.
 | Admin | Everything | D1 |
 | Organiser | Everything except venues, staff and shifts, settings, and first-run set-up | D1 |
 | Supervisor | D1, alerts, gate health, the access log, and attendee lookup | D1 |
-| Desk clerk | The wristband desk only, for the events of their current desk assignment: no rail, no alert notice, no live pill, no status bar | D8 |
+| Desk clerk | The wristband desk only, for the events of their current desk assignment: no sections, no alert notice, no gate status, no status bar | D8 |
 | Security staff, speaker, crew | No console. A plain page says the account uses the Gate Scanner, or that the person's access is their credential, with the account, its role, and `Sign out` | — |
 
 A screen the role may not open says "This screen is not part of your console" with a link to the
@@ -249,7 +260,7 @@ correctly on a shift handover. In the Role column, "both" means admin and organi
 | --- | --- | --- | --- | --- |
 | `/admin/sign-in` | Sign-in | public | `POST /auth/login`, `GET /me/operator` | `SignIn` (shown in place of any screen when signed out; this path leads to `/admin`) |
 | `/admin/setup` | First run | org admin | `POST /organizations`, `POST /venues` | `Stepper`, `OrganizationForm`, `VenueForm` |
-| `/admin` ★ | D1 Command Center | both, supervisor | `stream/telemetry`, `stream/alerts`, `GET /dashboard`, `GET /events/:id/summary` | `KpiStrip`, `ZoneMap`, `RoomsRail`, `LiveFeed`, `RecountDialog` |
+| `/admin` ★ | D1 Command Center | both, supervisor | `stream/telemetry`, `stream/alerts`, `GET /dashboard`, `GET /events/:id/summary` | `KpiStrip`, `ZoneMap`, `RoomsList`, `LiveFeed`, `RecountDialog` |
 | `/admin/venues` | D2 Venues | admin | `GET /venues` | `Table`, `TableToolbar` |
 | `/admin/venues/new` | D2b New venue | admin | `POST /venues` | `VenueForm` |
 | `/admin/venues/:id` | D3 Spatial editor | admin | `GET /venues/:id`, `PUT /zones`, `PUT /rooms/:id` | `ZoneMap`, `ZonePolygon`, `RoomBlock`, `Sheet`, `DiffView` |
@@ -281,46 +292,51 @@ pasted link resolves to the same row rather than a bare table. Filters and searc
 
 ### 2.2 Chrome
 
-**Top bar**, one row of ruled cells, 48px tall, left to right:
-- The wordmark with "Command" (only the mark over a collapsed rail).
-- The **event selector**, the global context for every screen: the event's title, with its venue
-  and state when it is not live. Its menu lists the events with date and state and, for roles that
-  watch the live event, a line across the organisation: live events, people on site, open alerts.
-  A desk clerk's menu reads "Your events".
-- The **alert notice** (roles that see alerts). Calm: a bell and "No open alerts", muted. With open
-  alerts: "N open · Severity" in the colour of the most serious; a critical alert tints the cell
-  and it pulses once when it arrives. Under 768px it shrinks to a bell with a count. Pressing it
-  opens a **panel** under the bar: the open alerts, most serious first, each with severity, kind,
-  place, age, `Acknowledge` (one click) and `Open` (D10 with that alert); at the foot, how many are
+**Top bar**, one full-width solid bar, no rules, left to right:
+- The wordmark (the mark alone on a phone), which leads to the role's landing page.
+- The **event switcher**, the global context for every screen: a state dot, the event's title, its
+  state word and a chevron. Its accessible name reads "Event: {title} {state}. Change event". Its
+  menu lists the events with date and state and, for roles that watch the live event, a line across
+  the organisation: live events, people on site, open alerts; and `All events`. A desk clerk's menu
+  reads "Your events".
+- The **sections**, filtered by role; a section with nothing the role may open is dropped, and a
+  role with a single screen (the desk clerk) gets none. Each section is a button that opens a menu of
+  its pages, each with a one-line note:
+
+  | Section | Pages |
+  | --- | --- |
+  | Live | Command Center, Alerts, Gate health, Access log |
+  | Events | All events, New event |
+  | People | Attendees, Wristband desk, Staff & shifts |
+  | Setup | Venues, Reports, Settings |
+
+  Exactly one section is current, set in ink with a short accent mark under it, and inside its menu
+  the current page is marked; inside an event workspace the current section is Events, and the
+  wizard counts as New event.
+- The **alert notice** (roles that see alerts), a tonal block. Calm: a bell and "No open alerts",
+  muted. With open alerts: "N open · Severity" in the colour of the most serious; a critical alert
+  tints the block red. Under 768px it shrinks to a bell with a count. Pressing it opens a **panel**
+  under the bar: the open alerts, most serious first, each with severity, kind, place, age,
+  `Acknowledge` (one click) and `Open` (D10 with that alert); at the foot, how many are
   acknowledged and awaiting resolution, and `All alerts`. The panel resolves nothing; resolution
   lives in D10. Screen readers hear new alerts politely, and critical ones at once. There is no
   separate alert strip.
-- The **live pill** (roles that watch): a shape and a word, `Live`, `Reconnecting…`, `Offline`, or
-  `Not live`. No figures.
-- The **operator menu**, shown as initials (with name and role from 1536px). It holds the name,
-  email, role, the current shift when there is one, the venue's local time with its UTC offset,
-  the second-factor item, **Appearance** (System · Light · Dark), Settings for admins, and
-  `Sign out`. The clock and the shift live here, not in the bar.
-
-**Navigation rail**, grouped and filtered by role; an empty group is dropped:
-
-| Group | Entries |
-| --- | --- |
-| Live | Command Center, Alerts, Gate health, Access log |
-| Event | Events, Attendees, Wristband desk, Reports |
-| Setup | Venues, Staff & shifts, Settings |
-
-Exactly one entry is active at a time; inside an event workspace it is Events. The rail is
-expanded from 1280px (remembered per device) and collapsed to icons below. A role with a single
-screen (the desk clerk) gets no rail.
+- The **gate status** (roles that watch), in mono: "28/28 gates online · last scan 0 s · 130 / min",
+  from gate health and the live scans; when the connection is down it says `Reconnecting…`,
+  `Offline` or `Not live` in words.
+- The **account**, a round avatar with the operator's initials. Its menu holds the name, email,
+  role, the current shift when there is one, the venue's local time with its UTC offset, the
+  second-factor item, **Appearance** (System · Light · Dark as three cells), Settings for admins,
+  and `Sign out`.
 
 **Status bar**, one line, for roles that watch: "Counts are live", or "Showing the last known
 counts, Ns old" in warning colour, or "No live data for this event"; plus "N scans waiting to sync
 · N gates offline" when there are any. `Details` opens round-trip time, last update, and queued
 scans per gate.
 
-**Phone.** Below 640px the rail becomes a `Menu` cell that opens a sheet from the left with the
-wordmark and the same groups in 44px rows; the wordmark leaves the bar.
+**Phone.** Below 640px the bar keeps the mark, the event switcher, the alert bell, the avatar and
+a `Menu` button at its end, which opens a full-height sheet with each section's name in mono
+capitals and its pages in large words (44px rows). The gate status moves to a strip under the bar.
 
 ### 2.3 Screens
 
@@ -330,34 +346,44 @@ support email) → Venue (name, city, floors) → Done. It writes the org and se
 to D5. Skipped permanently once a venue exists.
 
 **D1 · Command Center `/admin` ★**
-The hero screen, made calm (D-22): four figures, a map without numbers, and a rail.
-- **Four figures**, in mono, each with a line of words beneath rather than a delta or sparkline:
-  - *On site now.*
-  - *Checked in*, with a bar showing the share of everyone registered.
+The hero screen, made calm (D-22, D-37): a statement, four figures in one strip, a map without
+numbers, and the rooms list beside it.
+- **Statement**: a mono capital line (live state, venue, date, time), then one headline and one
+  sentence built from live data: "All calm at {venue}." when no alert is open and every gate is
+  online; "{Room} needs you." for a high or critical alert; "One alert open at {venue}." for a
+  medium or low one; "{Gate} is offline." when a gate is down. The most serious open alert sits
+  under it with `Open alert` and `Acknowledge`.
+- **Four figures**, in one tonal instrument strip, mono, each with a line of words beneath rather
+  than a delta or sparkline:
+  - *On site now*, "inside the venue now".
+  - *Checked in*, "of N registered".
   - *Rooms filling up* (nearly full plus full), in words ("2 full · 3 nearly full", or "Every room
     has space"), in warning or stop colour when above zero.
   - *Open alerts*, with the most serious named ("Nothing needs action" when none), coloured by
     the worst severity.
-- **Map** — zones as faint outlines with name and floor; rooms as blocks whose shading rises from
-  the floor to show how full they are; perimeter gates as small chips outside the zone edge, with a
-  problem in words; a badge on a room's faulty door; a legend. **No figures on the map**: counts are
-  in the rail and the room card. Colour by threshold, always with a word or a shape too
-  ([05 §3](05-design-system.md)). Hover or keyboard focus shows a **room card**: count against the
-  thresholds, the change in the last minute, its door, `Recount`, and `Open room`. `Recount` sets
-  the count to a headcount with a note, and is audited (D-10). Clicking a room selects it and opens
-  it in the rail. The map is keyboard-operable (arrows, Home, End, Enter, Escape). A venue with no
-  floor plan says "No floor plan drawn yet". Panels animate only via interpolation.
-- **Rail:** gates first, as one line ("All gates online") or the gates that need attention, with
-  a link to D12; then **Rooms**, fullest first, re-sorted no more than every two seconds and held
-  still under the pointer; a selected room shows its meter, a three-minute trend, its doors, and its
-  recent scans; then **Recent activity**, the last six refusals, alerts, gate changes, and recounts,
+- **Map**, on a still dot grid: zones as tonal blocks with name and floor; rooms as blocks whose
+  shading rises from the floor to show how full they are; perimeter gates as small chips outside the
+  zone, with a problem in words; a badge on a room's faulty door; a key (Space · Busy · Nearly full ·
+  Full · Gate). **No figures on the map**: counts are in the rooms list and the room card. Colour by
+  threshold, always with a word or a shape too ([05 §3](05-design-system.md)). Hover or keyboard
+  focus shows a **room card**: count against the thresholds, the change in the last minute, its
+  door, `Recount`, and `Open room`. `Recount` sets the count to a headcount with a note, and is
+  audited (D-10). Clicking a room selects it and opens it in the rooms list. The map is
+  keyboard-operable (arrows, Home, End, Enter, Escape); each room's accessible name begins with its
+  visible name and level word. A venue with no floor plan says "No floor plan drawn yet". Figures
+  change by interpolation, never by animation.
+- **Rooms**, beside the map: fullest first, each with its name, level word, count, zone and a bar;
+  re-sorted no more than every two seconds and held still under the pointer; a selected room shows
+  its meter, a three-minute trend, its doors, and its recent scans.
+- **Below**: **Gates**, as one line ("All gates online") or the gates that need attention, with a
+  link to D12; and **Recent activity**, the last six refusals, alerts, gate changes, and recounts,
   with a link to D9.
 - **Alert treatment:** a room with an open high or critical alert carries a stop frame until it is
   acknowledged, and a critical alert flashes it once. Acknowledge is always one click, in the top
   bar's alert notice; resolution lives in D10.
 
-Degraded states are designed, not incidental: a gate that needs someone says so in the rail
-(`offline 4m · 182 queued`, P-09); the live pill changes; the status bar says how old the counts
+Degraded states are designed, not incidental: a gate that needs someone says so under Gates
+(`offline 4m · 182 queued`, P-09); the gate status in the bar changes; the status bar says how old the counts
 are; the map dims to the last known state with its time shown. An event that is not live shows
 dashed figures, says so, and lists the live events with `Watch this event`; a closed one links to
 its summary. Below 1024px the sections stack; below 640px rooms show as a list, with a switch to
@@ -491,7 +517,7 @@ shift only). Actions: `Reassign` (to the event's Staff tab, for admins), `Mark f
 
 **D13 · Reports `/admin/reports`**
 List of generated reports with kind, event, state (`queued / running / ready / failed`), and download.
-Event report view has tabs per report type; charts are drawn with the same tokens (hairline grid, mono
+Event report view has tabs per report type; charts are drawn with the same tokens (a tonal ground, no grid lines, mono
 axes, no fills except one accent). `Export` starts the async job and shows progress (P-14).
 
 **D13c · Event summary `/admin/events/:id/summary`** (D-21)
