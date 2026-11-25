@@ -16,6 +16,14 @@ export interface Config {
   allowedOrigins: string[];
   /** Where attendee sign-in links point. */
   attendeeAppOrigin: string;
+  /**
+   * Where the Admin Command is served: origin and base path, no trailing slash (default
+   * http://localhost:5174/admin). Staff activation links for console roles (and speakers and crew,
+   * who have no console but activate there) point to `<this>/activate#token=…`.
+   */
+  adminAppUrl: string;
+  /** Where the Gate Scanner is served (default http://localhost:5175/scan): security staff activate at `<this>/activate#token=…`. */
+  scannerAppUrl: string;
   /** Ed25519 private JWK (JSON) for access tokens. Generated at startup when absent (dev only). */
   accessTokenPrivateJwk: string | null;
   accessTokenTtlS: number;
@@ -127,6 +135,22 @@ export function parseTrustProxy(v: string | undefined): Config["trustProxy"] {
   return list;
 }
 
+/**
+ * Where an app is served: an absolute http(s) URL with no query, fragment or trailing slash (links are
+ * built as `<url>/activate#token=…`, so the token stays in the fragment and never reaches a server log).
+ */
+function appUrl(name: string, v: string) {
+  let u: URL;
+  try {
+    u = new URL(v);
+  } catch {
+    throw new ConfigError(`${name} must be an absolute URL, got "${v}"`);
+  }
+  if ((u.protocol !== "http:" && u.protocol !== "https:") || u.search || u.hash || u.username || u.password || v.endsWith("/")) {
+    throw new ConfigError(`${name} must be an http(s) origin and path with no query, fragment, credentials or trailing slash, got "${v}"`);
+  }
+}
+
 /** Range checks shared by env loading and programmatic overrides (tests, embedding). */
 export function validateConfig(c: Config): Config {
   const range = (name: string, v: number, min: number, max: number) => {
@@ -162,6 +186,8 @@ export function validateConfig(c: Config): Config {
   range("REPORT_EMAIL_LINK_TTL_S", c.reportEmailLinkTtlS, 300, 72 * 3600);
   range("EXPORT_RETENTION_DAYS", c.exportRetentionDays, 1, 365);
   if (c.trustProxy === (true as unknown)) throw new ConfigError("trustProxy must never be true");
+  appUrl("ADMIN_APP_URL", c.adminAppUrl);
+  appUrl("SCANNER_APP_URL", c.scannerAppUrl);
   if (typeof c.trustProxy === "number") range("TRUST_PROXY", c.trustProxy, 1, 10);
   if (c.repo === "postgres" && !c.databaseUrl) throw new ConfigError("DATABASE_URL is required with REPO=postgres");
   if (c.production) {
@@ -189,6 +215,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: readonly 
       .map((s) => s.trim())
       .filter(Boolean),
     attendeeAppOrigin: env.ATTENDEE_APP_ORIGIN ?? "http://localhost:5173",
+    adminAppUrl: (env.ADMIN_APP_URL ?? "http://localhost:5174/admin").trim(),
+    scannerAppUrl: (env.SCANNER_APP_URL ?? "http://localhost:5175/scan").trim(),
     accessTokenPrivateJwk: env.ACCESS_TOKEN_PRIVATE_JWK || null,
     accessTokenTtlS: int(env, "ACCESS_TOKEN_TTL_S", 600),
     operatorRefreshTtlS: int(env, "OPERATOR_REFRESH_TTL_S", 12 * 3600),

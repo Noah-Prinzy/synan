@@ -39,21 +39,30 @@ export function inProcessDeskCodes(carrierByIdentifier: (h: string) => CarrierRo
   };
 }
 
+/** Mirrors @synan/db user_invite_create / user_invite_consume / peekUserInvite (only hashes are kept). */
 export function inProcessUserInvites(): UserInvitesRepo {
-  const byHash = new Map<string, { userId: string; expiresAt: Date; used: boolean }>();
+  const byHash = new Map<string, { userId: string; expiresAt: Date; used: boolean; revoked: boolean }>();
   const h = (t: string) => createHash("sha256").update(t).digest("base64url");
+  const statusOf = (v: { expiresAt: Date; used: boolean; revoked: boolean } | undefined, now: Date) =>
+    !v ? "invalid" : v.used ? "already_used" : v.revoked ? "revoked" : v.expiresAt.getTime() <= now.getTime() ? "expired" : "valid";
   return {
     async create({ userId, now }) {
-      for (const [k, v] of byHash) if (v.userId === userId) byHash.delete(k);
+      // Older open invites for the user are revoked (kept, so their link reads as replaced, not unknown).
+      for (const v of byHash.values()) if (v.userId === userId && !v.used) v.revoked = true;
       const token = randomBytes(32).toString("base64url");
-      byHash.set(h(token), { userId, expiresAt: new Date(now.getTime() + 72 * 3600_000), used: false });
+      byHash.set(h(token), { userId, expiresAt: new Date(now.getTime() + 72 * 3600_000), used: false, revoked: false });
       return token;
     },
     async consume(token, now) {
       const v = byHash.get(h(token));
-      if (!v || v.used || v.expiresAt.getTime() <= now.getTime()) return null;
-      v.used = true;
-      return v.userId;
+      const status = statusOf(v, now);
+      if (status !== "valid") return { status, userId: v?.userId ?? null };
+      v!.used = true;
+      return { status: "consumed", userId: v!.userId };
+    },
+    async peek(token, now) {
+      const v = byHash.get(h(token));
+      return { status: statusOf(v, now), userId: v?.userId ?? null, expiresAt: v?.expiresAt ?? null };
     },
   };
 }

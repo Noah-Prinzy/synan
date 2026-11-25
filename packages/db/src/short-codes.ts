@@ -11,6 +11,7 @@ import { setVaultScope } from "./client";
 import type { Cipher } from "./crypto/index";
 import { credentials } from "./schema/credentials";
 import { registrations } from "./schema/entitlement";
+import { user_invites } from "./schema/auth2";
 import { users } from "./schema/people";
 import { attendees } from "./schema/vault";
 import { decryptAttendeeRow, type AttendeeIdentity } from "./secrets";
@@ -121,6 +122,22 @@ export async function createUserInvite(
   )[0]!;
   const created = x.status === "created";
   return { status: x.status as "created" | "unknown_user", token: created ? token : null, expires_at: created ? expires : null, revoked: Number(x.revoked) };
+}
+
+/**
+ * Reads an activation token's state without consuming it (the activation screen, before a password
+ * is chosen): the status `consumeUserInvite` would answer, with `valid` for one it would consume.
+ */
+export async function peekUserInvite(
+  db: DbOrTx,
+  token: string,
+  now?: Date,
+): Promise<{ status: "valid" | "invalid" | "expired" | "already_used" | "revoked"; user_id: string | null; expires_at: Date | null }> {
+  const at = now ?? new Date();
+  const r = (await db.select().from(user_invites).where(eq(user_invites.token_hash, hashToken(token))).limit(1))[0];
+  if (!r) return { status: "invalid", user_id: null, expires_at: null };
+  const status = r.used_at ? "already_used" : r.revoked_at ? "revoked" : r.expires_at.getTime() <= at.getTime() ? "expired" : "valid";
+  return { status, user_id: r.user_id, expires_at: r.expires_at };
 }
 
 /** Consumes an activation token exactly once. */

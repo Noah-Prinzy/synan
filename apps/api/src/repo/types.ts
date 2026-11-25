@@ -773,9 +773,15 @@ export interface DeskCodesRepo {
 export interface UserInvitesRepo {
   /** A 72-hour single-use activation token; older open invites for the user are revoked. */
   create(i: { userId: string; createdBy: string | null; now: Date }): Promise<string>;
-  /** The user id if the token is known, unused, unrevoked and unexpired. */
-  consume(token: string, now: Date): Promise<string | null>;
+  /**
+   * Spends the token once: `consumed` with the user id if it was known, unused, unrevoked and
+   * unexpired; otherwise why not (SQL: @synan/db consumeUserInvite).
+   */
+  consume(token: string, now: Date): Promise<{ status: InviteStatus | "consumed"; userId: string | null }>;
+  /** The token's state without spending it (`valid` = consume would succeed now). SQL: peekUserInvite. */
+  peek(token: string, now: Date): Promise<{ status: InviteStatus | "valid"; userId: string | null; expiresAt: Date | null }>;
 }
+export type InviteStatus = "invalid" | "expired" | "already_used" | "revoked";
 
 export interface Repos {
   users: UsersRepo;

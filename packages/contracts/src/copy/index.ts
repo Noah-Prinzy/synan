@@ -31,6 +31,15 @@ import type { ErrorCode } from "../errors/index.js";
 /** Gate colours, in severity order (01 §7). `none` = not shown at a gate / ignored. */
 export const GATE_TONE_VALUES = ["green", "amber", "red", "none"] as const satisfies readonly GateTone[];
 
+/* -------------------------------------------------------- staff passwords */
+
+/**
+ * Staff password rules (03 §3): enforced by POST /auth/activate, and shown as they are typed on the
+ * activation screens of the Admin Command and the Gate Scanner. Length only (no composition rules):
+ * spaces are allowed, so a few unrelated words make a good password.
+ */
+export const STAFF_PASSWORD = { min: 12, max: 200 } as const;
+
 /* -------------------------------------------------------------- API errors */
 
 export interface ErrorCopy {

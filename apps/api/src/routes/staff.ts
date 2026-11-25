@@ -7,7 +7,9 @@
  * - Handover: the assignee (or an operator) closes the shift with a summary of admitted, refused and
  *   offline-synced scans. Server time stamps it.
  * - Invite: an admin creates a staff user without a password; a one-time activation link (stored
- *   hashed, 72 h) lets them set one. Attendees are never users.
+ *   hashed, 72 h) lets them set one, in the role's own app (the Gate Scanner for security staff, the
+ *   Admin Command otherwise), the token in the fragment. An account never activated may be invited
+ *   again (the earlier links stop working). Attendees are never users.
  * - MFA enrolment (O-22): a pending TOTP secret is shown once and becomes active when a code from it
  *   is confirmed. Re-enrolling an enrolled account needs a fresh MFA step-up.
  * - Heartbeat (O-22): the scanner's REST heartbeat feeds gate health, for its current checkpoint only.
@@ -21,7 +23,9 @@ import { BRAND } from "../brand.js";
 import { currentAssignments, deskEventIds, noteScanner } from "../domain/scope.js";
 import { mount } from "../http/route.js";
 import { hashPassword, newTotpSecret, verifyTotp } from "../lib/crypto.js";
-import type { StaffAssignmentRow, UserRow } from "../repo/types.js";
+import type { InviteStatus, StaffAssignmentRow, UserRow } from "../repo/types.js";
+import type { Config } from "../config.js";
+import type { Role } from "@synan/contracts/enums";
 
 const ENROL_TTL_MS = 10 * 60_000;
 const STAFF_ROLES = new Set(["security_staff", "speaker", "crew", "desk_clerk"]);
@@ -30,7 +34,37 @@ export const capabilitiesOf = (role: string): string[] =>
   (Object.entries(endpoints) as [string, { access: readonly string[] }][]).filter(([, e]) => e.access.includes(role)).map(([name]) => name).sort();
 const DENIED = new Set(["denied_room", "capacity_block", "revoked", "suspended", "unknown_token", "wristband_required", "pass_spent"]);
 
-export const assignmentDto = (a: StaffAssignmentRow) => ({
+/**
+ * The app a role's account is used in, so where its activation link opens (01 §2–§3): the Gate
+ * Scanner for security staff; the Admin Command for every other role (speakers and crew have no
+ * console, and the console tells them so after they sign in). The token travels in the fragment,
+ * never the path or the query, so it reaches no server log, proxy or Referer header.
+ */
+export function activationLink(config: Pick<Config, "adminAppUrl" | "scannerAppUrl">, role: Role, token: string): string {
+  return `${role === "security_staff" ? config.scannerAppUrl : config.adminAppUrl}/activate#token=${token}`;
+}
+
+/** The invitation email for a role: the link, what it is for, and that it works once for 72 hours. */
+export function inviteMail(config: Pick<Config, "adminAppUrl" | "scannerAppUrl">, role: Role, token: string) {
+  const link = activationLink(config, role, token);
+  const then =
+    role === "security_staff"
+      ? "then sign in to the Gate Scanner on your gate's phone or tablet."
+      : role === "speaker" || role === "crew"
+        ? "then sign in to see your account. Your role has no console: at the event, your access is your credential."
+        : "then sign in to the Admin Command.";
+  return {
+    subject: `${BRAND.name}: activate your staff account`,
+    text: `Set your password with this link (it works once, for 72 hours), ${then}\n\n${link}\n\nIf the link has expired, ask an admin to send you a new invitation. If you did not expect this email, ignore it: nothing happens unless the link is used.`,
+  };
+}
+
+const activationRefused = (status: InviteStatus | "valid" | "consumed") =>
+  status === "expired"
+    ? new ContractError("LINK_EXPIRED", "This activation link has expired. Ask an admin to send you a new invitation.")
+    : new ContractError("LINK_INVALID", "This activation link is not valid, or was already used. Ask an admin to send you a new invitation.");
+
+export const assignmentDto =(a: StaffAssignmentRow) => ({
   id: a.id, user_id: a.user_id, checkpoint_id: a.checkpoint_id, shift_start: a.shift_start.toISOString(), shift_end: a.shift_end.toISOString(),
   event_id: a.event_id ?? null, handed_over_at: a.handed_over_at?.toISOString() ?? null,
 });
@@ -64,23 +98,54 @@ export function staffRoutes(x: Express, app: AppContext) {
   });
 
   mount(x, app, endpoints.inviteStaff, async ({ body, ctx }) => {
-    if (await app.repos.users.byEmail(body.email)) throw new ContractError("CONFLICT", "A user with this address already exists.");
-    const user: UserRow = { id: randomUUID(), email: body.email, password_hash: "", role: body.role, mfa_enrolled_at: null, mfa_secret: null, display_name: body.display_name?.trim() || null };
+    const existing = await app.repos.users.byEmail(body.email);
+    // An account that was invited but never activated may be invited again (the earlier links stop
+    // working); an activated one may not: this is no way to reset someone's password.
+    if (existing && existing.password_hash !== "") throw new ContractError("CONFLICT", "A user with this address already exists.");
+    const user: UserRow = existing
+      ? { ...existing, role: body.role }
+      : { id: randomUUID(), email: body.email, password_hash: "", role: body.role, mfa_enrolled_at: null, mfa_secret: null, display_name: body.display_name?.trim() || null };
     // The account, its activation token and the email are one unit of work.
     await app.repos.transaction(async (s) => {
-      await s.repos.users.insert(user);
+      if (!existing) await s.repos.users.insert(user);
+      else if (existing.role !== user.role) await s.repos.users.setRole(user.id, user.role);
       const token = await s.repos.userInvites.create({ userId: user.id, createdBy: ctx!.sub, now: new Date(app.clock.now()) });
-      const link = `${app.config.attendeeAppOrigin}/staff/activate#token=${token}`;
-      await app.mail.send({ to: body.email, tag: "staff.invite", subject: `${BRAND.name}: activate your staff account`, text: `Set your password with this link (works once, 72 hours):\n\n${link}` }, s);
+      await app.mail.send({ to: body.email, tag: "staff.invite", ...inviteMail(app.config, user.role, token) }, s);
     });
-    await audit(ctx!.sub, "staff.invite", `user:${user.id}`, { role: user.role });
+    await audit(ctx!.sub, "staff.invite", `user:${user.id}`, {
+      role: user.role,
+      ...(existing ? { reinvite: true, ...(existing.role !== user.role ? { from_role: existing.role } : {}) } : {}),
+    });
     return staffDto(user);
   });
 
+  // Public, behind the `auth` rate limit (per address, failures only, like sign-in). The token is the
+  // only input: neither call takes or answers an email address, so neither says whether an account exists.
+  mount(x, app, endpoints.checkActivation, async ({ body, ip }) => {
+    const r = await app.repos.userInvites.peek(body.token, new Date(app.clock.now()));
+    if (r.status !== "valid") {
+      // A link that cannot be used answers 200 with its state, but counts as a failed attempt, so the
+      // check is no unlimited oracle for guessed tokens (the same bucket the route checks before calling).
+      app.rateLimiter.hit(`ip:${ip}:${endpoints.checkActivation.path}`, app.config.rateLimits.authPerMin, 60_000);
+      return { state: r.status === "expired" ? ("expired" as const) : r.status === "already_used" ? ("used" as const) : ("invalid" as const) };
+    }
+    const u = r.userId ? await app.repos.users.byId(r.userId) : null;
+    if (!u || !r.expiresAt) return { state: "invalid" as const };
+    return { state: "valid" as const, role: u.role, expires_at: r.expiresAt.toISOString() };
+  });
+
   mount(x, app, endpoints.activateStaff, async ({ body }) => {
-    const userId = await app.repos.userInvites.consume(body.token, new Date(app.clock.now()));
-    if (!userId) throw new ContractError("LINK_INVALID");
-    await app.repos.users.setPassword(userId, await hashPassword(body.password));
+    // Refuse a dead link before the (deliberately slow) password hash, then spend the link and set the
+    // password in one unit of work: a failure leaves the link usable, and a link works exactly once.
+    const peek = await app.repos.userInvites.peek(body.token, new Date(app.clock.now()));
+    if (peek.status !== "valid") throw activationRefused(peek.status);
+    const hash = await hashPassword(body.password);
+    const userId = await app.repos.transaction(async (s) => {
+      const r = await s.repos.userInvites.consume(body.token, new Date(app.clock.now()));
+      if (r.status !== "consumed" || !r.userId) throw activationRefused(r.status);
+      await s.repos.users.setPassword(r.userId, hash);
+      return r.userId;
+    });
     await app.audit.append({ actorId: userId, action: "staff.activate", target: `user:${userId}`, meta: {} });
     return { ok: true as const };
   });

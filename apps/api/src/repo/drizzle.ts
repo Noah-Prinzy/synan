@@ -80,6 +80,7 @@ import {
   consumeDeskCode,
   createUserInvite,
   consumeUserInvite,
+  peekUserInvite,
   startMfaEnrolment,
   readPendingMfaSecret,
   confirmMfaEnrolment,
@@ -411,7 +412,11 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       },
       async consume(token, now) {
         const r = await consumeUserInvite(db, token, now);
-        return r.status === "consumed" ? r.user_id : null;
+        return { status: r.status, userId: r.user_id };
+      },
+      async peek(token, now) {
+        const r = await peekUserInvite(db, token, now);
+        return { status: r.status, userId: r.user_id, expiresAt: r.expires_at };
       },
     },
     webhookDeliveries: {
