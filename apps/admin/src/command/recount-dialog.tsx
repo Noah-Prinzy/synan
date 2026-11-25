@@ -6,7 +6,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { ERROR_COPY } from "@synan/contracts/copy";
 import { formatNumber } from "@synan/ui/data";
-import { ActionButton } from "@synan/ui/components";
+import { ActionButton, Button, controlClass } from "@synan/ui/components";
 import { useCommand } from "../live/context";
 import { useSlice } from "../live/slice";
 
@@ -67,25 +67,25 @@ export function RecountDialog({ roomId, onClose }: { roomId: string | null; onCl
         event.preventDefault();
         close();
       }}
-      className="m-auto w-full max-w-96 border border-foreground/25 bg-popover p-0 text-13 text-foreground backdrop:bg-scrim"
+      className="m-auto w-[calc(100vw-2rem)] max-w-104 bg-solid p-0 text-13 text-foreground shadow-pop backdrop:bg-scrim"
     >
       {room ? (
         <form onSubmit={submit}>
-          <header className="border-b border-border px-4 pt-3 pb-2.5">
-            <h2 id={titleId} className="text-15 font-medium">
+          <header className="px-6 pt-6">
+            <h2 id={titleId} className="font-display text-21 leading-snug">
               Recount {room.name}
             </h2>
-            <p id={hintId} className="mt-1 text-12 text-muted-foreground">
+            <p id={hintId} className="mt-1 text-13 text-muted-foreground">
               Sets the count to the headcount you observed. Recorded in the audit log with your name.
             </p>
           </header>
-          <div className="grid grid-cols-2 border-b border-border">
-            <div className="border-r border-border px-4 py-3">
-              <p className="text-11 text-muted-foreground">Counted now</p>
-              <p className="font-mono text-21 tabular-nums">{live ? formatNumber(live.occupancy) : "—"}</p>
+          <div className="grid grid-cols-2 gap-4 px-6 pt-5">
+            <div>
+              <p className="text-12 text-muted-foreground">Counted now</p>
+              <p className="mt-1.5 font-mono text-28 leading-none tabular-nums">{live ? formatNumber(live.occupancy) : "—"}</p>
             </div>
-            <label className="block px-4 py-3">
-              <span className="text-11 text-muted-foreground">Headcount</span>
+            <label className="block">
+              <span className="text-12 text-muted-foreground">Headcount</span>
               <input
                 autoFocus
                 required
@@ -93,29 +93,29 @@ export function RecountDialog({ roomId, onClose }: { roomId: string | null; onCl
                 pattern="[0-9]*"
                 value={count}
                 onChange={(e) => setCount(e.target.value.replace(/[^0-9]/g, ""))}
-                className="mt-0.5 block w-full border-b border-border bg-transparent font-mono text-21 tabular-nums outline-none focus:border-brand"
+                className={controlClass("compact", false, "mt-1.5 block h-10 font-mono text-21 tabular-nums")}
               />
             </label>
           </div>
-          <label className="block border-b border-border px-4 py-3">
-            <span className="text-11 text-muted-foreground">Note (optional)</span>
+          <label className="block px-6 pt-4">
+            <span className="text-12 text-muted-foreground">Note (optional)</span>
             <input
               value={note}
               maxLength={500}
               onChange={(e) => setNote(e.target.value)}
               placeholder="Counted from the balcony at 11:50"
-              className="mt-1 block w-full bg-transparent text-13 outline-none placeholder:text-muted-foreground/60"
+              className={controlClass("compact", false, "mt-1.5 block")}
             />
           </label>
           {state === "error" ? (
-            <p role="alert" className="border-b border-border px-4 py-2 text-12 text-destructive">
+            <p role="alert" className="px-6 pt-3 text-13 text-destructive">
               {ERROR_COPY.INTERNAL.title}. {ERROR_COPY.INTERNAL.message}
             </p>
           ) : null}
-          <footer className="grid grid-cols-2">
-            <button type="button" onClick={close} className="border-r border-border px-4 py-2.5 text-left text-13 text-muted-foreground hover:text-foreground">
+          <footer className="flex flex-wrap items-center justify-end gap-2 px-6 pt-6 pb-6">
+            <Button type="button" size="compact" variant="quiet" onClick={close}>
               Cancel
-            </button>
+            </Button>
             <ActionButton
               variant="primary"
               disabled={!valid}
@@ -127,7 +127,7 @@ export function RecountDialog({ roomId, onClose }: { roomId: string | null; onCl
                 await store.recount(roomId, n, note.trim() || undefined);
                 window.setTimeout(close, 700);
               }}
-              className="h-full justify-items-start px-4 py-2.5 text-13"
+              size="compact"
             >
               {valid ? `Set count to ${formatNumber(Number(count))}` : "Set count"}
             </ActionButton>

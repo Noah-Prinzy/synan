@@ -56,10 +56,10 @@ export default function WorkspaceSettings() {
         </div>
         <aside aria-label="On this page" className="hidden py-8 xl:block">
           <nav aria-label="Settings sections" className="sticky top-8">
-            <h2 className="border-b border-border pb-2 text-13 font-medium">On this page</h2>
+            <h2 className="pb-2 text-13 font-medium">On this page</h2>
             <ul className="text-13">
               {SECTIONS.map(([id, label]) => (
-                <li key={id} className="border-b border-border">
+                <li key={id} className="">
                   <a
                     href={`#${id}`}
                     className="flex min-h-10 items-center text-muted-foreground transition-colors duration-120 ease-standard hover:text-foreground focus-visible:text-foreground motion-reduce:transition-none"
@@ -83,7 +83,7 @@ export default function WorkspaceSettings() {
 /** A section's save row: what is unsaved, and the save button. */
 function SaveRow({ dirty, children, note }: { dirty: boolean; children: ReactNode; note?: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border pt-3">
+    <div className="flex flex-wrap items-center justify-end gap-3 pt-3">
       <span role="status" aria-live="polite" className={cn("mr-auto text-12", dirty ? "text-foreground" : "text-muted-foreground")}>
         {dirty ? "Unsaved changes" : (note ?? "Saved")}
       </span>
@@ -95,7 +95,7 @@ function SaveRow({ dirty, children, note }: { dirty: boolean; children: ReactNod
 /** A section's heading inside the form column: a ruled label, flush with the fields below. */
 function FormHead({ id, title, meta }: { id: string; title: string; meta?: ReactNode }) {
   return (
-    <header className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
+    <header className="flex items-baseline justify-between gap-3 pb-2">
       <h2 id={id} className="text-15 font-medium">
         {title}
       </h2>
@@ -278,11 +278,11 @@ function Capacity({ event, readOnly, onSaved }: { event: EventRecord; readOnly: 
         <p className="text-13 text-muted-foreground">This event uses no rooms yet.</p>
       ) : null}
       {rooms.length > 0 ? (
-        <ul className="border-t border-border">
+        <ul className="">
           {rooms.map((room) => {
             const id = `cap-${room.id}`;
             return (
-              <li key={room.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-1 border-b border-border py-2">
+              <li key={room.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-1 py-2">
                 <label htmlFor={id} className="min-w-0 pt-1.5 text-13">
                   <span className="block truncate">{room.name}</span>
                   <span className="block text-12 text-muted-foreground">

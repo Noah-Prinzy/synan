@@ -31,7 +31,7 @@ export class ScreenBoundary extends Component<{ children: ReactNode; resetKey: s
         <button
           type="button"
           onClick={() => this.setState({ failed: false })}
-          className="mt-4 border border-border px-3 py-1.5 text-12 font-medium hover:border-foreground/50"
+          className="mt-4 h-8 bg-surface-2 px-3 text-13 font-medium hover:bg-surface-3 pointer-coarse:h-11"
         >
           Reload the screen
         </button>

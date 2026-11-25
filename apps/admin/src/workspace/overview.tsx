@@ -102,7 +102,7 @@ export default function WorkspaceOverview() {
       <div className={SPLIT}>
         <div className="flex min-w-0 flex-col gap-6 px-4 py-6 sm:px-6 2xl:px-8">
           {over ? (
-            <section aria-labelledby="ov-over" className="border border-border">
+            <section aria-labelledby="ov-over" className="">
               <SectionHead id="ov-over" title="The event is over" className={PANEL_HEAD} />
               <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
                 <p className="max-w-[60ch] text-13 leading-relaxed text-muted-foreground">
@@ -115,7 +115,7 @@ export default function WorkspaceOverview() {
               </div>
             </section>
           ) : readiness.status === "loading" ? (
-            <LoadingState label="Checking readiness…" className="border border-border px-4 sm:px-4" />
+            <LoadingState label="Checking readiness…" className="px-4 sm:px-4" />
           ) : readiness.status === "error" ? (
             <ErrorState title="Could not check readiness" error={readiness.error} onRetry={() => readiness.reload()} className="m-0 sm:m-0" />
           ) : event.state !== "draft" ? (
@@ -128,7 +128,7 @@ export default function WorkspaceOverview() {
             />
           )}
 
-          <section aria-labelledby="ov-next" className="border border-border">
+          <section aria-labelledby="ov-next" className="">
             <SectionHead
               id="ov-next"
               title={over ? "Sessions" : "Next sessions"}
@@ -160,7 +160,7 @@ export default function WorkspaceOverview() {
                     return (
                       <li
                         key={s.id}
-                        className="grid grid-cols-[6.5rem_minmax(0,1fr)_auto] items-center gap-4 border-b border-border px-4 py-2.5 last:border-b-0 sm:grid-cols-[8rem_minmax(0,1fr)_auto]"
+                        className="grid grid-cols-[6.5rem_minmax(0,1fr)_auto] items-center gap-4 px-4 py-2.5 sm:grid-cols-[8rem_minmax(0,1fr)_auto]"
                       >
                         <span className="min-w-0">
                           <span className="block font-mono text-13 tabular-nums">
@@ -188,7 +188,7 @@ export default function WorkspaceOverview() {
           </section>
         </div>
 
-        <aside className="min-w-0 border-t border-border lg:border-t-0 lg:border-l">
+        <aside className="min-w-0 ">
           <section aria-labelledby="ov-facts">
             <SectionHead id="ov-facts" title="Facts" />
             <KeyValues
@@ -284,15 +284,15 @@ export default function WorkspaceOverview() {
               ]}
             />
           </section>
-          <nav aria-labelledby="ov-links" className="border-t border-border">
+          <nav aria-labelledby="ov-links" className="">
             <SectionHead id="ov-links" title="In this event" />
             <ul>
               {QUICK_LINKS.filter(([to]) => can(WORKSPACE_TAB_NEED[to])).map(([to, label, detail]) => (
-                <li key={to} className="border-b border-border last:border-b-0">
+                <li key={to} className=" ">
                   <Link
                     to={`/events/${event.id}/${to}`}
                     className={cn(
-                      "group flex min-h-12 items-center justify-between gap-3 py-2 transition-colors duration-120 ease-standard hover:bg-foreground/[0.03] motion-reduce:transition-none",
+                      "group flex min-h-12 items-center justify-between gap-3 py-2 transition-colors duration-120 ease-standard hover:bg-surface-2 motion-reduce:transition-none",
                       RAIL_X,
                     )}
                   >
@@ -323,8 +323,8 @@ function PublishedReadiness({ items, eventId }: { items: ReadinessItem[]; eventI
 
   if (allClear && !open) {
     return (
-      <section aria-labelledby="ov-ready" className="border border-border">
-        <header className="flex min-h-10 flex-wrap items-center justify-between gap-x-3 border-b border-border px-4">
+      <section aria-labelledby="ov-ready" className="">
+        <header className="flex min-h-10 flex-wrap items-center justify-between gap-x-3 px-4">
           <h2 id="ov-ready" className="py-2 text-13 font-medium">
             Readiness
           </h2>
@@ -424,7 +424,7 @@ function Kpis({
   const words = (text: string) => <span className="font-sans">{text}</span>;
 
   return (
-    <dl className={cn("grid grid-cols-2 gap-px border-b border-border bg-border sm:grid-cols-3", STRIP_COLUMNS)} aria-busy={counts.status === "loading"}>
+    <dl className={cn("grid grid-cols-2 gap-px bg-surface-3 sm:grid-cols-3", STRIP_COLUMNS)} aria-busy={counts.status === "loading"}>
       <KpiCell
         label="Registered"
         className={CELL}

@@ -26,20 +26,20 @@ export function DiffView({ changes, onPick }: { changes: Change[]; onPick?: (cha
         if (items.length === 0) return null;
         return (
           <section key={group.kind} aria-label={`${group.title}: ${items.length}`}>
-            <h3 className="flex items-baseline justify-between border-b border-border pb-1 text-12 font-medium">
+            <h3 className="flex items-baseline justify-between pb-1 text-12 font-medium">
               {group.title}
               <span className="font-mono text-11 font-normal text-muted-foreground tabular-nums">{items.length}</span>
             </h3>
             <ul>
               {items.map((change) => (
-                <li key={change.key} className="grid grid-cols-[1rem_3.25rem_minmax(0,1fr)] gap-x-2 border-b border-border py-1.5 text-13">
+                <li key={change.key} className="grid grid-cols-[1rem_3.25rem_minmax(0,1fr)] gap-x-2 py-1.5 text-13">
                   <span aria-hidden="true" className={`font-mono ${group.kind === "removed" ? "text-destructive" : "text-muted-foreground"}`}>
                     {group.sign}
                   </span>
                   <span className="text-11 leading-5 text-muted-foreground">{TARGET_WORD[change.target]}</span>
                   <span className="min-w-0">
                     {onPick && change.select ? (
-                      <button type="button" onClick={() => onPick(change)} className="text-left font-medium underline decoration-border underline-offset-4 hover:decoration-brand">
+                      <button type="button" onClick={() => onPick(change)} className="text-left font-medium underline decoration-foreground/30 underline-offset-4 hover:decoration-brand">
                         {change.name}
                       </button>
                     ) : (

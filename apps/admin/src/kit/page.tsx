@@ -1,14 +1,14 @@
 /**
  * Page structure every admin screen shares, so headers, section heads and spacing read the
- * same from one screen to the next (docs/05 §2: an instrument — hairline panels, no cards).
+ * same from one screen to the next (docs/05 §2, D-37: an instrument — tonal panels, no rules).
  *
  * Layout rules (docs/05 layout and density). Use these names, not new numbers:
  *
  *   spacing     4px base, 8px rhythm: 4 · 8 · 12 · 16 · 20 · 24 · 32 · 40 · 48.
  *   gutter      the page's side gutter: 16px on a phone, 24px from 640, 32px from 1536 (GUTTER_X).
- *   header      one PageHeader per screen: optional back link, a 28px display title, one meta line,
+ *   header      one PageHeader per screen: optional back link (mono capitals), a display title, one meta line,
  *               actions on the right. No screen codes on screen; the title says where you are.
- *   panels      a SectionHead is a 40px ruled band: 13px medium title, 12px meta. Panel bodies pad
+ *   panels      a SectionHead is a mono capital eyebrow with a 12px meta, set apart by space. Panel bodies pad
  *               16px in a rail or narrow column (PAD_TIGHT), 20px in a main column (PAD).
  *   type floor  body and table cells 13px; labels, table heads and meta 12px; 11px only for unit
  *               suffixes and the status bar. Figures in mono with tabular numerals.
@@ -20,8 +20,8 @@
  *               main column below 1024, so a narrow column never carries a wide one's density.
  *
  *   PageHeader   back link, title, one meta line, actions on the right.
- *   SectionHead  a 40px ruled band naming a panel, with a quiet meta on the right.
- *   Panel        a hairline-bounded block with an optional SectionHead.
+ *   SectionHead  a mono capital label naming a panel, with a quiet meta on the right.
+ *   Panel        a tonal surface (a soft depth on light) with an optional SectionHead.
  *   KeyValues    a two-column definition list of facts.
  */
 import type { ReactNode } from "react";
@@ -55,15 +55,15 @@ export const TYPE = {
 
 /**
  * A row action repeated down a table or list (Duplicate, Handover, Open): quiet at rest — muted text,
- * no frame — with a hairline on hover and focus. 32px tall on a mouse, 44px under a coarse pointer.
+ * no frame — with a tonal step on hover and focus. 32px tall on a mouse, 44px under a coarse pointer.
  * Never a filled or bordered button in every row.
  */
 export const ROW_ACTION =
-  "pressable inline-flex h-8 shrink-0 items-center gap-1.5 border border-transparent px-2.5 text-13 whitespace-nowrap text-muted-foreground transition-colors duration-120 ease-standard hover:border-border hover:text-foreground focus-visible:border-border focus-visible:text-foreground disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none pointer-coarse:h-11 [&_svg]:size-4 [&_svg]:shrink-0";
+  "pressable inline-flex h-8 shrink-0 items-center gap-1.5 px-2.5 text-13 whitespace-nowrap text-muted-foreground hover:bg-surface-2 hover:text-foreground focus-visible:bg-surface-2 focus-visible:text-foreground disabled:pointer-events-none disabled:opacity-50 pointer-coarse:h-11 [&_svg]:size-4 [&_svg]:shrink-0";
 
 /** A square icon-only control: 32px on a mouse, 44px under a coarse pointer, icon 16px at 1.5px stroke. */
 export const ICON_BUTTON =
-  "pressable inline-grid size-8 shrink-0 place-items-center border border-transparent text-muted-foreground transition-colors duration-120 ease-standard hover:border-border hover:text-foreground focus-visible:border-border disabled:pointer-events-none disabled:opacity-40 motion-reduce:transition-none pointer-coarse:size-11 [&_svg]:size-4";
+  "pressable inline-grid size-8 shrink-0 place-items-center text-muted-foreground hover:bg-surface-2 hover:text-foreground focus-visible:bg-surface-2 disabled:pointer-events-none disabled:opacity-40 pointer-coarse:size-11 [&_svg]:size-4";
 
 export function PageHeader({
   code: _code,
@@ -90,15 +90,15 @@ export function PageHeader({
   return (
     <header
       className={cn(
-        "flex flex-wrap items-end justify-between gap-x-6 gap-y-3 border-b border-border pt-5 pb-5 sm:pt-6",
+        "flex flex-wrap items-end justify-between gap-x-6 gap-y-4 pt-8 pb-6 sm:pt-10",
         GUTTER_X,
         className,
       )}
     >
       <div className="min-w-0">
-        {back ? <p className="mb-1 flex items-center gap-2 text-12 text-muted-foreground">{back}</p> : null}
-        <h1 className="font-display text-28 leading-tight tracking-tight text-balance">{title}</h1>
-        {meta ? <div className="mt-1.5 max-w-[80ch] text-13 text-muted-foreground">{meta}</div> : null}
+        {back ? <p className="mb-3 flex items-center gap-2 font-mono text-12 tracking-[0.08em] text-muted-foreground uppercase">{back}</p> : null}
+        <h1 className="type-title">{title}</h1>
+        {meta ? <div className="mt-2 max-w-[80ch] text-13 text-muted-foreground">{meta}</div> : null}
       </div>
       {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
     </header>
@@ -119,8 +119,8 @@ export function SectionHead({
   className?: string;
 }) {
   return (
-    <header className={cn("flex min-h-10 flex-wrap items-center justify-between gap-x-3 border-b border-border px-4 sm:px-5", className)}>
-      <h2 id={id} className="py-2 text-13 font-medium">
+    <header className={cn("flex min-h-10 flex-wrap items-center justify-between gap-x-3 px-4 pt-3 sm:px-5", className)}>
+      <h2 id={id} className="eyebrow-mono py-2">
         {title}
       </h2>
       <div className="flex min-w-0 items-center gap-3">
@@ -147,7 +147,7 @@ export function Panel({
   bodyClassName?: string;
 }) {
   return (
-    <section className={cn("min-w-0 border border-border", className)}>
+    <section className={cn("min-w-0 bg-surface shadow-depth", className)}>
       {title ? <SectionHead title={title} meta={meta} actions={actions} /> : null}
       <div className={bodyClassName}>{children}</div>
     </section>
@@ -159,8 +159,8 @@ export function KeyValues({ rows, className }: { rows: [ReactNode, ReactNode][];
     <dl className={cn("grid grid-cols-[minmax(7rem,auto)_minmax(0,1fr)] text-13", className)}>
       {rows.map(([key, value], index) => (
         <div key={index} className="contents">
-          <dt className="border-t border-border px-4 py-2.5 text-12 text-muted-foreground first-of-type:border-t-0 sm:px-5">{key}</dt>
-          <dd className="min-w-0 border-t border-border px-4 py-2.5 [dt:first-of-type+&]:border-t-0 sm:px-5">{value}</dd>
+          <dt className="px-4 py-2 text-12 text-muted-foreground sm:px-5">{key}</dt>
+          <dd className="min-w-0 px-4 py-2 sm:px-5">{value}</dd>
         </div>
       ))}
     </dl>
@@ -172,6 +172,5 @@ export function FormColumn({ children, className }: { children: ReactNode; class
   return <div className={cn("w-full max-w-160 py-6", GUTTER_X, className)}>{children}</div>;
 }
 
-/** A link styled as text with a hairline underline that turns blue on hover (docs/05 §5). */
-export const linkClass =
-  "text-foreground underline decoration-border underline-offset-4 transition-colors duration-120 ease-standard hover:decoration-brand motion-reduce:transition-none";
+/** A link styled as text with a faint underline that turns blue on hover (docs/05 §5). */
+export const linkClass = "text-foreground underline decoration-foreground/30 underline-offset-4 hover:decoration-brand";

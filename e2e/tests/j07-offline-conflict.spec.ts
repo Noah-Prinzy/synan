@@ -45,7 +45,10 @@ test("J7: the same band admitted at two offline entrances raises one pass-back a
 
   await adminSignInSeeded(page);
   await chooseConsoleEvent(page, w.title);
-  await page.getByRole("navigation", { name: "Admin" }).getByRole("link", { name: "Alerts" }).click();
+  // The console's sections are menus in its top bar (D-37): open Live, then its Alerts page.
+  const nav = page.getByRole("navigation", { name: "Admin" });
+  await nav.getByRole("button", { name: "Live" }).click();
+  await nav.getByRole("link", { name: "Alerts" }).click();
 
   await frontCtx.setOffline(false);
   await expect(front.getByRole("link", { name: /^Gate: Front Door/ })).not.toContainText("queued", { timeout: 20_000 });

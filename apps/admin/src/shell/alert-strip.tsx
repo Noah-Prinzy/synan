@@ -17,6 +17,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Bell } from "lucide-react";
 import { ActionButton, cn } from "@synan/ui/components";
+import { MENU_PANEL } from "@synan/ui/shell";
 import type { BreachAlert } from "@synan/contracts/rest";
 import { SignalShape, formatAge } from "@synan/ui/data";
 import { Can } from "../access/session";
@@ -89,7 +90,7 @@ export function AlertNotice() {
   return (
     <div
       ref={root}
-      className="relative flex shrink-0 items-stretch border-l border-border"
+      className="relative flex shrink-0 items-center"
       onKeyDown={(event) => {
         if (event.key === "Escape" && open) {
           event.preventDefault();
@@ -105,8 +106,8 @@ export function AlertNotice() {
         aria-label={label}
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          "relative flex h-full items-center gap-2 overflow-hidden px-3 text-13 whitespace-nowrap transition-colors duration-120 ease-standard hover:bg-foreground/4 aria-expanded:bg-foreground/4 focus-visible:-outline-offset-2 motion-reduce:transition-none sm:px-4",
-          critical && "bg-destructive/10 hover:bg-destructive/15 aria-expanded:bg-destructive/15",
+          "relative flex h-10 items-center gap-2 overflow-hidden px-3 text-13 whitespace-nowrap pointer-coarse:h-11",
+          critical ? "bg-destructive/15 hover:bg-destructive/20 aria-expanded:bg-destructive/20" : "bg-surface-2 hover:bg-surface-3 aria-expanded:bg-surface-3",
         )}
       >
         {/* A new critical alert: the cell pulses once (no layout change), then holds its tint. */}
@@ -119,7 +120,7 @@ export function AlertNotice() {
             {/* Phone: a count badge on the bell's cell. */}
             <span
               aria-hidden="true"
-              className={cn("relative grid h-5 min-w-5 place-items-center border border-current px-1 font-mono text-12 tabular-nums md:hidden", tone)}
+              className={cn("relative font-mono text-13 tabular-nums md:hidden", tone)}
             >
               {openAlerts.length}
             </span>
@@ -147,7 +148,7 @@ export function AlertNotice() {
           role="dialog"
           aria-label="Alerts"
           tabIndex={-1}
-          className="absolute top-full right-0 z-40 mt-px flex max-h-[calc(100dvh-4rem)] w-[26rem] flex-col border border-border bg-popover text-popover-foreground outline-none max-sm:fixed max-sm:inset-x-0 max-sm:top-12 max-sm:w-auto max-sm:border-x-0"
+          className={cn("absolute top-full right-0 z-40 mt-1 flex max-h-[calc(100dvh-5rem)] w-[26rem] flex-col outline-none max-sm:fixed max-sm:inset-x-2 max-sm:top-15 max-sm:w-auto", MENU_PANEL)}
         >
           <AlertPanel alerts={openAlerts} acked={acked} ready={load.status === "ready"} onNavigate={() => close(false)} />
         </div>
@@ -177,7 +178,7 @@ function AlertPanel({
 
   return (
     <>
-      <header className="flex min-h-10 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
+      <header className="flex min-h-12 shrink-0 items-center justify-between gap-3 px-4 pt-1">
         <h2 className="text-13 font-medium">{rows.length > 0 ? "Open alerts" : "Alerts"}</h2>
         {rows.length > 0 ? <span className="text-12 text-muted-foreground">most severe first</span> : null}
       </header>
@@ -186,12 +187,12 @@ function AlertPanel({
           {ready ? "Nothing needs action right now." : "Alerts appear here once the event's live data has loaded."}
         </p>
       ) : (
-        <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-2">
           {rows.map((alert) => {
             const view = SEVERITY_VIEW[alert.severity];
             const place = where(alert);
             return (
-              <li key={alert.id} className="border-b border-border px-4 py-3 last:border-b-0">
+              <li key={alert.id} className="bg-surface-2 px-3 py-3">
                 <p className={cn("flex items-center gap-1.5 text-12 font-medium", view.text)}>
                   <SignalShape state={view.state} />
                   {view.label}
@@ -226,7 +227,7 @@ function AlertPanel({
                   <Link
                     to={`/alerts?alert=${encodeURIComponent(alert.id)}`}
                     onClick={onNavigate}
-                    className="pressable inline-flex h-8 items-center justify-center px-3 text-13 text-muted-foreground transition-colors duration-120 ease-standard hover:text-foreground motion-reduce:transition-none pointer-coarse:h-11"
+                    className="pressable inline-flex h-8 items-center justify-center px-3 text-13 text-muted-foreground hover:bg-surface-3 hover:text-foreground pointer-coarse:h-11"
                   >
                     Open
                   </Link>
@@ -236,7 +237,7 @@ function AlertPanel({
           })}
         </ul>
       )}
-      <footer className="flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-border px-4 py-2 text-12 text-muted-foreground">
+      <footer className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-2 text-12 text-muted-foreground">
         <span>
           {acked > 0 ? (
             <>

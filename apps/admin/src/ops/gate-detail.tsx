@@ -218,7 +218,7 @@ function GateView({ checkpoint, eventId, timeZone, back }: { checkpoint: Checkpo
             <Results detail={detail.data} />
             <LastScans scans={detail.data.last_scans} timeZone={timeZone} perimeter={checkpoint.perimeter} />
           </div>
-          <aside aria-label="Status, link history and staff" className="min-w-0 border-t border-border lg:border-t-0 lg:border-l">
+          <aside aria-label="Status, link history and staff" className="min-w-0 ">
             <SectionHead title="Status" meta={gate ? "Live" : undefined} />
             <KeyValues
               rows={[
@@ -278,7 +278,7 @@ type TestState = { result: TestRead | null; failed: boolean; unavailable?: boole
 function TestReadLine({ test, gate }: { test: TestState; gate: GateLive | undefined }) {
   if (test.unavailable) {
     return (
-      <p role="status" className={cn("flex min-h-10 items-center gap-2 border-b border-border py-2 text-12 text-muted-foreground", GUTTER_X)}>
+      <p role="status" className={cn("flex min-h-10 items-center gap-2 py-2 text-12 text-muted-foreground", GUTTER_X)}>
         <SignalShape state="idle" className="shrink-0" />
         Test read is not available yet. To check this gate now, scan a test band or pass at it and watch it arrive in the last scans below.
       </p>
@@ -286,7 +286,7 @@ function TestReadLine({ test, gate }: { test: TestState; gate: GateLive | undefi
   }
   if (test.failed || !test.result) {
     return (
-      <p role="alert" className={cn("flex min-h-10 items-center gap-2 border-b border-border py-2 text-12 text-destructive", GUTTER_X)}>
+      <p role="alert" className={cn("flex min-h-10 items-center gap-2 py-2 text-12 text-destructive", GUTTER_X)}>
         <SignalShape state="stop" className="shrink-0" />
         {gate?.link_state === "offline"
           ? "The gate did not answer: it is offline. A test read needs the link; check power and network at the gate."
@@ -296,7 +296,7 @@ function TestReadLine({ test, gate }: { test: TestState; gate: GateLive | undefi
   }
   const read = test.result;
   return (
-    <div className={cn("flex min-h-10 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border py-2 text-12", GUTTER_X)}>
+    <div className={cn("flex min-h-10 flex-wrap items-center gap-x-4 gap-y-1 py-2 text-12", GUTTER_X)}>
       <RewardMoment>
         Reader answered in <span className="font-mono tabular-nums">{read.round_trip_ms} ms</span>
       </RewardMoment>
@@ -368,7 +368,7 @@ function ThroughputChart({ detail, timeZone }: { detail: GateDetail; timeZone: s
         }
       />
       <div className={cn("pt-5 pb-4", GUTTER_X)}>
-        <ol className="flex h-32 items-end gap-1 border-b border-border">
+        <ol className="flex h-32 items-end gap-1">
           {counts.map((count, i) => {
             const start = from + i * bucket_ms;
             return (
@@ -403,7 +403,7 @@ function Results({ detail }: { detail: GateDetail }) {
   const total = detail.results.reduce((sum, row) => sum + row.count, 0);
   const max = Math.max(1, ...detail.results.map((row) => row.count));
   return (
-    <section aria-labelledby="gate-results" className="border-t border-border">
+    <section aria-labelledby="gate-results" className="">
       <SectionHead id="gate-results" title="Results by code" meta="Last hour" className={GUTTER_X} />
       {detail.results.length === 0 ? (
         <p className={cn("py-4 text-13 text-muted-foreground", GUTTER_X)}>No scans at this gate in the last hour.</p>
@@ -412,7 +412,7 @@ function Results({ detail }: { detail: GateDetail }) {
           {detail.results.map((row) => (
             <li key={row.result} className={cn("grid h-9 grid-cols-[10rem_minmax(0,1fr)_3.5rem_3rem] items-center gap-4 sm:grid-cols-[12rem_minmax(0,1fr)_4rem_3.5rem]", GUTTER_X)}>
               <ResultChip result={row.result} className="truncate" />
-              <span aria-hidden="true" className="h-1 bg-border">
+              <span aria-hidden="true" className="h-1 bg-surface-3">
                 <span className="block h-full origin-left bg-foreground/40" style={{ transform: `scaleX(${row.count / max})` }} />
               </span>
               <span className={cn("text-right", TYPE.value)}>{formatNumber(row.count)}</span>
@@ -427,7 +427,7 @@ function Results({ detail }: { detail: GateDetail }) {
 
 function LastScans({ scans, timeZone, perimeter }: { scans: OpsScan[]; timeZone: string; perimeter: boolean }) {
   return (
-    <section aria-labelledby="gate-scans" className="border-t border-border">
+    <section aria-labelledby="gate-scans" className="">
       <SectionHead
         id="gate-scans"
         title="Last 50 scans"
@@ -485,7 +485,7 @@ function LastScans({ scans, timeZone, perimeter }: { scans: OpsScan[]; timeZone:
 function LinkHistory({ detail, timeZone }: { detail: GateDetail; timeZone: string }) {
   const rows = [...detail.link_history].reverse();
   return (
-    <section aria-labelledby="gate-links" className="border-t border-border">
+    <section aria-labelledby="gate-links" className="">
       <SectionHead id="gate-links" title="Link history" meta="This shift, newest first" />
       <ol className="py-2">
         {rows.map((change, i) => {
@@ -525,7 +525,7 @@ function Staff({
     [assignments, checkpointId],
   );
   return (
-    <section aria-labelledby="gate-staff" className="border-t border-border">
+    <section aria-labelledby="gate-staff" className="">
       <SectionHead id="gate-staff" title="Assigned staff" />
       {assignments.status === "loading" ? (
         <p className="px-4 py-3 text-13 text-muted-foreground sm:px-5">Loading…</p>
@@ -545,7 +545,7 @@ function Staff({
           {mine.map((a) => {
             const onShift = !a.handed_over_at && Date.parse(a.shift_start) <= now && now < Date.parse(a.shift_end);
             return (
-              <li key={a.id} className="border-b border-border px-4 py-3 text-13 last:border-b-0 sm:px-5">
+              <li key={a.id} className="px-4 py-3 text-13 sm:px-5">
                 <span className="flex items-center justify-between gap-3">
                   <span className="truncate">{a.staff_name}</span>
                   <StatusDot state={onShift ? "ok" : "idle"} label={a.handed_over_at ? "Handed over" : onShift ? "On shift" : "Off shift"} showLabel />

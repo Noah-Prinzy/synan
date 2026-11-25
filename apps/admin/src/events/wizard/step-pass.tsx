@@ -111,7 +111,7 @@ export function PassStep({ record, forms, setForm, saved, goto, close, loadVenue
       </form>
 
       <aside aria-label="Pass preview" className="min-w-0 lg:sticky lg:top-6 lg:self-start">
-        <div className="mb-3 flex items-baseline justify-between gap-3 border-b border-border pb-2">
+        <div className="mb-3 flex items-baseline justify-between gap-3 pb-2">
           <h2 className="text-13 font-medium">Preview</h2>
           <span className="text-12 text-muted-foreground">Sample attendee</span>
         </div>

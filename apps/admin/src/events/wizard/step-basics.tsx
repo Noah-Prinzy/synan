@@ -170,7 +170,7 @@ export function BasicsStep({ record, forms, setForm, saved, goto, close }: StepC
               )}
             </p>
             <p className="mt-3 truncate font-mono text-12 text-muted-foreground">…/events/{address}</p>
-            <p className="mt-3 border-t border-border pt-2 text-12 text-muted-foreground">
+            <p className="mt-3 pt-2 text-12 text-muted-foreground">
               {form.listed
                 ? "Listed: anyone can find it on the public site and register."
                 : "Not listed: only people with an invitation link can see it."}

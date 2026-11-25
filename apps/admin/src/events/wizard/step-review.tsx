@@ -110,7 +110,7 @@ export function ReviewStep({ record, goto, close, onPublished }: StepContext & {
   if (published) {
     return (
       <div className={`py-8 ${GUTTER_X}`}>
-        <div className="max-w-160 border border-border px-5 py-5">
+        <div className="max-w-160 px-5 py-5">
           <p role="status" className="font-display text-21">
             <RewardMoment>Published. Registration is open.</RewardMoment>
           </p>
@@ -219,7 +219,7 @@ export function ReviewStep({ record, goto, close, onPublished }: StepContext & {
       </div>
 
       <div className="flex min-w-0 flex-col gap-6">
-        <section aria-label="Publish" className="border border-border px-4 py-4">
+        <section aria-label="Publish" className="px-4 py-4">
           <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
             <ActionButton
               action={publish}
@@ -267,7 +267,7 @@ export function ReviewStep({ record, goto, close, onPublished }: StepContext & {
 
         <ReadinessChecklist items={readiness} onFix={goto} title="Before publishing" />
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-4">
           <Button variant="quiet" size="compact" className="-ml-3 text-destructive/80 hover:text-destructive" onClick={() => setConfirmDelete(true)}>
             <Trash2 size={14} strokeWidth={1.5} aria-hidden="true" />
             Delete draft

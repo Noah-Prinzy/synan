@@ -49,7 +49,10 @@ test("J5a: a supervisor revokes a pass under review in the console; the open pas
   const sup = await createStaffWithMfa(w.admin, "supervisor", "sup-j5");
   await adminSignIn(page, sup.email, sup.password);
   await chooseConsoleEvent(page, w.title);
-  await page.getByRole("navigation", { name: "Admin" }).getByRole("link", { name: "Attendees" }).click();
+  // The console's sections are menus in its top bar (D-37): open People, then its Attendees page.
+  const nav = page.getByRole("navigation", { name: "Admin" });
+  await nav.getByRole("button", { name: "People" }).click();
+  await nav.getByRole("link", { name: "Attendees" }).click();
   // The filter is a radio button whose state follows the URL: click until it reads checked.
   const underReview = page.getByRole("radio", { name: "Passes under review" });
   await expect(async () => {

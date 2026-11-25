@@ -85,7 +85,7 @@ export function AttendeeActions({
             setDecided(next.registration_id);
             onChange(next);
           }}
-          className="border-t border-border px-4 py-4 sm:px-5"
+          className="px-4 py-4 sm:px-5"
         />
       ) : null}
       {can("attendees.manage") ? <ManageActions key={row.registration_id} row={row} eventId={eventId} onChange={onChange} /> : null}
@@ -154,7 +154,7 @@ function ManageActions({ row, eventId, onChange }: { row: AttendeeListRow; event
   };
 
   return (
-    <div className="border-t border-border px-4 py-4 sm:px-5">
+    <div className="px-4 py-4 sm:px-5">
       {done ? (
         <div role="status" className="mb-3">
           {done.action === "revoke" ? (
@@ -167,12 +167,12 @@ function ManageActions({ row, eventId, onChange }: { row: AttendeeListRow; event
         </div>
       ) : null}
       <p className="text-12 leading-relaxed text-muted-foreground">Each action is recorded in the audit log.</p>
-      <ul className="mt-3 border-t border-border">
+      <ul className="mt-3">
         {actions.map((action) => {
           const reason = blocked(action, row);
           const copy = ACTION_COPY[action];
           return (
-            <li key={action} className="border-b border-border py-2 last:border-b-0">
+            <li key={action} className="py-2">
               <div className="flex min-h-10 items-center justify-between gap-4">
                 <span className="min-w-0 text-12 text-muted-foreground">
                   {reason ?? copy.detail}
@@ -312,7 +312,7 @@ function useActionForm() {
   return { note, setNote, errors, setErrors, failure, busy, noteId, run };
 }
 
-const FORM = "mt-2 flex flex-col gap-3 border-t border-border pt-3 pb-1";
+const FORM = "mt-2 flex flex-col gap-3 pt-3 pb-1";
 
 function RevokeForm({ row, eventId, onCancel, onDone }: { row: AttendeeListRow; eventId: string; onCancel: () => void; onDone: (next: DeskAttendee) => void }) {
   const form = useActionForm();

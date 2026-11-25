@@ -37,7 +37,7 @@ import { useWorkspaceEvent } from "./parts/context";
 import { HEAD_BLEED, RAIL_X } from "./parts/layout";
 
 /** One export row: what it is on the left, its control on the right, on the page gutter. */
-const EXPORT_ROW = "flex flex-wrap items-center justify-between gap-x-8 gap-y-3 border-b border-border px-4 py-5 sm:px-6 2xl:px-8";
+const EXPORT_ROW = "flex flex-wrap items-center justify-between gap-x-8 gap-y-3 px-4 py-5 sm:px-6 2xl:px-8";
 /** The prepare buttons share one width, so they read as a column. */
 const PREPARE = "min-w-40";
 
@@ -166,7 +166,7 @@ export default function WorkspaceReports() {
           ) : null}
         </section>
 
-        <section aria-labelledby="reports-jobs" className="mt-8 border-t border-border">
+        <section aria-labelledby="reports-jobs" className="mt-8">
           <SectionHead
             id="reports-jobs"
             title="Prepared exports"
@@ -219,7 +219,7 @@ export default function WorkspaceReports() {
           ) : null}
         </section>
         </div>
-        <aside aria-labelledby="reports-onscreen" className="min-w-0 border-t border-border lg:border-t-0 lg:border-l">
+        <aside aria-labelledby="reports-onscreen" className="min-w-0 ">
           <SectionHead id="reports-onscreen" title="On screen" />
           <div className={cn("py-4", RAIL_X)}>
             <p className="text-13 leading-relaxed text-muted-foreground">
@@ -231,7 +231,7 @@ export default function WorkspaceReports() {
               <ArrowUpRight size={16} strokeWidth={1.5} aria-hidden="true" />
             </Link>
           </div>
-          <h3 className={cn("border-t border-border pt-4 pb-1 text-12 text-muted-foreground", RAIL_X)}>What each report holds</h3>
+          <h3 className={cn("pt-4 pb-1 text-12 text-muted-foreground", RAIL_X)}>What each report holds</h3>
           <ul className="pb-3">
             {KINDS.map((k) => (
               <li key={k} className={cn("py-2 text-13", RAIL_X)}>
@@ -254,7 +254,7 @@ function JobState({ row }: { row: ReportRow }) {
     return (
       <span className="block">
         <span className="text-13">{row.state === "queued" ? "Queued" : "Preparing…"}</span>
-        <span className="relative mt-1 block h-px w-full max-w-48 overflow-hidden bg-border">
+        <span className="relative mt-1 block h-px w-full max-w-48 overflow-hidden bg-surface-3">
           <span aria-hidden="true" className="animate-skeleton-sweep absolute inset-y-0 w-1/3 bg-foreground/60" />
         </span>
       </span>
@@ -271,7 +271,7 @@ function JobState({ row }: { row: ReportRow }) {
     <span className="inline-flex items-center gap-1.5 text-13">
       <SignalShape state="ok" className="text-success" />
       {row.download_url ? (
-        <a href={row.download_url} className="underline decoration-border underline-offset-4 hover:decoration-brand">
+        <a href={row.download_url} className="underline decoration-foreground/30 underline-offset-4 hover:decoration-brand">
           Download
         </a>
       ) : (

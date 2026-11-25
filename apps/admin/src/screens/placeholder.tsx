@@ -34,7 +34,7 @@ export function Placeholder({ id }: { id: ScreenId }) {
         }
       />
       <div className={`py-6 ${GUTTER_X}`}>
-        <dl className="grid max-w-240 grid-cols-[7rem_minmax(0,1fr)] border-y border-border text-13 sm:grid-cols-[10rem_minmax(0,1fr)]">
+        <dl className="grid max-w-240 grid-cols-[7rem_minmax(0,1fr)] bg-surface px-5 py-2 text-13 shadow-depth sm:grid-cols-[10rem_minmax(0,1fr)]">
           <Row label="Will do">{screen.purpose}</Row>
           <Row label="Reads">
             <span className="font-mono text-12">{screen.data}</span>
@@ -61,8 +61,8 @@ export function Placeholder({ id }: { id: ScreenId }) {
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <>
-      <dt className="border-t border-border py-3 pr-4 text-12 text-muted-foreground [&:first-child]:border-t-0">{label}</dt>
-      <dd className="min-w-0 border-t border-border py-3 [dt:first-child+&]:border-t-0">{children}</dd>
+      <dt className="py-3 pr-4 text-12 text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 py-3">{children}</dd>
     </>
   );
 }
@@ -91,7 +91,7 @@ export function NotFound() {
 export function Standalone({ id }: { id: ScreenId }) {
   return (
     <div className="grid min-h-dvh place-items-center bg-background p-6 text-13 text-foreground">
-      <div className="w-full max-w-120 border border-border">
+      <div className="w-full max-w-120 bg-surface shadow-depth">
         <Placeholder id={id} />
       </div>
     </div>

@@ -128,11 +128,11 @@ function StepUpForm({ onConfirmed, onCancel }: { onConfirmed: () => void; onCanc
           className="font-mono text-21 tracking-[0.3em] placeholder:font-sans placeholder:text-15 placeholder:tracking-normal"
         />
       </Field>
-      <p className="mt-3 border border-dashed border-foreground/30 px-3 py-2 text-12 text-muted-foreground">
+      <p className="mt-3 bg-surface-2 px-3 py-2 text-12 text-muted-foreground">
         <span className="font-mono text-11 tracking-[0.12em] text-foreground">MOCK</span> · On the real API the console's own prompt asks.
         Any six digits are accepted here, except 000000.
       </p>
-      <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-border pt-3">
+      <div className="mt-4 flex flex-wrap justify-end gap-2 pt-3">
         <Button type="button" variant="secondary" size="sm" onClick={onCancel}>
           Cancel
         </Button>

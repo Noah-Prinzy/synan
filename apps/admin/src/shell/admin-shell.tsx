@@ -1,21 +1,21 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { Link, Outlet, useLocation } from "react-router-dom";
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { AppShell, NavRail, navItemClass } from "@synan/ui/shell";
+import { Outlet, useLocation } from "react-router-dom";
+import { AppShell } from "@synan/ui/shell";
 import { useSession } from "../access/session";
 import { DEV_TOOLS } from "../live/backend";
 import { useCommand } from "../live/context";
-import { navFor, navItemActive } from "../routes";
+import { navFor } from "../routes";
 import { AlertNotice } from "./alert-strip";
 import { ScreenBoundary } from "./screen-boundary";
 import { AdminStatusBar } from "./status-bar";
 import { PhoneNav } from "./phone-nav";
-import { AdminTopBar } from "./top-bar";
+import { SectionsNav } from "./sections";
+import { AdminTopBar, LiveStatus } from "./top-bar";
 
 /** Development only: the scenario switcher and frame sampler, floating apart from the product. */
 const DevTools = DEV_TOOLS ? lazy(() => import("../dev/dev-tools")) : null;
 
-/** The one breakpoint (docs/05 §2): 1280. Below it the rails collapse. */
+/** The wide breakpoint (docs/05 §2): 1280. */
 export const WIDE_QUERY = "(min-width: 80rem)";
 
 export function useMediaQuery(query: string): boolean {
@@ -30,25 +30,16 @@ export function useMediaQuery(query: string): boolean {
   return matches;
 }
 
-const NAV_KEY = "synan.admin.nav";
-
-function readNavPreference(): boolean {
-  try {
-    return window.localStorage.getItem(NAV_KEY) !== "collapsed";
-  } catch {
-    return true;
-  }
-}
-
+/**
+ * The console's frame (D-37): the top bar across the full width — no side rail — the page, and
+ * the status bar. The sections, the alert notice and the status bar are the role's own (D-23): a
+ * role with one screen (the desk clerk) has no sections at all, and only a role that watches the
+ * floor gets the live chrome.
+ */
 export function AdminShell() {
-  const wide = useMediaQuery(WIDE_QUERY);
   const location = useLocation();
-  const [preferExpanded, setPreferExpanded] = useState(readNavPreference);
-  const expanded = wide && preferExpanded;
   const { can } = useSession();
   const { event } = useCommand();
-  // The rail, the menu, the alert notice and the status bar are the role's own (D-23): a role
-  // with one screen has no menu at all, and only a role that watches the floor gets its chrome.
   const groups = useMemo(() => navFor(can, event?.id ?? null), [can, event?.id]);
   const navigable = groups.reduce((n, group) => n + group.items.length, 0) > 1;
 
@@ -57,54 +48,12 @@ export function AdminShell() {
       top={
         <AdminTopBar
           menu={navigable ? <PhoneNav groups={groups} /> : null}
-          rail={navigable ? (expanded ? "expanded" : "collapsed") : null}
-          // The alert notice lives in the top bar, beside the live state (no separate strip row).
+          sections={navigable ? <SectionsNav sections={groups} /> : null}
           alerts={can("alerts.view") ? <AlertNotice /> : null}
         />
       }
-      nav={
-        navigable ? (
-        // Below 640px the rail gives way to the Menu cell in the top bar (PhoneNav).
-        <div className="hidden h-full sm:block">
-        <NavRail
-          label="Admin"
-          groups={groups}
-          expanded={expanded}
-          toggleIcons={[
-            <PanelLeftClose key="collapse" size={16} strokeWidth={1.5} />,
-            <PanelLeftOpen key="expand" size={16} strokeWidth={1.5} />,
-          ]}
-          onToggle={
-            wide
-              ? () => {
-                  const next = !preferExpanded;
-                  setPreferExpanded(next);
-                  try {
-                    window.localStorage.setItem(NAV_KEY, next ? "expanded" : "collapsed");
-                  } catch {
-                    /* preference lasts for this page only */
-                  }
-                }
-              : undefined
-          }
-          renderLink={(item, content) => {
-            // One active entry at a time (routes.ts `navItemActive`), not the router's prefix match.
-            const active = navItemActive(item, location.pathname);
-            return (
-              <Link
-                to={item.to}
-                aria-current={active ? "page" : undefined}
-                title={expanded ? undefined : item.label}
-                className={navItemClass(active, expanded)}
-              >
-                {content}
-              </Link>
-            );
-          }}
-        />
-        </div>
-        ) : null
-      }
+      // On a phone the live gate status sits in a strip under the bar.
+      strip={can("live.view") ? <LiveStatus strip className="flex lg:hidden" /> : null}
       status={can("live.view") ? <AdminStatusBar /> : null}
     >
       <ScreenBoundary resetKey={location.pathname}>

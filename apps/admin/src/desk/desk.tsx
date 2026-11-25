@@ -176,7 +176,7 @@ function Desk({ event, events, onSelectEvent }: { event: CommandEvent; events: C
       ) : null}
 
       <div className="lg:grid lg:min-h-[calc(100dvh-16rem)] lg:grid-cols-12">
-        <section aria-label="Find an attendee" className="min-w-0 lg:col-span-5 lg:border-r lg:border-border 2xl:col-span-4">
+        <section aria-label="Find an attendee" className="min-w-0 lg:col-span-5 2xl:col-span-4">
           <div ref={searchBlock} role="search" className={cn("flex scroll-mt-14 flex-col gap-3 pt-5", GUTTER_X)}>
             <SearchField
               ref={searchInput}
@@ -203,7 +203,7 @@ function Desk({ event, events, onSelectEvent }: { event: CommandEvent; events: C
               <button
                 type="button"
                 onClick={() => setSelected(null)}
-                className="pressable min-h-11 text-13 text-muted-foreground underline decoration-border underline-offset-4 transition-colors duration-120 hover:text-foreground hover:decoration-brand motion-reduce:transition-none"
+                className="pressable min-h-11 text-13 text-muted-foreground underline decoration-foreground/30 underline-offset-4 transition-colors duration-120 hover:text-foreground hover:decoration-brand motion-reduce:transition-none"
               >
                 {items.length > 0 ? `Back to ${items.length} ${plural(items.length, "result")}` : "Back to the search"}
               </button>
@@ -226,7 +226,7 @@ function Desk({ event, events, onSelectEvent }: { event: CommandEvent; events: C
           </div>
         </section>
 
-        <section aria-label={selected ? displayName(selected.row) : "Attendee"} className="min-w-0 max-lg:mt-2 max-lg:border-t max-lg:border-border lg:col-span-7 2xl:col-span-8">
+        <section aria-label={selected ? displayName(selected.row) : "Attendee"} className={cn("min-w-0 max-lg:mt-2 lg:col-span-7 lg:mt-5 lg:mr-6 lg:self-start 2xl:col-span-8 2xl:mr-8", selected && "pb-2 lg:bg-surface lg:shadow-depth")}>
           {selected ? (
             <AttendeeCard
               key={selected.row.id}
@@ -286,7 +286,7 @@ function StockCell({ inventory }: { inventory: Resource<DeskInventory> & { reloa
       aria-label="Band stock"
     >
       {inventory.status === "error" ? (
-        <button type="button" onClick={() => inventory.reload()} className="min-h-11 text-left text-13 text-foreground underline decoration-border underline-offset-4 hover:decoration-brand sm:order-2">
+        <button type="button" onClick={() => inventory.reload()} className="min-h-11 text-left text-13 text-foreground underline decoration-foreground/30 underline-offset-4 hover:decoration-brand sm:order-2">
           Stock not loaded · try again
         </button>
       ) : (
@@ -320,8 +320,8 @@ function StockCell({ inventory }: { inventory: Resource<DeskInventory> & { reloa
 
 function OfflineBanner({ onRetry }: { onRetry: () => void }) {
   return (
-    <div role="status" className={cn("flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-warning/40 py-2.5 text-13", GUTTER_X)}>
-      <span className="flex min-w-0 flex-1 items-start gap-2 text-warning">
+    <div role="status" className={cn("flex flex-wrap items-center gap-x-4 gap-y-1 bg-warning/10 py-2.5 text-13", GUTTER_X)}>
+      <span className="flex min-w-0 flex-1 items-start gap-2 text-warning-on-tint">
         <WifiOff size={16} strokeWidth={1.5} aria-hidden="true" className="mt-0.5 shrink-0" />
         <span>
           <span className="font-medium">Offline.</span>{" "}
@@ -331,7 +331,7 @@ function OfflineBanner({ onRetry }: { onRetry: () => void }) {
       <button
         type="button"
         onClick={onRetry}
-        className="pressable min-h-11 border border-border px-3 text-13 font-medium transition-colors duration-120 hover:border-foreground/50 motion-reduce:transition-none"
+        className="pressable min-h-11 bg-surface-2 px-3 text-13 font-medium hover:bg-surface-3"
       >
         Try again
       </button>

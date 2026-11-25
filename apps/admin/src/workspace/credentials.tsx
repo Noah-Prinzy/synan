@@ -56,7 +56,7 @@ export default function WorkspaceCredentials() {
       <section aria-labelledby="cred-bands">
         <SectionHead id="cred-bands" title="Wristbands" meta="stock is shared across the organisation's events" className={HEAD_BLEED} />
         {/* Six cells; from 1280 the last two sit over the rail below, so the dividers continue its edge (SPLIT). */}
-        <dl className="grid grid-cols-2 gap-px border-b border-border bg-border sm:grid-cols-3 xl:grid-cols-[repeat(4,minmax(0,1fr))_repeat(2,minmax(10rem,12rem))] 2xl:grid-cols-[repeat(4,minmax(0,1fr))_repeat(2,13rem)]">
+        <dl className="grid grid-cols-2 gap-px bg-surface-3 sm:grid-cols-3 xl:grid-cols-[repeat(4,minmax(0,1fr))_repeat(2,minmax(10rem,12rem))] 2xl:grid-cols-[repeat(4,minmax(0,1fr))_repeat(2,13rem)]">
           {CARRIER_ORDER.map((state) => (
             <div key={state} className="flex min-w-0 flex-col gap-2 bg-background px-4 py-4 sm:px-6 2xl:px-8">
               <dt className="truncate text-13 text-muted-foreground">{CARRIER_VIEW[state].label}</dt>
@@ -82,7 +82,7 @@ export default function WorkspaceCredentials() {
         </Notice>
       ) : null}
 
-      <div className={cn(SPLIT, "border-b border-border")}>
+      <div className={cn(SPLIT, "")}>
         <section aria-labelledby="cred-recent" className="flex min-w-0 flex-col">
           <SectionHead id="cred-recent" title="Recent band activity" meta="times in the event's zone" className={HEAD_BLEED} />
           {data.recent.length === 0 ? (
@@ -114,7 +114,7 @@ export default function WorkspaceCredentials() {
               </tbody>
             </Table>
           )}
-          <div className="mt-auto flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-border px-4 py-4 sm:px-6 2xl:px-8">
+          <div className="mt-auto flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-4 py-4 sm:px-6 2xl:px-8">
             <p className="max-w-[60ch] text-12 leading-relaxed text-muted-foreground">
               {readOnly
                 ? "The event is over: bands still bound to it are retired when they come back to stock."
@@ -124,7 +124,7 @@ export default function WorkspaceCredentials() {
           </div>
         </section>
 
-        <aside className="min-w-0 border-t border-border lg:border-t-0 lg:border-l">
+        <aside className="min-w-0 ">
           <section aria-labelledby="cred-states">
             <SectionHead id="cred-states" title="Credentials" meta={<><span className="font-mono tabular-nums">{formatNumber(issued)}</span> issued in all</>} />
             <ul className="py-1.5">
@@ -146,7 +146,7 @@ export default function WorkspaceCredentials() {
               })}
             </ul>
           </section>
-          <section aria-labelledby="cred-chips" className="border-t border-border">
+          <section aria-labelledby="cred-chips" className="">
             <SectionHead id="cred-chips" title="Chip profiles" meta="bands bound to this event" />
             {chipTotal === 0 ? (
               <p className="px-4 py-4 text-13 text-muted-foreground sm:px-5">No bands bound yet.</p>

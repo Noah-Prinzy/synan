@@ -49,7 +49,7 @@ export function BindFlow({
         </>
       }
     >
-      <div role="tablist" aria-label="How to bind" className="grid grid-cols-2 border-b border-border">
+      <div role="tablist" aria-label="How to bind" className="grid grid-cols-2 gap-1">
         <ModeTab active={mode === "scan"} onClick={() => setMode("scan")} controls="desk-bind-scan">
           Scan the band
         </ModeTab>
@@ -79,12 +79,11 @@ function ModeTab({ active, onClick, controls, children }: { active: boolean; onC
       aria-controls={controls}
       onClick={onClick}
       className={cn(
-        "pressable relative min-h-11 text-13 font-medium transition-colors duration-120 ease-standard motion-reduce:transition-none",
-        active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+        "pressable relative min-h-11 text-13 font-medium",
+        active ? "bg-foreground text-background" : "bg-surface-2 text-foreground hover:bg-surface-3",
       )}
     >
       {children}
-      {active ? <span aria-hidden="true" className="absolute inset-x-0 -bottom-px h-0.5 bg-brand" /> : null}
     </button>
   );
 }

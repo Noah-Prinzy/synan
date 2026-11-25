@@ -73,7 +73,7 @@ export default function DevTools() {
   };
 
   const button =
-    "border border-border px-2 py-1 text-left text-11 transition-colors duration-120 hover:border-foreground/50 disabled:opacity-40";
+    "px-2 py-1 text-left text-11 transition-colors duration-120 hover:border-foreground/50 disabled:opacity-40";
 
   return (
     <>
@@ -83,7 +83,7 @@ export default function DevTools() {
         onClick={() => setOpen((o) => !o)}
         title="Development tools — not part of the product"
         // Sits in the middle of the status bar line (the shell's own chrome), so it never covers content.
-        className="fixed bottom-0 left-1/2 z-50 flex h-6 -translate-x-1/2 items-center border border-b-0 border-dashed border-foreground/30 bg-background px-2 font-mono text-11 tracking-[0.12em] text-muted-foreground hover:text-foreground"
+        className="fixed bottom-0 left-1/2 z-50 flex h-6 -translate-x-1/2 items-center border border-dashed border-foreground/30 bg-background px-2 font-mono text-11 tracking-[0.12em] text-muted-foreground hover:text-foreground"
       >
         DEV{role && role !== "admin" ? ` · ${roleLabel.toLowerCase()}` : ""}
         {played ? ` · ${played}` : ""}
@@ -95,12 +95,12 @@ export default function DevTools() {
           aria-label="Development tools"
           className="fixed bottom-8 left-1/2 z-50 max-h-[calc(100dvh-5rem)] -translate-x-1/2 w-96 max-w-[calc(100vw-1rem)] overflow-y-auto border border-dashed border-foreground/30 bg-popover text-12 text-foreground"
         >
-          <header className="flex items-center justify-between border-b border-border px-3 py-2">
+          <header className="flex items-center justify-between px-3 py-2">
             <span className="font-medium">Development tools</span>
             <span className="text-11 text-muted-foreground">not in production builds</span>
           </header>
           {!mockBackend ? (
-            <div className="border-b border-border px-3 py-2 text-11 text-muted-foreground">
+            <div className="px-3 py-2 text-11 text-muted-foreground">
               <p>
                 Real API · <span className="font-mono text-foreground">{API_URL}</span>
               </p>
@@ -112,11 +112,11 @@ export default function DevTools() {
           ) : null}
           {mockBackend ? (
           <>
-          <div className="border-b border-border px-3 py-2">
+          <div className="px-3 py-2">
             <p className="mb-1.5 text-11 text-muted-foreground">View the console as · signed in as {user?.name ?? "—"}</p>
             <RolePicker onPicked={() => setOpen(false)} />
           </div>
-          <div className="border-b border-border px-3 py-2">
+          <div className="px-3 py-2">
             <p className="mb-1.5 text-11 text-muted-foreground">Scenarios · {event?.title ?? "no event"}</p>
             <div className="grid grid-cols-2 gap-1">
               {SCENARIOS.map((s) => (
@@ -149,7 +149,7 @@ export default function DevTools() {
               Background traffic (~2 scans/s)
             </label>
           </div>
-          <div className="border-b border-border px-3 py-2">
+          <div className="px-3 py-2">
             <p className="mb-1.5 text-11 text-muted-foreground">
               Admin link · now <span className="font-mono">{linkStatus}</span>
             </p>
@@ -163,7 +163,7 @@ export default function DevTools() {
           </div>
           </>
           ) : null}
-          <div className="border-b border-border px-3 py-2">
+          <div className="px-3 py-2">
             <p className="mb-1.5 text-11 text-muted-foreground">{mockBackend ? "Page states (reload)" : "Measure"}</p>
             <div className="grid grid-cols-2 gap-1">
               {mockBackend ? (

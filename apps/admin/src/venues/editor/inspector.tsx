@@ -62,7 +62,7 @@ export function Inspector({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex min-h-8 items-center justify-between gap-2 border-b border-border px-4">
+      <header className="flex min-h-8 items-center justify-between gap-2 px-4">
         <h2 className="truncate py-1.5 text-12 font-medium">{room ? "Room" : zone ? "Zone" : "Venue"}</h2>
         {room || zone ? (
           <button type="button" onClick={() => commands.onSelect(null)} className="text-11 text-muted-foreground hover:text-foreground">
@@ -118,7 +118,7 @@ function RoomSheet({
       <>
         <Title meta={where}>{room.name.trim() || "Unnamed room"}</Title>
         <KeyValues
-          className="border-t border-border"
+          className=""
           rows={[
             ["Capacity", <span className="font-mono tabular-nums">{whole(room.capacity) !== null ? formatNumber(Number(room.capacity)) : "—"}</span>],
             ["Warns at", <Pct pct={room.warn} people={warnPeople} />],
@@ -129,7 +129,7 @@ function RoomSheet({
           ]}
         />
         {Object.keys(errors).length > 0 ? (
-          <ul className="border-t border-border px-4 py-2.5 text-12 text-destructive">
+          <ul className="px-4 py-2.5 text-12 text-destructive">
             {Object.entries(errors).map(([field, message]) => (
               <li key={field}>{message}</li>
             ))}
@@ -179,7 +179,7 @@ function RoomSheet({
         checked={room.continuous}
         onChange={(event) => set({ continuous: event.target.checked })}
       />
-      <p className="border-t border-border pt-3 text-12 text-muted-foreground">
+      <p className="pt-3 text-12 text-muted-foreground">
         On the grid <span className="font-mono text-foreground/80 tabular-nums">{describeRect(room.rect)}</span>. Arrow keys on the canvas move it,
         Shift+arrows resize it.
       </p>
@@ -229,7 +229,7 @@ function ZoneSheet({
     return (
       <>
         <Title meta={floor?.name}>{zone.name.trim() || "Unnamed zone"}</Title>
-        <KeyValues className="border-t border-border" rows={facts} />
+        <KeyValues className="" rows={facts} />
         <RoomLinks rooms={rooms} onSelect={commands.onSelect} />
       </>
     );
@@ -249,9 +249,9 @@ function ZoneSheet({
           />
         </Field>
       </div>
-      <KeyValues className="border-t border-border" rows={facts} />
+      <KeyValues className="" rows={facts} />
       <RoomLinks rooms={rooms} onSelect={commands.onSelect} />
-      <div className="flex flex-wrap gap-2 border-t border-border px-4 py-3">
+      <div className="flex flex-wrap gap-2 px-4 py-3">
         <Button size="compact" variant="secondary" onClick={() => commands.onAddRoom(zone.id)}>
           <Plus size={14} strokeWidth={1.5} aria-hidden="true" />
           Add room
@@ -269,15 +269,15 @@ function ZoneSheet({
 }
 
 function RoomLinks({ rooms, onSelect }: { rooms: DraftRoom[]; onSelect: (selection: Selection) => void }) {
-  if (rooms.length === 0) return <p className="border-t border-border px-4 py-2.5 text-12 text-muted-foreground">No rooms drawn in this zone yet.</p>;
+  if (rooms.length === 0) return <p className="px-4 py-2.5 text-12 text-muted-foreground">No rooms drawn in this zone yet.</p>;
   return (
-    <ul className="border-t border-border py-1">
+    <ul className="py-1">
       {rooms.map((room) => (
         <li key={room.id}>
           <button
             type="button"
             onClick={() => onSelect({ kind: "room", id: room.id })}
-            className="grid h-7 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 text-left text-13 hover:bg-foreground/[0.03] pointer-coarse:h-11"
+            className="grid h-7 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 text-left text-13 hover:bg-surface-2 pointer-coarse:h-11"
           >
             <span className="truncate">{room.name.trim() || "Unnamed room"}</span>
             <span className="font-mono text-11 text-muted-foreground tabular-nums">{whole(room.capacity) !== null ? formatNumber(Number(room.capacity)) : "—"}</span>
@@ -294,7 +294,7 @@ function VenueFacts({ layout, detail, editing }: { layout: Layout; detail: Venue
     <>
       <Title meta={[detail.venue.city, detail.venue.timezone.replace(/_/g, " ")].filter(Boolean).join(" · ")}>{detail.venue.name}</Title>
       <KeyValues
-        className="border-t border-border"
+        className=""
         rows={[
           ["Floors", layout.floors.map((f) => f.name).join(", ") || "—"],
           ["Zones", <span className="font-mono tabular-nums">{layout.zones.length}</span>],
@@ -307,7 +307,7 @@ function VenueFacts({ layout, detail, editing }: { layout: Layout; detail: Venue
           ["Grid", <span className="font-mono text-12 tabular-nums">{`${detail.grid.w} × ${detail.grid.h} units`}</span>],
         ]}
       />
-      <p className="border-t border-border px-4 py-3 text-12 text-muted-foreground">
+      <p className="px-4 py-3 text-12 text-muted-foreground">
         {editing
           ? "Select a zone or room to change it, or draw a new one on the grid."
           : "Select a zone or room, on the grid or in the list, to see its details."}

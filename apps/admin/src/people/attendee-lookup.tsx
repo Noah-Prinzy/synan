@@ -120,7 +120,7 @@ function Lookup() {
             setDecided(row.registration_id);
             replaceRow(row);
           }}
-          className="border-t border-border px-4 pt-4 pb-5 sm:px-5"
+          className="px-4 pt-4 pb-5 sm:px-5"
         />
       ) : null}
     </>
@@ -137,7 +137,7 @@ function Lookup() {
           </>
         }
       />
-      <div className={cn("flex flex-wrap items-end gap-x-4 gap-y-3 border-b border-border pt-3 pb-4", GUTTER_X)}>
+      <div className={cn("flex flex-wrap items-end gap-x-4 gap-y-3 pt-3 pb-4", GUTTER_X)}>
         <Field label="Search" className="w-full sm:w-80">
           <TextInput
             type="search"
@@ -211,7 +211,7 @@ function Lookup() {
           )}
         </section>
         {panel && selected ? (
-          <aside aria-labelledby="lookup-person" className="min-w-0 border-t border-border xl:col-span-5 xl:border-t-0 xl:border-l">
+          <aside aria-labelledby="lookup-person" className="min-w-0 xl:col-span-5 ">
             <div className="sticky top-0">
               <SectionHead
                 id="lookup-person"
@@ -249,13 +249,13 @@ function Lookup() {
 function ResultRow({ row, selected, onOpen }: { row: AttendeeListRow; selected: boolean; onOpen: () => void }) {
   const credential = row.credential_state ? CREDENTIAL_VIEW[row.credential_state] : null;
   return (
-    <li className="border-b border-border">
+    <li className="">
       <button
         type="button"
         onClick={onOpen}
         aria-current={selected || undefined}
         className={cn(
-          "relative grid min-h-12 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 py-2 text-left transition-colors duration-120 ease-standard before:absolute before:inset-y-0 before:left-0 before:w-0.5 hover:bg-foreground/3 aria-current:bg-foreground/4 aria-current:before:bg-brand motion-reduce:transition-none sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_7rem_8.5rem] xl:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_7rem_8.5rem]",
+          "relative grid min-h-12 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 py-2 text-left transition-colors duration-120 ease-standard before:absolute before:inset-y-0 before:left-0 before:w-0.5 hover:bg-surface-2 aria-current:bg-surface-2 aria-current:before:bg-brand motion-reduce:transition-none sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_7rem_8.5rem] xl:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_7rem_8.5rem]",
           GUTTER_X,
         )}
       >

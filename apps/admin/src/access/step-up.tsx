@@ -251,7 +251,7 @@ function CodeStep({
             ? `Code not accepted: it is wrong, expired or already used. Try the newest one. ${left} ${left === 1 ? "try" : "tries"} left.`
             : "Open the authenticator app on your phone and type the six digits shown for Synan."}
       </p>
-      <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-3">
+      <div className="flex flex-wrap justify-end gap-2 pt-3">
         <Button type="button" variant="quiet" size="compact" onClick={onCancel} disabled={checking}>
           Cancel
         </Button>
@@ -338,7 +338,7 @@ function EnrolStep({ pending, onConfirmed, onCancel }: { pending: boolean; onCon
             {startError}
           </p>
         ) : null}
-        <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-3">
+        <div className="flex flex-wrap justify-end gap-2 pt-3">
           <Button type="button" variant="quiet" size="compact" onClick={onCancel}>
             {pending ? "Cancel" : "Not now"}
           </Button>
@@ -385,7 +385,7 @@ function EnrolStep({ pending, onConfirmed, onCancel }: { pending: boolean; onCon
           </p>
         </div>
       </div>
-      <div className="grid gap-2 border-t border-border pt-4">
+      <div className="grid gap-2 pt-4">
         <p id="enrol-code-label" className="text-12 font-medium text-muted-foreground">
           Code from the app
         </p>
@@ -403,7 +403,7 @@ function EnrolStep({ pending, onConfirmed, onCancel }: { pending: boolean; onCon
           {busy ? "Checking the code…" : (problem ?? "Once the code is accepted, the app is set up for this account.")}
         </p>
       </div>
-      <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-3">
+      <div className="flex flex-wrap justify-end gap-2 pt-3">
         <Button type="button" variant="quiet" size="compact" onClick={onCancel} disabled={busy}>
           Cancel
         </Button>

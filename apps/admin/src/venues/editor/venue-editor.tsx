@@ -549,7 +549,7 @@ function Editor({
                 onEditing(!editing);
                 say(editing ? "Edit mode off. The canvas is inert." : "Edit mode on. Drag on the grid to draw.");
               }}
-              className={cn(editing && "border-brand")}
+              className={cn(editing && "shadow-[inset_0_0_0_2px_var(--brand)]")}
             >
               <Pencil size={14} strokeWidth={1.5} aria-hidden="true" className={editing ? "text-brand" : undefined} />
               Edit layout
@@ -561,15 +561,15 @@ function Editor({
         }
       />
 
-      {notices.length > 0 ? <div className="flex flex-col gap-2 border-b border-border px-4 py-3 sm:px-6">{notices}</div> : null}
+      {notices.length > 0 ? <div className="flex flex-col gap-2 px-4 py-3 sm:px-6">{notices}</div> : null}
 
       <div className="grid flex-1 grid-cols-1 md:grid-cols-2 lg:min-h-0 lg:grid-cols-[13.75rem_minmax(0,1fr)_17.5rem] xl:grid-cols-[15rem_minmax(0,1fr)_18.75rem]">
-        <section aria-label="Zones and rooms" className="order-2 max-h-[28rem] min-h-0 border-t border-border md:border-r lg:order-1 lg:max-h-none lg:border-t-0">
+        <section aria-label="Zones and rooms" className="order-2 max-h-[28rem] min-h-0 lg:order-1 lg:max-h-none">
           <ZoneList layout={draft} selection={selection} editing={editing} invalid={invalid} marks={marks} commands={zoneCommands} />
         </section>
 
-        <section aria-label="Layout" className="order-1 flex min-w-0 flex-col md:col-span-2 lg:order-2 lg:col-span-1 lg:min-h-0 lg:border-r lg:border-border">
-          <header className="flex min-h-8 items-center justify-between gap-3 border-b border-border px-4">
+        <section aria-label="Layout" className="order-1 flex min-w-0 flex-col md:col-span-2 lg:order-2 lg:col-span-1 lg:min-h-0">
+          <header className="flex min-h-8 items-center justify-between gap-3 px-4">
             <h2 className="py-1.5 text-12 font-medium">
               {editing ? (
                 <span className="flex items-center gap-1.5">
@@ -613,7 +613,7 @@ function Editor({
               ) : null}
             </LayoutCanvas>
           </div>
-          <footer className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 border-t border-border px-4 py-2 text-12 text-muted-foreground">
+          <footer className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 px-4 py-2 text-12 text-muted-foreground">
             <p id={hintId} className="max-w-160">
               {!canDraw
                 ? "Tap a zone or room to inspect it. Drawing needs a wider screen."
@@ -627,7 +627,7 @@ function Editor({
           </footer>
         </section>
 
-        <section aria-label="Details" className="order-3 min-h-0 border-t border-border lg:border-t-0">
+        <section aria-label="Details" className="order-3 min-h-0">
           <Inspector layout={draft} detail={detail} selection={selection} editing={editing} errors={selectedErrors} commands={inspectorCommands} />
         </section>
       </div>
@@ -713,8 +713,8 @@ function IssueList({
   onSelect: (selection: Selection) => void;
 }) {
   return (
-    <div role="alert" className="border border-destructive/40 px-3 py-2 text-12">
-      <p className="text-destructive">Fix {issues.length === 1 ? "this" : `these ${issues.length}`} before publishing:</p>
+    <div role="alert" className="bg-destructive/10 px-3 py-2.5 text-12">
+      <p className="font-medium text-destructive-on-tint">Fix {issues.length === 1 ? "this" : `these ${issues.length}`} before publishing:</p>
       <ul className="mt-1 flex flex-col gap-0.5">
         {issues.map((issue, index) => {
           const ref: Selection = issue.kind === "zone" || issue.kind === "room" ? { kind: issue.kind, id: issue.id } : null;
@@ -726,7 +726,7 @@ function IssueList({
           return (
             <li key={`${issue.id}:${issue.field}:${index}`} className="text-muted-foreground">
               {target ? (
-                <button type="button" onClick={() => onSelect(target)} className="font-medium text-foreground underline decoration-border underline-offset-4 hover:decoration-brand">
+                <button type="button" onClick={() => onSelect(target)} className="font-medium text-foreground underline decoration-foreground/30 underline-offset-4 hover:decoration-brand">
                   {name}
                 </button>
               ) : (
@@ -754,7 +754,7 @@ function EmptyOverlay({ editing, canDraw, venueName, onStart }: { editing: boole
   }
   return (
     <div className="absolute inset-0 grid place-items-center p-4">
-      <div className="max-w-104 border border-border bg-background px-5 py-4">
+      <div className="max-w-104 bg-background px-5 py-4">
         <h2 className="font-display text-21 leading-tight">Nothing drawn yet</h2>
         <p className="mt-2 text-13 leading-relaxed text-muted-foreground">
           Start with the zones: the large areas of {venueName}, such as a hall, a wing or a garden. Then draw rooms inside them, each with its own

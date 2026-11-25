@@ -146,7 +146,7 @@ export default function WorkspaceAttendees() {
   const panel = wide && selected !== null;
 
   const toolbar = (
-    <div className="flex flex-wrap items-end gap-x-4 gap-y-3 border-b border-border px-4 py-4 sm:px-6 2xl:px-8">
+    <div className="flex flex-wrap items-end gap-x-4 gap-y-3 px-4 py-4 sm:px-6 2xl:px-8">
       <Field label="Search" className="w-full sm:w-72">
         <TextInput
           type="search"
@@ -279,7 +279,7 @@ export default function WorkspaceAttendees() {
           )}
         </section>
         {panel && selected ? (
-          <aside aria-labelledby="attendee-panel" className="min-w-0 border-t border-border xl:border-t-0 xl:border-l">
+          <aside aria-labelledby="attendee-panel" className="min-w-0 ">
             <div className="sticky top-0">
               <SectionHead
                 id="attendee-panel"
@@ -335,7 +335,7 @@ function AttendeeRow({
   const registration = REGISTRATION_VIEW[row.state];
   return (
     <tr
-      className={cn(rowClass, "cursor-pointer", selected && "bg-foreground/4")}
+      className={cn(rowClass, "cursor-pointer", selected && "bg-surface-2")}
       onClick={onOpen}
     >
       <Td className="relative max-w-56">

@@ -1,25 +1,38 @@
 /**
- * The headline strip (docs/06 §2.3 D1, simplified at the owner's request 2026-11-24): four
- * figures, large and calm, each with a plain-word label — On site now · Checked in · Rooms
- * filling up · Open alerts. Under a figure there is at most one short line of words, and only
- * when it explains something (which rooms are full; the worst alert). No deltas, no sparklines:
- * the trend lives in Reports. Neutral when all is well; colour appears only on the two risk
- * figures, and only when they are above zero. The two counts are eased by the frame loop; the
- * two risk figures are small integers and render directly.
- *
- * Registered moved out of the strip: it is the denominator of "Checked in", shown as a share bar.
+ * The instrument strip (D-37, docs/06 §2.3 D1): the four headline figures in one tonal band —
+ * On site now · Checked in · Rooms filling up · Open alerts. Each has a mono capital label, a
+ * mono figure, and one short sans line under it that explains the figure. No deltas, no
+ * sparklines: the trend lives in Reports. Neutral when all is well; colour appears only on the
+ * two risk figures, and only when they are above zero. The two counts are eased by the frame
+ * loop; the two risk figures are small integers and render directly.
  */
-import { KpiCell, formatNumber } from "@synan/ui/data";
+import type { ReactNode } from "react";
+import { formatNumber } from "@synan/ui/data";
+import { cn } from "@synan/ui/components";
 import { SEVERITY_VIEW, severityRank } from "../live/alert-copy";
 import { useCommand } from "../live/context";
 import { useSlice, useSliceValue } from "../live/slice";
 import type { RoomLive } from "../live/store";
 import { LiveNumber } from "./ui-state";
 
-function countLevel(rooms: ReadonlyMap<string, RoomLive>, level: RoomLive["level"]): number {
+export function countLevel(rooms: ReadonlyMap<string, RoomLive>, level: RoomLive["level"]): number {
   let n = 0;
   for (const room of rooms.values()) if (room.level === level) n++;
   return n;
+}
+
+/** The strip's ground: one tonal band (a soft depth on light), four readouts held apart by space. */
+export const STRIP = "grid grid-cols-2 gap-x-4 gap-y-6 bg-surface px-5 py-5 shadow-depth sm:px-7 sm:py-6 md:grid-cols-4";
+
+/** One readout: a mono capital label, the figure, and a line of words under it. */
+export function Figure({ label, value, note, tone }: { label: ReactNode; value: ReactNode; note?: ReactNode; tone?: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="eyebrow-mono truncate">{label}</dt>
+      <dd className={cn("mt-2.5 truncate font-mono text-28 leading-none tracking-tight tabular-nums contain-content xl:text-40", tone)}>{value}</dd>
+      {note ? <dd className="mt-2 truncate text-13 text-muted-foreground">{note}</dd> : null}
+    </div>
+  );
 }
 
 export function KpiStrip({ loading }: { loading?: boolean }) {
@@ -35,7 +48,6 @@ export function KpiStrip({ loading }: { loading?: boolean }) {
   const worst = [...open].sort((a, b) => severityRank(a.severity) - severityRank(b.severity))[0];
   const ready = !loading && summary !== null;
   const dash = <span className="text-muted-foreground">—</span>;
-  const share = summary && summary.registered > 0 ? summary.checked_in / summary.registered : null;
 
   const roomsWords =
     filling === 0
@@ -43,38 +55,30 @@ export function KpiStrip({ loading }: { loading?: boolean }) {
       : [full > 0 ? `${full} full` : null, warn > 0 ? `${warn} nearly full` : null].filter(Boolean).join(" · ");
 
   return (
-    <dl className="grid shrink-0 grid-cols-2 gap-px border-b border-border bg-border md:grid-cols-4" aria-busy={!ready}>
-      <KpiCell label="On site now" value={ready ? <LiveNumber k="kpi:on_site" /> : dash} />
-      <KpiCell
+    <dl className={STRIP} aria-busy={!ready}>
+      <Figure label="On site now" value={ready ? <LiveNumber k="kpi:on_site" /> : dash} note={ready ? "inside the venue now" : undefined} />
+      <Figure
         label="Checked in"
         value={ready ? <LiveNumber k="kpi:checked_in" /> : dash}
-        delta={
-          ready && share !== null ? (
-            // The share of registrations as a bar, not another figure.
-            <span className="flex items-center gap-2">
-              <span
-                role="img"
-                aria-label={`${Math.round(share * 100)}% of ${formatNumber(summary?.registered ?? 0)} registered`}
-                className="relative block h-1 w-20 overflow-hidden bg-foreground/10"
-              >
-                <span className="absolute inset-y-0 left-0 bg-muted-foreground" style={{ width: `${Math.min(100, share * 100)}%` }} />
-              </span>
-              <span>of everyone registered</span>
-            </span>
+        note={
+          ready && summary ? (
+            <>
+              of <span className="font-mono tabular-nums">{formatNumber(summary.registered)}</span> registered
+            </>
           ) : undefined
         }
       />
-      <KpiCell
+      <Figure
         label="Rooms filling up"
         value={ready ? formatNumber(filling) : dash}
-        valueClassName={ready && full > 0 ? "text-destructive" : ready && warn > 0 ? "text-warning" : undefined}
-        delta={ready ? roomsWords : undefined}
+        tone={ready && full > 0 ? "text-destructive" : ready && warn > 0 ? "text-warning" : undefined}
+        note={ready ? roomsWords : undefined}
       />
-      <KpiCell
+      <Figure
         label="Open alerts"
         value={ready ? formatNumber(open.length) : dash}
-        valueClassName={ready && worst ? SEVERITY_VIEW[worst.severity].text : undefined}
-        delta={ready ? (worst ? `Most serious: ${SEVERITY_VIEW[worst.severity].label.toLowerCase()}` : "Nothing needs action") : undefined}
+        tone={ready && worst ? SEVERITY_VIEW[worst.severity].text : undefined}
+        note={ready ? (worst ? `Most serious: ${SEVERITY_VIEW[worst.severity].label.toLowerCase()}` : "Nothing needs action") : undefined}
       />
     </dl>
   );

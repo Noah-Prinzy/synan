@@ -49,7 +49,7 @@ export function ZoneList({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex min-h-8 items-center justify-between gap-2 border-b border-border px-4">
+      <header className="flex min-h-8 items-center justify-between gap-2 px-4">
         <h2 className="py-1.5 text-12 font-medium">
           Zones <span className="font-mono text-11 font-normal text-muted-foreground tabular-nums">{layout.zones.length}</span>
         </h2>
@@ -66,7 +66,7 @@ export function ZoneList({
           const onFloor = zones.filter((z) => z.floorId === floor.id);
           const headId = `floor-head-${floor.id}`;
           return (
-            <section key={floor.id} aria-labelledby={headId} className="border-b border-border last:border-b-0">
+            <section key={floor.id} aria-labelledby={headId} className=" ">
               <div className="flex min-h-8 items-center justify-between gap-1 pr-2 pl-4">
                 {renaming?.kind === "floor" && renaming.id === floor.id ? (
                   <InlineName
@@ -251,7 +251,7 @@ function Row({
         "relative grid h-8 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 pr-4 text-left text-13 transition-colors duration-120 ease-standard motion-reduce:transition-none pointer-coarse:h-11",
         indent ? "pl-8" : "pl-4",
         "before:absolute before:inset-y-1.5 before:left-0 before:w-0.5",
-        selected ? "bg-foreground/[0.04] before:bg-brand" : "hover:bg-foreground/[0.03] before:bg-transparent",
+        selected ? "bg-surface-2 before:bg-brand" : "hover:bg-surface-2 before:bg-transparent",
       )}
     >
       <span className="flex min-w-0 items-center gap-1.5">

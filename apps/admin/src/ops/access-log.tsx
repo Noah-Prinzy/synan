@@ -393,7 +393,7 @@ function AccessLog({ event }: { event: CommandEvent }) {
       />
       <LastKnown />
 
-      <div className={cn("flex flex-wrap items-end gap-3 border-b border-border pt-3 pb-4", GUTTER_X)}>
+      <div className={cn("flex flex-wrap items-end gap-3 pt-3 pb-4", GUTTER_X)}>
         {canSearch ? (
           <Field
             label={passSearch ? "Find a pass" : "Search"}
@@ -453,7 +453,7 @@ function AccessLog({ event }: { event: CommandEvent }) {
       ) : (
         <section aria-label="Scans">
           {pending.length > 0 || history ? (
-            <div className={cn("sticky top-0 z-[2] flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border bg-background py-1.5 text-12", GUTTER_X)}>
+            <div className={cn("sticky top-0 z-[2] flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 bg-background py-1.5 text-12", GUTTER_X)}>
               <span className="text-muted-foreground" role="status">
                 {history ? "Showing older scans; new ones are not added while you browse." : null}
                 {!history && pending.length > 0 ? (
@@ -468,7 +468,7 @@ function AccessLog({ event }: { event: CommandEvent }) {
               </Button>
             </div>
           ) : null}
-          <div aria-hidden="true" className={cn("hidden h-9 items-center gap-x-4 border-b border-border md:grid", LOG_COLS, GUTTER_X, TYPE.label)}>
+          <div aria-hidden="true" className={cn("hidden h-9 items-center gap-x-4 md:grid", LOG_COLS, GUTTER_X, TYPE.label)}>
             <span>Time</span>
             <span>Checkpoint</span>
             <span>Tier</span>
@@ -527,7 +527,7 @@ function Notes({ eventId }: { eventId: string }) {
   // finds people in the attendee lookup instead (routes.ts, D-23).
   const workspace = can("events.view");
   return (
-    <p className={cn("border-b border-border py-2.5 text-12 leading-relaxed text-muted-foreground", GUTTER_X)}>
+    <p className={cn("py-2.5 text-12 leading-relaxed text-muted-foreground", GUTTER_X)}>
       Who presented a pass is not shown here.{" "}
       {can("attendees.view") ? (
         <>
@@ -569,10 +569,10 @@ function ScanRow({
 }) {
   const detailId = `scan-${scan.id}`;
   return (
-    <li className={cn("border-b border-border", open && "bg-foreground/4")}>
+    <li className={cn("", open && "bg-surface-2")}>
       <div
         className={cn(
-          "relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 py-2 transition-colors duration-120 ease-standard hover:bg-foreground/3 motion-reduce:transition-none md:h-10 md:py-0",
+          "relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 py-2 transition-colors duration-120 ease-standard hover:bg-surface-2 motion-reduce:transition-none md:h-10 md:py-0",
           LOG_COLS,
           GUTTER_X,
         )}

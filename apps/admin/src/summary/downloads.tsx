@@ -84,7 +84,7 @@ export function Downloads({
   };
 
   return (
-    <section aria-labelledby="sum-downloads" className="border-b border-border">
+    <section aria-labelledby="sum-downloads" className="">
       <SectionHead
         id="sum-downloads"
         title="Downloads"
@@ -99,7 +99,7 @@ export function Downloads({
             <li
               key={item.key}
               className={cn(
-                "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-2 border-b border-border last:border-b-0 sm:grid-cols-[minmax(0,1fr)_16rem_auto]",
+                "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-2 sm:grid-cols-[minmax(0,1fr)_16rem_auto]",
                 GUTTER_X,
                 primary ? "py-5" : "min-h-12 py-2",
               )}
@@ -133,7 +133,7 @@ function JobState({ row, timeZone }: { row: Row | undefined; timeZone: string })
     return (
       <span role="status" className="block">
         <span className="text-13">{row.state === "queued" ? "Queued" : "Preparing…"}</span>
-        <span className="relative mt-1 block h-px w-full max-w-48 overflow-hidden bg-border">
+        <span className="relative mt-1 block h-px w-full max-w-48 overflow-hidden bg-surface-3">
           <span aria-hidden="true" className="animate-skeleton-sweep absolute inset-y-0 w-1/3 bg-foreground/60" />
         </span>
       </span>
@@ -150,7 +150,7 @@ function JobState({ row, timeZone }: { row: Row | undefined; timeZone: string })
     <span className="flex items-center gap-2 text-13">
       <SignalShape state="ok" className="text-success" />
       {row.download_url ? (
-        <a href={row.download_url} className="underline decoration-border underline-offset-4 hover:decoration-brand">
+        <a href={row.download_url} className="underline decoration-foreground/30 underline-offset-4 hover:decoration-brand">
           Download
         </a>
       ) : (

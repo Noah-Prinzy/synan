@@ -67,8 +67,8 @@ export function PassPreview({
   const headline = template.headline.trim();
   const note = template.note.trim();
   return (
-    <article aria-label="Pass preview" className="w-full max-w-80 border border-border bg-background text-foreground">
-      <header className="border-b border-border px-4 py-3.5">
+    <article aria-label="Pass preview" className="w-full max-w-80 bg-background text-foreground">
+      <header className="px-4 py-3.5">
         <p className="font-display text-17 leading-tight text-balance">{eventTitle.trim() || "Untitled event"}</p>
         {headline && headline !== eventTitle.trim() ? <p className="mt-1 text-13 text-foreground/90">{headline}</p> : null}
         <p className="mt-1.5 text-12 text-muted-foreground">
@@ -77,20 +77,20 @@ export function PassPreview({
         </p>
       </header>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] border-b border-border">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto]">
         <div className="px-4 py-3">
           <p className="text-12 text-muted-foreground">Guest</p>
           <p className="mt-0.5 font-display text-21 leading-none">Sample Attendee</p>
         </div>
         {template.show_tier ? (
-          <div className="flex flex-col justify-end border-l border-border px-4 py-3">
+          <div className="flex flex-col justify-end px-4 py-3">
             <p className="text-12 text-muted-foreground">Tier</p>
             <p className="mt-0.5 font-mono text-13">{TIER_LABEL[tier]}</p>
           </div>
         ) : null}
       </div>
 
-      <div aria-hidden="true" className="h-0 border-t border-dashed border-border" />
+      <div aria-hidden="true" className="mx-6 h-1 bg-[radial-gradient(circle,var(--muted-foreground)_1px,transparent_1.5px)] bg-size-[8px_4px] opacity-50" />
 
       <div className="px-6 pt-4 pb-4">
         <SampleCode />
@@ -98,7 +98,7 @@ export function PassPreview({
       </div>
 
       {template.show_sessions ? (
-        <div className="flex items-center gap-2 border-t border-border px-4 py-2.5 text-12">
+        <div className="flex items-center gap-2 px-4 py-2.5 text-12">
           <CalendarDays size={14} strokeWidth={1.5} aria-hidden="true" className="text-muted-foreground" />
           <span>Your sessions</span>
           <span className="ml-auto text-12 text-muted-foreground">
@@ -107,7 +107,7 @@ export function PassPreview({
         </div>
       ) : null}
       {template.wallet ? (
-        <div className="flex items-center gap-2 border-t border-border px-4 py-2.5 text-12">
+        <div className="flex items-center gap-2 px-4 py-2.5 text-12">
           <Wallet size={14} strokeWidth={1.5} aria-hidden="true" className="text-muted-foreground" />
           <span>Add to Wallet</span>
         </div>

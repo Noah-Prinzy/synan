@@ -133,7 +133,7 @@ export function AttendeeCard({
       {outcome ? <OutcomePanel outcome={outcome} name={name} /> : null}
 
       {/* Where they stand, as three facts on one band between two hairlines; when below, in words. */}
-      <div className={cn("border-t border-border py-4", GUTTER_X)}>
+      <div className={cn("py-4", GUTTER_X)}>
         <dl className="grid max-w-3xl grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
           <Fact label="Registration">
             <State signal={registration.signal}>{registration.label}</State>
@@ -228,7 +228,7 @@ function Stamp({ iso, timeZone }: { iso: string; timeZone: string }) {
 }
 
 function ActionList({ children }: { children: ReactNode }) {
-  return <div className="border-t border-border empty:hidden">{children}</div>;
+  return <div className=" empty:hidden">{children}</div>;
 }
 
 function ActionRow({ title, detail, onClick }: { title: string; detail: string; onClick: () => void }) {
@@ -237,7 +237,7 @@ function ActionRow({ title, detail, onClick }: { title: string; detail: string; 
       type="button"
       onClick={onClick}
       className={cn(
-        "pressable group flex min-h-16 w-full items-center gap-4 border-b border-border py-3 text-left transition-colors duration-120 ease-standard hover:bg-foreground/3 focus-visible:outline focus-visible:-outline-offset-1 focus-visible:outline-brand motion-reduce:transition-none",
+        "pressable group flex min-h-16 w-full items-center gap-4 py-3 text-left transition-colors duration-120 ease-standard hover:bg-surface-2 focus-visible:outline focus-visible:-outline-offset-1 focus-visible:outline-brand motion-reduce:transition-none",
         GUTTER_X,
       )}
     >

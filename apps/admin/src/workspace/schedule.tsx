@@ -132,7 +132,7 @@ export default function WorkspaceSchedule() {
                   <th
                     scope="colgroup"
                     colSpan={readOnly ? 4 : 5}
-                    className="h-9 border-b border-border bg-foreground/2 px-4 text-left text-13 font-medium sm:px-6 2xl:px-8"
+                    className="h-9 bg-surface px-4 text-left text-13 font-medium sm:px-6 2xl:px-8"
                   >
                     {dayNumber(event.starts_at, day.key, tz) ? `Day ${dayNumber(event.starts_at, day.key, tz)} · ` : ""}
                     {day.label}
@@ -214,7 +214,7 @@ export default function WorkspaceSchedule() {
             {said}
           </p>
         </section>
-        <aside aria-labelledby="schedule-rooms" className="min-w-0 border-t border-border lg:border-t-0 lg:border-l">
+        <aside aria-labelledby="schedule-rooms" className="min-w-0 ">
           <SectionHead id="schedule-rooms" title="By room" meta="sessions and scheduled time" />
           <RoomLoad sessions={list} rooms={rooms} />
           <RailNote>
@@ -311,7 +311,7 @@ function RoomLoad({ sessions, rooms }: { sessions: EventSession[]; rooms: { id: 
         </ul>
       ) : null}
       {continuous.length > 0 || idle > 0 ? (
-        <div className={cn("flex flex-col gap-1.5 border-t border-border py-3 text-13 text-muted-foreground", RAIL_X)}>
+        <div className={cn("flex flex-col gap-1.5 py-3 text-13 text-muted-foreground", RAIL_X)}>
           {idle > 0 ? (
             <p>
               <span className="font-mono text-foreground tabular-nums">{formatNumber(idle)}</span>

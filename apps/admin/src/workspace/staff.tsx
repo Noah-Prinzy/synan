@@ -195,7 +195,7 @@ export default function WorkspaceStaff() {
           </p>
         </section>
 
-        <aside aria-labelledby="staff-gates" className="min-w-0 border-t border-border lg:border-t-0 lg:border-l">
+        <aside aria-labelledby="staff-gates" className="min-w-0 ">
           <GateCover gates={gates} assignments={assignments} now={now} />
           <RailNote>
             One person cannot hold two shifts that overlap. Handing over ends a shift on the scanner and records what the gate did.
@@ -298,7 +298,7 @@ function GateCover({
             </ul>
           ) : null}
           {rest > 0 ? (
-            <p className={cn("border-t border-border py-3 text-13 text-muted-foreground", RAIL_X)}>
+            <p className={cn("py-3 text-13 text-muted-foreground", RAIL_X)}>
               {listed.length > 0 ? "The other " : ""}
               <span className="font-mono text-foreground tabular-nums">{formatNumber(rest)}</span> interior{" "}
               {plural(rest, "door has", "doors have")} no shifts; {rest === 1 ? "it" : "they"} can admit on the band alone.
@@ -404,7 +404,7 @@ function HandoverResult({
     >
       {result ? (
         <>
-          <dl className="grid grid-cols-3 gap-px border-b border-border bg-border">
+          <dl className="grid grid-cols-3 gap-px bg-surface-3">
             {(
               [
                 ["Admitted", result.admitted, undefined],
@@ -412,7 +412,7 @@ function HandoverResult({
                 ["Decided offline", result.queued, undefined],
               ] as const
             ).map(([label, value, tone]) => (
-              <div key={label} className="bg-popover px-4 py-3">
+              <div key={label} className="bg-solid shadow-pop px-4 py-3">
                 <dt className="text-12 text-muted-foreground">{label}</dt>
                 <dd className={cn("mt-1 font-mono text-28 leading-none tabular-nums", tone)}>{formatNumber(value)}</dd>
               </div>
@@ -421,7 +421,7 @@ function HandoverResult({
           <h3 className="px-5 pt-3 text-12 font-medium">By result</h3>
           <ul className="px-5 pt-1 pb-4">
             {Object.entries(result.by_result).map(([key, n]) => (
-              <li key={key} className="flex h-7 items-center justify-between border-b border-border text-13 last:border-b-0">
+              <li key={key} className="flex h-7 items-center justify-between text-13">
                 <span>{RESULT_LABEL[key] ?? key.replace(/_/g, " ")}</span>
                 <span className="font-mono text-12 tabular-nums">{formatNumber(n)}</span>
               </li>

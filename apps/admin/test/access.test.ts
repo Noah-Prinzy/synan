@@ -85,18 +85,19 @@ describe("navigation", () => {
   it("shows each role exactly its entries", () => {
     expect(labels("admin")).toEqual([
       "Command Center", "Alerts", "Gate health", "Access log",
-      "Events", "Attendees", "Wristband desk", "Reports",
-      "Venues", "Staff & shifts", "Settings",
+      "All events", "New event",
+      "Attendees", "Wristband desk", "Staff & shifts",
+      "Venues", "Reports", "Settings",
     ]);
-    expect(labels("organiser")).toEqual(["Command Center", "Alerts", "Gate health", "Access log", "Events", "Attendees", "Wristband desk", "Reports"]);
+    expect(labels("organiser")).toEqual(["Command Center", "Alerts", "Gate health", "Access log", "All events", "New event", "Attendees", "Wristband desk", "Reports"]);
     expect(labels("supervisor")).toEqual(["Command Center", "Alerts", "Gate health", "Access log", "Attendees"]);
     expect(labels("desk_clerk")).toEqual(["Wristband desk"]);
     for (const role of ["security_staff", "speaker", "crew"] as const) expect(navFor(can(role), null)).toEqual([]);
   });
 
   it("drops a group with nothing left in it", () => {
-    expect(navFor(can("supervisor"), null).map((g) => g.label)).toEqual(["Live", "Event"]);
-    expect(navFor(can("desk_clerk"), null).map((g) => g.label)).toEqual(["Event"]);
+    expect(navFor(can("supervisor"), null).map((g) => g.label)).toEqual(["Live", "People"]);
+    expect(navFor(can("desk_clerk"), null).map((g) => g.label)).toEqual(["People"]);
   });
 
   it("sends Attendees into the selected event's table for a role with the workspace, and to the lookup otherwise", () => {
@@ -112,13 +113,13 @@ describe("navigation", () => {
       "/gates": "Gate health",
       "/gates/g1": "Gate health",
       "/access-log": "Access log",
-      "/events": "Events",
-      "/events/new": "Events",
-      "/events/new/venue": "Events",
-      "/events/e1": "Events",
-      "/events/e1/overview": "Events",
-      "/events/e1/attendees": "Events",
-      "/events/e1/summary": "Events",
+      "/events": "All events",
+      "/events/new": "New event",
+      "/events/new/venue": "New event",
+      "/events/e1": "All events",
+      "/events/e1/overview": "All events",
+      "/events/e1/attendees": "All events",
+      "/events/e1/summary": "All events",
       "/attendees": "Attendees",
       "/desk": "Wristband desk",
       "/reports": "Reports",
@@ -220,6 +221,6 @@ describe("routes", () => {
     for (const role of Role.options) {
       for (const item of navFor(can(role), "e1").flatMap((g) => g.items)) expect(mayOpen(item.to, can(role)), `${role} ${item.to}`).toBe(true);
     }
-    expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(11);
+    expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(12);
   });
 });

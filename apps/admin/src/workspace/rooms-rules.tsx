@@ -193,7 +193,7 @@ export default function WorkspaceRoomsRules() {
           </div>
         </section>
 
-        <aside className="min-w-0 border-t border-border lg:border-t-0 lg:border-l">
+        <aside className="min-w-0 ">
           <section aria-labelledby="rules-version">
             <SectionHead id="rules-version" title="Rules" meta={dirty ? `${changes.length} unsaved ${plural(changes.length, "change")}` : "published"} />
             <div className={cn("py-4 text-13", RAIL_X)}>
@@ -218,16 +218,16 @@ export default function WorkspaceRoomsRules() {
               )}
             </div>
             {dirty ? (
-              <div className={cn("border-t border-border pt-3 pb-4", RAIL_X)}>
+              <div className={cn("pt-3 pb-4", RAIL_X)}>
                 <h3 className="pb-2 text-12 font-medium">What changes at the door</h3>
                 <RuleDiff changes={changes} limit={12} />
               </div>
             ) : null}
           </section>
-          <section aria-labelledby="rules-rooms" className="border-t border-border">
+          <section aria-labelledby="rules-rooms" className="">
             <SectionHead id="rules-rooms" title="Rooms" meta="capacity for this event" />
             <div role="table" aria-label="Rooms and capacity">
-              <div role="row" className={cn("grid min-h-9 items-center gap-3 border-b border-border text-12 text-muted-foreground", RAIL_X, ROOM_COLUMNS)}>
+              <div role="row" className={cn("grid min-h-9 items-center gap-3 text-12 text-muted-foreground", RAIL_X, ROOM_COLUMNS)}>
                 <span role="columnheader">Room</span>
                 <span role="columnheader">Zone</span>
                 <span role="columnheader" className="text-right">
@@ -235,7 +235,7 @@ export default function WorkspaceRoomsRules() {
                 </span>
               </div>
               {rooms.map((room) => (
-                <div key={room.id} role="row" className={cn(RAIL_ROW, ROOM_COLUMNS, "border-b border-border last:border-b-0")}>
+                <div key={room.id} role="row" className={cn(RAIL_ROW, ROOM_COLUMNS, " ")}>
                   <span role="cell" className="truncate">
                     {room.name}
                   </span>
@@ -274,7 +274,7 @@ export default function WorkspaceRoomsRules() {
       </div>
 
       {!readOnly && (dirty || problem || justPublished) ? (
-        <div role="region" aria-label="Unsaved rule changes" className="sticky bottom-0 z-10 border-t border-border bg-background">
+        <div role="region" aria-label="Unsaved rule changes" className="sticky bottom-0 z-10 bg-background">
           <div className="flex min-h-14 flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 2xl:px-8">
             <p className="flex items-center gap-2 text-13">
               <span aria-hidden="true" className="size-1.5 bg-brand" />

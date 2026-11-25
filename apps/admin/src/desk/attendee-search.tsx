@@ -159,7 +159,7 @@ export function SearchResults({
                   : "You are offline, so the search could not run. It runs again as soon as the connection is back."
                 : deskFailure(search.error, "The search did not finish")}
             </span>
-            <button type="button" onClick={onRetry} className="pressable mt-1.5 min-h-8 text-12 font-medium text-foreground underline decoration-border underline-offset-4 hover:decoration-brand">
+            <button type="button" onClick={onRetry} className="pressable mt-1.5 min-h-8 text-12 font-medium text-foreground underline decoration-foreground/30 underline-offset-4 hover:decoration-brand">
               Try again
             </button>
           </Notice>
@@ -167,16 +167,16 @@ export function SearchResults({
       ) : null}
 
       {!q ? (
-        <div className={cn("border-t border-border py-8", GUTTER_X)}>
+        <div className={cn("py-8", GUTTER_X)}>
           <h2 className="font-display text-21 leading-tight">Who's next?</h2>
           <p className="mt-2 max-w-100 text-13 leading-relaxed text-muted-foreground">
             Type part of their name, their email, or a pass or band number. Results appear as you type; Enter opens the first one.
           </p>
         </div>
       ) : tooShort ? (
-        <p className={cn("border-t border-border py-6 text-13 text-muted-foreground", GUTTER_X)}>Keep typing: two letters or more.</p>
+        <p className={cn("py-6 text-13 text-muted-foreground", GUTTER_X)}>Keep typing: two letters or more.</p>
       ) : items && items.length === 0 && !search.loading && search.forQuery === q ? (
-        <div className={cn("border-t border-border py-8", GUTTER_X)}>
+        <div className={cn("py-8", GUTTER_X)}>
           <h2 className="font-display text-21 leading-tight">No one matches “{q}”</h2>
           <p className="mt-2 max-w-100 text-13 leading-relaxed text-muted-foreground">
             Check the spelling, or try their email address. Only {eventTitle} is searched here: someone registered for another event
@@ -189,7 +189,7 @@ export function SearchResults({
           </div>
         </div>
       ) : items && items.length > 0 ? (
-        <ul id={listId} role="listbox" aria-label="Attendees found" className={cn("border-t border-border", search.loading && "opacity-60")}>
+        <ul id={listId} role="listbox" aria-label="Attendees found" className={cn("", search.loading && "opacity-60")}>
           {items.map((row, index) => (
             <ResultRow
               key={row.id}
@@ -246,10 +246,10 @@ function ResultRow({
       aria-selected={selected || active}
       onClick={onPick}
       className={cn(
-        "relative grid min-h-16 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-b border-border py-2.5",
+        "relative grid min-h-16 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-2.5",
         GUTTER_X,
-        "transition-colors duration-120 ease-standard hover:bg-foreground/3 motion-reduce:transition-none",
-        (active || selected) && "bg-foreground/4",
+        "transition-colors duration-120 ease-standard hover:bg-surface-2 motion-reduce:transition-none",
+        (active || selected) && "bg-surface-2",
       )}
     >
       {selected || active ? <span aria-hidden="true" className={cn("absolute inset-y-0 left-0 w-0.5", selected ? "bg-brand" : "bg-foreground/40")} /> : null}

@@ -49,7 +49,7 @@ export function NotForRole({ inFrame = false }: { inFrame?: boolean }) {
   return (
     <section aria-labelledby="not-for-role" className={inFrame ? "mt-10 max-w-160" : "max-w-160 px-4 py-10 sm:px-6 2xl:px-8"}>
       <p className="text-12 text-muted-foreground">Signed in as {article(roleLabel)} {roleLabel.toLowerCase()}</p>
-      <h1 id="not-for-role" className="mt-1 font-display text-28 leading-tight tracking-tight text-balance">
+      <h1 id="not-for-role" className="mt-3 type-title">
         This screen is not part of your console
       </h1>
       <p className="mt-2 max-w-120 text-13 leading-relaxed text-muted-foreground">
@@ -117,7 +117,7 @@ export function NoConsole() {
   return (
     <Frame>
       <section aria-labelledby="no-console" className="mt-10">
-        <h1 id="no-console" className="font-display text-40 leading-tight tracking-tight text-balance">
+        <h1 id="no-console" className="type-title">
           {scanner ? "This account uses the Gate Scanner" : "This account has no console"}
         </h1>
         <p className="mt-3 max-w-120 text-15 leading-relaxed text-muted-foreground">
@@ -130,13 +130,13 @@ export function NoConsole() {
             ? "Gate scanning happens on the scanner phone or tablet at your checkpoint. Open the Gate Scanner there and pair it with your gate."
             : "Your access is your credential: show your pass or wristband at the door. Your organiser grants the rooms you need for each event."}
         </p>
-        <dl className="mt-8 grid max-w-120 grid-cols-[8rem_minmax(0,1fr)] border-t border-border text-13">
-          <dt className="border-b border-border py-2.5 text-12 text-muted-foreground">Account</dt>
-          <dd className="min-w-0 truncate border-b border-border py-2.5">{user?.email ?? "—"}</dd>
-          <dt className="border-b border-border py-2.5 text-12 text-muted-foreground">Role</dt>
-          <dd className="border-b border-border py-2.5">{roleLabel}</dd>
-          <dt className="border-b border-border py-2.5 text-12 text-muted-foreground">Help</dt>
-          <dd className="border-b border-border py-2.5 text-muted-foreground">Ask your shift lead or an admin if you expected the console.</dd>
+        <dl className="mt-8 grid max-w-120 grid-cols-[8rem_minmax(0,1fr)] bg-surface px-5 py-2 text-13 shadow-depth">
+          <dt className="py-2.5 text-12 text-muted-foreground">Account</dt>
+          <dd className="min-w-0 truncate py-2.5">{user?.email ?? "—"}</dd>
+          <dt className="py-2.5 text-12 text-muted-foreground">Role</dt>
+          <dd className="py-2.5">{roleLabel}</dd>
+          <dt className="py-2.5 text-12 text-muted-foreground">Help</dt>
+          <dd className="py-2.5 text-muted-foreground">Ask your shift lead or an admin if you expected the console.</dd>
         </dl>
         <div className="mt-8">
           <SignOutButton signOut={signOut} />
@@ -173,7 +173,7 @@ function MockSignedOut() {
   return (
     <Frame>
       <section aria-labelledby="signed-out" className="mt-10">
-        <h1 id="signed-out" className="font-display text-40 leading-tight tracking-tight">
+        <h1 id="signed-out" className="type-title">
           You are signed out
         </h1>
         <p className="mt-3 max-w-120 text-15 leading-relaxed text-muted-foreground">

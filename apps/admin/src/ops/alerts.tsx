@@ -142,7 +142,7 @@ function AlertsInbox() {
         }
       />
       <LastKnown />
-      <div className={cn("flex flex-wrap items-center gap-3 border-b border-border py-3", GUTTER_X)}>
+      <div className={cn("flex flex-wrap items-center gap-3 py-3", GUTTER_X)}>
         <FilterChips
           label="Show alerts"
           value={view}
@@ -158,7 +158,7 @@ function AlertsInbox() {
           ) : (
             <>
               {/* One column head for every band, so the bands read as one list. */}
-              <div aria-hidden="true" className={cn("hidden h-9 items-center gap-x-4 border-b border-border sm:grid", ROW_COLS, GUTTER_X, TYPE.label)}>
+              <div aria-hidden="true" className={cn("hidden h-9 items-center gap-x-4 sm:grid", ROW_COLS, GUTTER_X, TYPE.label)}>
                 <span>Alert</span>
                 <span className="hidden @3xl:block">Raised</span>
                 <span>State</span>
@@ -171,7 +171,7 @@ function AlertsInbox() {
           )}
         </div>
         {panel ? (
-          <aside aria-labelledby="alert-detail-title" className="min-w-0 border-t border-border xl:col-span-5 xl:border-t-0 xl:border-l 2xl:col-span-4">
+          <aside aria-labelledby="alert-detail-title" className="min-w-0 xl:col-span-5 2xl:col-span-4">
             <div className="sticky top-0 max-h-[calc(100dvh-8rem)] overflow-y-auto">
               <SectionHead
                 title="Alert"
@@ -274,7 +274,7 @@ function Band({
   const id = `band-${severity}`;
   return (
     <section aria-labelledby={id}>
-      <header className={cn("flex h-9 items-center gap-2 border-b border-border", GUTTER_X)}>
+      <header className={cn("flex h-9 items-center gap-2", GUTTER_X)}>
         <h2 id={id} className={cn("flex items-center gap-2 text-12 font-medium", view.text)}>
           <SignalShape state={view.state} />
           {view.label}
@@ -312,10 +312,10 @@ function AlertRow({
   return (
     <li
       className={cn(
-        "relative grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-b border-border py-2 transition-colors duration-120 ease-standard hover:bg-foreground/3 motion-reduce:transition-none",
+        "relative grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-2 transition-colors duration-120 ease-standard hover:bg-surface-2 motion-reduce:transition-none",
         ROW_COLS,
         GUTTER_X,
-        selected && "bg-foreground/4",
+        selected && "bg-surface-2",
       )}
     >
       {selected ? <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.5 bg-brand" /> : null}
@@ -358,7 +358,7 @@ function AlertRow({
             keepDone
             doneLabel="Acknowledged"
             action={() => store.ack(alert.id)}
-            className="-mr-2.5 px-2.5 font-normal text-muted-foreground hover:border-border hover:text-foreground focus-visible:border-border focus-visible:text-foreground"
+            className="-mr-2.5 px-2.5 font-normal text-muted-foreground hover:bg-surface-2 hover:text-foreground focus-visible:text-foreground"
           >
             Acknowledge
           </ActionButton>

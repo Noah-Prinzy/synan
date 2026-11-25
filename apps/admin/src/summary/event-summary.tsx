@@ -37,7 +37,7 @@ const TIER_LABEL: Record<AttendeeTier, string> = {
 };
 
 /** The headline strip and every row below share the split's columns, so dividers line up. */
-const STRIP = "grid grid-cols-2 gap-px border-b border-border bg-border sm:grid-cols-3 lg:grid-cols-[repeat(3,minmax(0,1fr))_minmax(20rem,24rem)] 2xl:grid-cols-[repeat(3,minmax(0,1fr))_26rem]";
+const STRIP = "grid grid-cols-2 gap-px bg-surface-3 sm:grid-cols-3 lg:grid-cols-[repeat(3,minmax(0,1fr))_minmax(20rem,24rem)] 2xl:grid-cols-[repeat(3,minmax(0,1fr))_26rem]";
 /** A KPI cell padded to the page gutter. */
 const CELL = "sm:px-6 2xl:px-8";
 
@@ -211,7 +211,7 @@ function SummaryBody({ data, timeZone }: { data: PostEventSummary; timeZone: str
         </div>
       </div>
 
-      <div className={cn(SPLIT, "border-b border-border")}>
+      <div className={cn(SPLIT, "")}>
         <section aria-labelledby="sum-curve" className="min-w-0">
           <SectionHead id="sum-curve" title="On site across the event" meta="5-minute buckets · peak marked" className={HEAD_BLEED} />
           <div className={cn("pt-5 pb-3", GUTTER_X)}>
@@ -222,13 +222,13 @@ function SummaryBody({ data, timeZone }: { data: PostEventSummary; timeZone: str
             )}
           </div>
         </section>
-        <section aria-labelledby="sum-tier" className="min-w-0 border-t border-border lg:border-t-0 lg:border-l">
+        <section aria-labelledby="sum-tier" className="min-w-0 ">
           <SectionHead id="sum-tier" title="Attendance by tier" meta="checked in of registered" />
           <TierTable rows={data.attendance_by_tier} />
         </section>
       </div>
 
-      <div className={cn(SPLIT, "border-b border-border")}>
+      <div className={cn(SPLIT, "")}>
         <div className="grid min-w-0 grid-cols-1 md:grid-cols-2">
           <section aria-labelledby="sum-rooms" className="min-w-0">
             <SectionHead id="sum-rooms" title="Busiest rooms" meta="peak against capacity" className={HEAD_BLEED} />
@@ -257,7 +257,7 @@ function SummaryBody({ data, timeZone }: { data: PostEventSummary; timeZone: str
               })}
             </ol>
           </section>
-          <section aria-labelledby="sum-gates" className="min-w-0 border-t border-border md:border-t-0 md:border-l">
+          <section aria-labelledby="sum-gates" className="min-w-0 ">
             <SectionHead id="sum-gates" title="Busiest gates" meta="scans and refusals" />
             <ol className="py-1.5">
               {data.busiest_gates.map((gate) => (
@@ -273,7 +273,7 @@ function SummaryBody({ data, timeZone }: { data: PostEventSummary; timeZone: str
             </ol>
           </section>
         </div>
-        <section aria-labelledby="sum-alerts" className="min-w-0 border-t border-border lg:border-t-0 lg:border-l">
+        <section aria-labelledby="sum-alerts" className="min-w-0 ">
           <SectionHead id="sum-alerts" title="Alerts" meta="by severity · how fast handled" />
           <AlertHandling data={data} />
         </section>
@@ -296,7 +296,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function TierTable({ rows }: { rows: PostEventSummary["attendance_by_tier"] }) {
-  const head = "h-9 border-b border-border text-12 font-normal whitespace-nowrap text-muted-foreground";
+  const head = "h-9 text-12 font-normal whitespace-nowrap text-muted-foreground";
   return (
     <table className="w-full border-collapse text-13">
       <thead>
@@ -312,7 +312,7 @@ function TierTable({ rows }: { rows: PostEventSummary["attendance_by_tier"] }) {
         {rows.map((row) => {
           const ratio = row.registered > 0 ? row.checked_in / row.registered : 0;
           return (
-            <tr key={row.tier} className="h-10 border-b border-border last:border-b-0">
+            <tr key={row.tier} className="h-10">
               <th scope="row" className="pr-2 pl-4 text-left font-normal sm:pl-5">{TIER_LABEL[row.tier]}</th>
               <td className={cn(TYPE.value, "px-2 text-right")}>{formatNumber(row.registered)}</td>
               <td className={cn(TYPE.value, "px-2 text-right")}>{formatNumber(row.checked_in)}</td>
@@ -345,8 +345,8 @@ function AlertHandling({ data }: { data: PostEventSummary }) {
           );
         })}
       </ul>
-      <dl className="grid grid-cols-2 border-t border-border">
-        <div className={cn("border-r border-border py-3", RAIL_X)}>
+      <dl className="grid grid-cols-2">
+        <div className={cn("py-3", RAIL_X)}>
           <dt className="text-12 text-muted-foreground">Median to acknowledge</dt>
           <dd className="mt-1 font-mono text-17 tabular-nums">{seconds(data.alerts.ack_p50_s)}</dd>
         </div>
@@ -379,15 +379,15 @@ function SummaryLoading() {
       <div aria-hidden="true" className={STRIP}>
         {Array.from({ length: 4 }, (_, i) => (
           <div key={i} className={cn("bg-background px-4 py-4", CELL, i === 3 && "col-span-2 sm:col-span-3 lg:col-span-1")}>
-            <span className="block h-2 w-20 bg-muted/60" />
-            <span className="mt-3 block h-8 w-24 bg-muted/40" />
-            <span className="mt-3 block h-2 w-28 bg-muted/40" />
+            <span className="block h-2 w-20 bg-surface-2" />
+            <span className="mt-3 block h-8 w-24 bg-surface-2" />
+            <span className="mt-3 block h-2 w-28 bg-surface-2" />
           </div>
         ))}
       </div>
       <div className={cn("py-8", GUTTER_X)}>
         <p className="text-13 text-muted-foreground">Loading the summary…</p>
-        <div className="relative mt-3 h-px w-64 max-w-full overflow-hidden bg-border">
+        <div className="relative mt-3 h-px w-64 max-w-full overflow-hidden bg-surface-3">
           <span aria-hidden="true" className="animate-skeleton-sweep absolute inset-y-0 w-1/3 bg-foreground/40" />
         </div>
       </div>
@@ -398,15 +398,15 @@ function SummaryLoading() {
 function SummaryError({ message, onRetry }: { message: string; onRetry: () => void }) {
   const copy = message in ERROR_COPY ? ERROR_COPY[message as keyof typeof ERROR_COPY] : ERROR_COPY.INTERNAL;
   return (
-    <div role="alert" className="m-4 max-w-120 border border-border sm:m-6 2xl:m-8">
-      <p className="flex items-center gap-2 border-b border-border px-4 py-2.5 text-13 font-medium text-destructive">
+    <div role="alert" className="m-4 max-w-120 sm:m-6 2xl:m-8">
+      <p className="flex items-center gap-2 px-4 py-2.5 text-13 font-medium text-destructive">
         <SignalShape state="stop" /> Could not load the summary
       </p>
       <p className="px-4 py-3 text-13 text-muted-foreground">{copy.message}</p>
       <button
         type="button"
         onClick={onRetry}
-        className="pressable w-full border-t border-border px-4 py-2.5 text-left text-13 font-medium transition-colors duration-120 ease-standard hover:bg-foreground/5 motion-reduce:transition-none"
+        className="pressable w-full px-4 py-2.5 text-left text-13 font-medium transition-colors duration-120 ease-standard hover:bg-surface-2 motion-reduce:transition-none"
       >
         Try again
       </button>
@@ -432,7 +432,7 @@ function NoData({ data, timeZone, startsAt }: { data: PostEventSummary; timeZone
       </p>
       <p className="mt-4 text-12 text-muted-foreground">
         State: <span className="font-mono">{data.state}</span> ·{" "}
-        <Link to="/" className="text-foreground underline decoration-border underline-offset-4 hover:decoration-brand">
+        <Link to="/" className="text-foreground underline decoration-foreground/30 underline-offset-4 hover:decoration-brand">
           Command Center
         </Link>
       </p>

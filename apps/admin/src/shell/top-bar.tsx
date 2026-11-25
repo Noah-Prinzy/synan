@@ -1,85 +1,68 @@
 /**
- * The persistent top bar (docs/06 §2.2): lockup, event selector, live state, operator menu —
- * four ruled cells on one 48px line, no fills. The venue clock and the shift sit in the
- * operator menu; the channel's data rate is for the dev panel, not the chrome.
+ * The top bar (D-37, docs/05 §5 "Admin Command layout"): one full-width solid band — the
+ * wordmark, the event switcher, the sections (Live · Events · People · Setup), the alert notice,
+ * the live gate status in mono, and the account. There is no side rail. The venue clock and the
+ * shift sit in the account menu. On a phone the sections move into a menu sheet (PhoneNav) and
+ * the gate status into a strip under the bar.
  */
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
 import { Mark, Wordmark, surfaceName } from "@synan/ui/brand";
-import { SignalShape, formatClock, formatNumber, formatUtcOffset, type LiveState, type SignalState } from "@synan/ui/data";
-import { TopBar } from "@synan/ui/shell";
+import { SignalShape, formatAge, formatClock, formatNumber, formatUtcOffset, type LiveState, type SignalState } from "@synan/ui/data";
+import { Avatar, TopBar } from "@synan/ui/shell";
 import { THEME_CHOICES, cn, useTheme } from "@synan/ui/components";
 import type { DashboardData } from "@synan/mock";
 import { api, auth } from "../live/backend";
 import { requestEnrolment } from "../access/mfa-bus";
-import { GUTTER_X } from "../kit/page";
 import { useSession } from "../access/session";
 import { useCommand, useTimeZone } from "../live/context";
 import { useNow } from "../live/hooks";
-import { useSliceValue } from "../live/slice";
+import { useSlice, useSliceValue } from "../live/slice";
 import type { CommandEvent } from "../live/transport";
 import { Menu, MenuItem, MenuNote } from "./menu";
 
-/**
- * `rail` is the navigation rail beside the page, if the role has one: the lockup cell takes the
- * rail's width so the two rules line up, and over the collapsed rail it shows the mark alone.
- * On a phone a role with a rail has the Menu cell instead, and the lockup moves into its sheet,
- * so the event keeps the room.
- */
 export function AdminTopBar({
-  menu,
-  rail = null,
+  menu = null,
+  sections = null,
   alerts = null,
 }: {
+  /** The phone's Menu button (below 640), for a role with more than one screen. */
   menu?: ReactNode;
-  rail?: "expanded" | "collapsed" | null;
-  /** The alert notice, for roles that see alerts: right-aligned, just before the live state. */
+  /** The sections, from 640 up, for a role with more than one screen. */
+  sections?: ReactNode;
+  /** The alert notice, for roles that see alerts. */
   alerts?: ReactNode;
 }) {
   const { can, landing, landingLabel } = useSession();
   // A role that does not watch the floor has no live state to read.
   const watches = can("live.view");
   return (
-    <TopBar>
-      {menu}
-      <div
-        className={cn(
-          "flex shrink-0 items-center border-r border-border",
-          // Without a rail the lockup stands on the page gutter, over the page title.
-          rail === null ? GUTTER_X : "max-sm:hidden",
-          rail === "expanded" && "w-52 px-5",
-          rail === "collapsed" && "w-14 justify-center px-0",
-        )}
-      >
+    <TopBar className="relative z-30 gap-2 pr-2 shadow-depth sm:pr-3 2xl:pr-5">
+      <div className="flex min-w-0 flex-1 basis-0 items-center gap-1 pl-4 sm:pl-6 2xl:pl-8">
         <Link
           to={landing}
           aria-label={`${surfaceName("admin")}, ${landingLabel.replace(/^the /, "")}`}
-          className="flex h-8 items-center"
+          className="mr-2 flex h-10 shrink-0 items-center sm:mr-3"
         >
-          {rail === "collapsed" ? <Mark size={20} title="" /> : <AdminLockup />}
+          {/* On a phone the mark alone, so the event keeps the room. */}
+          <span className="hidden sm:contents">
+            <Wordmark small className="text-17" />
+          </span>
+          <span className="contents sm:hidden">
+            <Mark size={22} title="" />
+          </span>
         </Link>
+        <EventSelector />
       </div>
-      <EventSelector />
-      <div aria-hidden="true" className="hidden flex-1 sm:block" />
-      {alerts}
-      {watches ? (
-        <div className="flex shrink-0 items-center border-r border-border px-3 sm:border-r-0 sm:border-l sm:px-4">
-          <LiveIndicator />
-        </div>
-      ) : null}
-      <OperatorMenu />
+      {sections ? <div className="hidden shrink-0 items-center sm:flex">{sections}</div> : null}
+      <div className="flex flex-1 basis-0 items-center justify-end gap-1.5">
+        {alerts}
+        {watches ? <LiveStatus className="hidden lg:flex" /> : null}
+        <OperatorMenu />
+        {menu}
+      </div>
     </TopBar>
-  );
-}
-
-/** The wordmark and the surface's name, on one baseline. */
-export function AdminLockup() {
-  return (
-    <span className="flex items-baseline gap-2.5 *:shrink-0">
-      <Wordmark small className="text-17" />
-      <span className="hidden text-12 text-muted-foreground md:inline">Command</span>
-    </span>
   );
 }
 
@@ -94,33 +77,32 @@ const stateView: Record<CommandEvent["state"], { text: string; tone: string }> =
   archived: { text: "Archived", tone: "text-muted-foreground" },
 };
 
-/** A trigger in the top bar: the full cell height, a faint surface on hover and while open. */
-const BAR_TRIGGER =
-  "flex h-full items-center transition-colors duration-120 ease-standard hover:bg-foreground/4 aria-expanded:bg-foreground/4 focus-visible:-outline-offset-2 motion-reduce:transition-none";
+/** A trigger in the top bar: a tonal step under the pointer and while open. */
+const BAR_TRIGGER = "flex h-10 items-center hover:bg-surface-2 aria-expanded:bg-surface-2 pointer-coarse:h-11";
 
 function EventSelector() {
   const { events, event, selectEvent } = useCommand();
   const { can } = useSession();
+  const navigate = useNavigate();
   const [org, setOrg] = useState<DashboardData | null>(null);
   return (
-    <div className="flex min-w-0 flex-1 items-stretch border-r border-border sm:w-72 sm:flex-none lg:w-80">
+    <div className="flex min-w-0 items-center">
       <Menu
         onOpen={() => {
           // The organisation's live totals are for roles that watch the floor.
           if (can("live.view")) api.dashboard().then(setOrg, () => setOrg(null));
         }}
-        buttonLabel={event ? `Event: ${event.title}. Change event` : "Choose an event"}
-        buttonClassName={cn(BAR_TRIGGER, "w-full min-w-0 gap-3 px-3 text-left sm:px-4")}
+        // Named from what it shows (WCAG 2.5.3): "Event:" and "Change event" are added for screen
+        // readers only, around the visible title and state.
+        buttonClassName={cn(BAR_TRIGGER, "min-w-0 gap-2 px-2.5 text-left")}
         button={
           event ? (
             <>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-13 leading-5 font-medium">{event.title}</span>
-                <span className="block truncate text-12 leading-4 text-muted-foreground">
-                  {event.venue_name}
-                  {event.state !== "live" ? <span className="hidden sm:inline"> · {stateView[event.state].text}</span> : null}
-                </span>
-              </span>
+              <span className="sr-only">Event: </span>
+              {event.state === "live" ? <SignalShape state="ok" className="text-success" /> : null}
+              <span className="min-w-0 truncate text-13 font-medium">{event.title}</span>{" "}
+              <span className="hidden shrink-0 text-13 text-muted-foreground md:inline">{stateView[event.state].text}</span>
+              <span className="sr-only">. Change event</span>
               <ChevronDown aria-hidden="true" size={16} strokeWidth={1.5} className="shrink-0 text-muted-foreground" />
             </>
           ) : (
@@ -168,6 +150,16 @@ function EventSelector() {
                 </span>
               </MenuItem>
             ))}
+            {can("events.list") ? (
+              <MenuItem
+                onSelect={() => {
+                  close();
+                  navigate("/events");
+                }}
+              >
+                <span className="text-muted-foreground">All events</span>
+              </MenuItem>
+            ) : null}
           </>
         )}
       </Menu>
@@ -175,7 +167,7 @@ function EventSelector() {
   );
 }
 
-/* ---------------------------------------------------------------- live pill */
+/* -------------------------------------------------------------- live status */
 
 export function useLiveState(): LiveState {
   const { store } = useCommand();
@@ -186,28 +178,90 @@ export function useLiveState(): LiveState {
   return "reconnecting";
 }
 
-/** The live state as plain words with its shape: Live, Reconnecting…, Offline. No figures. */
-const liveView: Record<LiveState, { shape: SignalState; text: string; tone: string; word: string }> = {
-  live: { shape: "ok", text: "Live", tone: "text-success", word: "text-foreground" },
-  reconnecting: { shape: "warn", text: "Reconnecting…", tone: "text-warning", word: "text-warning" },
-  offline: { shape: "stop", text: "Offline", tone: "text-destructive", word: "text-destructive" },
-  idle: { shape: "idle", text: "Not live", tone: "text-muted-foreground", word: "text-muted-foreground" },
+const liveView: Record<LiveState, { shape: SignalState; text: string; tone: string }> = {
+  live: { shape: "ok", text: "Live", tone: "text-success" },
+  reconnecting: { shape: "warn", text: "Reconnecting…", tone: "text-warning" },
+  offline: { shape: "stop", text: "Offline", tone: "text-destructive" },
+  idle: { shape: "idle", text: "Not live", tone: "text-muted-foreground" },
 };
 
-function LiveIndicator() {
-  const view = liveView[useLiveState()];
+/**
+ * The live gate status in mono: "4/4 gates online · last scan 12 s · 74 / min", from the gates'
+ * health and the scans as they arrive. The scan rate starts from the gates' own last-minute counts
+ * and becomes the count of scans received in the last minute once a minute has been watched. A
+ * figure the data does not give is left out, never guessed. While the link is down it says so
+ * in words, with its shape.
+ */
+export function LiveStatus({ className, strip = false }: { className?: string; strip?: boolean }) {
+  const { store } = useCommand();
+  const state = useLiveState();
+  const gates = useSlice(store.gates);
+  const load = useSliceValue(store.load, (l) => l.status);
+  const now = useNow(1000);
+  const seen = useRef<number[]>([]);
+  const [since] = useState(() => store.now());
+  const [lastScan, setLastScan] = useState<number | null>(null);
+
+  useEffect(
+    () =>
+      store.subscribeScans((scan) => {
+        const at = store.now();
+        seen.current.push(at);
+        const corrected = Date.parse(scan.corrected_at);
+        setLastScan((prev) => Math.max(prev ?? 0, Number.isFinite(corrected) ? Math.min(corrected, at) : at));
+      }),
+    [store],
+  );
+
+  const view = liveView[state];
+  const ready = load === "ready" && gates.size > 0;
+  let online = 0;
+  let snapshotRate = 0;
+  let snapshotLast: number | null = null;
+  for (const gate of gates.values()) {
+    if (gate.link_state === "online") online++;
+    snapshotRate += gate.scans_last_minute;
+    const at = gate.last_scan_at ? Date.parse(gate.last_scan_at) : NaN;
+    if (Number.isFinite(at)) snapshotLast = Math.max(snapshotLast ?? 0, at);
+  }
+  seen.current = seen.current.filter((at) => now - at < 60_000);
+  const rate = now - since >= 60_000 ? seen.current.length : snapshotRate;
+  const last = lastScan ?? snapshotLast;
+  const allOnline = online === gates.size;
+
   return (
-    <span className="flex items-center gap-2 text-13 whitespace-nowrap">
-      <SignalShape state={view.shape} className={view.tone} />
-      <span className="sr-only">Connection: </span>
-      <span className={view.word}>{view.text}</span>
-    </span>
+    <div className={cn("h-10 items-center gap-3 px-3 font-mono", strip ? "justify-center bg-surface" : "bg-surface-2", " text-12 whitespace-nowrap text-muted-foreground tabular-nums", className)}>
+      <span className={cn("flex items-center gap-2", state !== "live" && view.tone)}>
+        <SignalShape state={state === "live" && ready && !allOnline ? "warn" : view.shape} className={state === "live" && ready && !allOnline ? "text-warning" : view.tone} />
+        <span className="sr-only">Connection: </span>
+        {state === "live" && ready ? (
+          <span>
+            <span className="text-foreground">
+              {online}/{gates.size}
+            </span>{" "}
+            {gates.size === 1 ? "gate" : "gates"} online
+          </span>
+        ) : (
+          <span className="font-sans text-13">{view.text}</span>
+        )}
+      </span>
+      {state === "live" && ready && last !== null ? (
+        <span>
+          last scan <span className="text-foreground">{formatAge(now - last)}</span>
+        </span>
+      ) : null}
+      {state === "live" && ready ? (
+        <span>
+          <span className="text-foreground">{formatNumber(rate)}</span> / min
+        </span>
+      ) : null}
+    </div>
   );
 }
 
 /* -------------------------------------------------------------------- clock */
 
-/** Venue-local time, in the operator menu (mounted only while it is open). */
+/** Venue-local time, in the account menu (mounted only while it is open). */
 function VenueClock() {
   const zone = useTimeZone();
   const now = useNow(1000);
@@ -219,22 +273,7 @@ function VenueClock() {
   );
 }
 
-function ShiftLabel() {
-  const { operator } = useCommand();
-  const zone = useTimeZone();
-  if (!operator) return null;
-  const { shift } = operator;
-  return (
-    <span className="flex items-baseline gap-2 whitespace-nowrap">
-      <span className="text-12 text-muted-foreground">{shift.label}</span>
-      <span className="font-mono text-12 tabular-nums">
-        {formatClock(shift.starts_at, zone, { seconds: false })}–{formatClock(shift.ends_at, zone, { seconds: false })}
-      </span>
-    </span>
-  );
-}
-
-/* ------------------------------------------------------------ operator menu */
+/* ------------------------------------------------------------ account menu */
 
 /** Real API only: whether the second factor is set up, and until when a step-up lasts. */
 function SecondFactorItems({ close, zone }: { close: () => void; zone: string }) {
@@ -265,61 +304,70 @@ function SecondFactorItems({ close, zone }: { close: () => void; zone: string })
   );
 }
 
-/** Appearance for this device: System (follows the OS, live), Light or Dark. The menu stays open
-    so the choice is seen taking effect; the chosen line carries the accent rule. */
+/** Appearance for this device: System (follows the OS, live), Light or Dark, as three tonal cells;
+    the chosen one is ink. The menu stays open so the choice is seen taking effect. */
 function ThemeItems() {
   const { choice, resolved, setChoice } = useTheme();
   return (
-    <div role="group" aria-label="Appearance" className="border-b border-border pb-1">
-      <p className="px-3 pt-1.5 pb-0.5 text-12 text-muted-foreground">
+    <div role="group" aria-label="Appearance" className="px-4 pt-2 pb-3">
+      <p className="pb-2 text-12 text-muted-foreground">
         Appearance{choice === "system" ? ` · following this device, ${resolved} now` : ""}
       </p>
-      {THEME_CHOICES.map((option) => (
-        <MenuItem key={option.value} current={choice === option.value} onSelect={() => setChoice(option.value)}>
-          {option.label}
-        </MenuItem>
-      ))}
+      <div className="grid grid-cols-3 gap-1">
+        {THEME_CHOICES.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            aria-current={choice === option.value || undefined}
+            onClick={() => setChoice(option.value)}
+            className="h-8 bg-surface-2 text-13 hover:bg-surface-3 focus-visible:-outline-offset-2 aria-current:bg-foreground aria-current:text-background pointer-coarse:h-11"
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
+}
+
+function initialsOf(name: string | undefined): string | undefined {
+  return name
+    ?.split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 }
 
 function OperatorMenu() {
   const { user: operator, roleLabel, can, signOut } = useSession();
   const navigate = useNavigate();
   const zone = useTimeZone();
-  const initials = operator?.name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  const initials = initialsOf(operator?.name);
   return (
-    <div className="flex items-stretch sm:border-l sm:border-border">
+    <div className="flex items-center">
       <Menu
         align="end"
-        buttonLabel={operator ? `${operator.name}, ${roleLabel}. Account menu` : "Account menu"}
-        buttonClassName={cn(BAR_TRIGGER, "gap-3 px-3 sm:px-4")}
-        button={
-          <>
-            {/* From 1536 there is room to say who is signed in without opening the menu. */}
-            <span className="hidden text-right 2xl:block">
-              <span className="block text-12 leading-4">{operator?.name ?? "—"}</span>
-              <span className="block text-12 leading-4 text-muted-foreground">{roleLabel}</span>
-            </span>
-            <span aria-hidden="true" className="grid size-8 place-items-center border border-border text-11 font-medium tracking-wide">
-              {initials ?? "··"}
-            </span>
-          </>
-        }
+        // The name holds what the button shows (WCAG 2.5.3): the initials, after who and what role.
+        buttonLabel={operator ? `${[operator.name, roleLabel, initials].filter(Boolean).join(", ")}. Account menu` : "Account menu"}
+        buttonClassName="grid size-11 place-items-center rounded-full hover:[&>span]:bg-surface-3 aria-expanded:[&>span]:bg-surface-3"
+        button={<Avatar initials={initials ?? "··"} />}
       >
         {(close) => (
           <>
             {operator ? (
               <MenuNote>
-                <span className="block text-13 font-medium text-foreground">{operator.name}</span>
-                {/* The real API has no display name yet: the email stands in, so it is not repeated. */}
-                {operator.email !== operator.name ? <span className="block truncate">{operator.email}</span> : null}
-                <span className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1">
+                <span className="flex items-center gap-3 pb-3">
+                  <Avatar initials={initials ?? "··"} />
+                  <span className="min-w-0">
+                    <span className="block truncate text-13 font-medium text-foreground">{operator.name}</span>
+                    {/* The real API has no display name yet: the email stands in, so it is not repeated. */}
+                    {operator.email !== operator.name ? <span className="block truncate">{operator.email}</span> : null}
+                  </span>
+                </span>
+                <span className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1">
                   <span>Role</span>
                   <span className="text-foreground">{roleLabel}</span>
                   {/* The real API sends no shift when there is none; nothing is invented. */}

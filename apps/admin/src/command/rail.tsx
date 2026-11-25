@@ -8,10 +8,12 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { Link } from "react-router-dom";
 import type { Room } from "@synan/contracts/rest";
 import { Can } from "../access/session";
+import { Button } from "@synan/ui/components";
 import {
   CapacityMeter,
   OccupancyBar,
   ResultChip,
+  SignalShape,
   Sparkline,
   StatusDot,
   clampRatio,
@@ -47,12 +49,12 @@ export function RailSection({
   id: string;
 }) {
   return (
-    <section aria-labelledby={id} className={`flex min-h-0 flex-col border-t border-border first:border-t-0 ${className}`}>
-      <header className="flex min-h-10 shrink-0 items-center justify-between gap-3 border-b border-border px-4 sm:px-5">
-        <h2 id={id} className="text-13 font-medium">
+    <section aria-labelledby={id} className={`flex min-h-0 flex-col ${className}`}>
+      <header className="flex shrink-0 items-baseline justify-between gap-3 px-5 pt-5 pb-3">
+        <h2 id={id} className="eyebrow-mono">
           {title}
         </h2>
-        {meta ? <span className="truncate text-12 text-muted-foreground">{meta}</span> : null}
+        {meta ? <span className="truncate text-13 text-muted-foreground">{meta}</span> : null}
       </header>
       {children}
     </section>
@@ -98,7 +100,7 @@ export function GateHealthRow({ gate, label, now }: { gate: GateLive; label: str
     status = <span className="text-muted-foreground">Online</span>;
   }
   return (
-    <li className="grid min-h-8 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 sm:px-5">
+    <li className="grid min-h-9 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-5">
       <StatusDot state={state} label={words} />
       <span className="truncate text-13">{label}</span>
       <span className="text-13 whitespace-nowrap">{status}</span>
@@ -123,18 +125,18 @@ export function GatesSection({ layout }: { layout: VenueLayout }) {
       title="Gates"
       meta={
         <Can I="gates.view">
-          <Link to="/gates" className="text-muted-foreground transition-colors duration-120 hover:text-foreground">
+          <Link to="/gates" className="text-muted-foreground hover:text-foreground">
             Gate health →
           </Link>
         </Can>
       }
       className="shrink-0"
     >
-      <ul className="py-1.5">
+      <ul className="pb-4">
         {faults.map((gate) => (
           <GateHealthRow key={gate.checkpoint_id} gate={gate} label={byId.get(gate.checkpoint_id)?.label ?? gate.label} now={now} />
         ))}
-        <li className="flex min-h-8 items-center px-4 text-13 text-muted-foreground sm:px-5">
+        <li className="flex min-h-9 items-center px-5 text-13 text-muted-foreground">
           {faults.length === 0
             ? "All gates online"
             : `${faults.length === 1 ? "1 gate needs" : `${faults.length} gates need`} attention · the others are online`}
@@ -208,7 +210,7 @@ export function RoomsList({
         onScroll={measureMore}
         // While rows are hidden below, the last visible one fades out instead of being cut by the
         // next section; the "more" line under the list says how many and scrolls to them.
-        className={`min-h-0 flex-1 overflow-y-auto py-1 ${more > 0 ? "mask-[linear-gradient(to_bottom,black_calc(100%-2.5rem),transparent)]" : ""}`}
+        className={`min-h-0 flex-1 overflow-y-auto pb-2 ${more > 0 ? "mask-[linear-gradient(to_bottom,black_calc(100%-2.5rem),transparent)]" : ""}`}
         onPointerEnter={() => setHeld(true)}
         onPointerLeave={() => {
           setHeld(false);
@@ -223,7 +225,7 @@ export function RoomsList({
             <RoomRow
               key={id}
               room={room}
-              zoneName={zone ? `${zone.floor} · ${zone.name}` : ""}
+              zoneName={zone ? [zone.name, zone.floor].filter(Boolean).join(" · ") : ""}
               live={live.get(id)}
               selected={id === selectedId}
               onSelect={onSelect}
@@ -234,8 +236,8 @@ export function RoomsList({
       {more > 0 ? (
         <button
           type="button"
-          onClick={() => list.current?.scrollBy({ top: list.current.clientHeight * 0.8, behavior: "smooth" })}
-          className="flex min-h-8 shrink-0 items-center gap-1.5 px-4 text-12 text-muted-foreground transition-colors duration-120 ease-standard hover:text-foreground sm:px-5 motion-reduce:transition-none pointer-coarse:min-h-11"
+          onClick={() => list.current?.scrollBy({ top: list.current.clientHeight * 0.8 })}
+          className="flex min-h-10 shrink-0 items-center gap-1.5 px-5 text-13 text-muted-foreground hover:bg-surface-2 hover:text-foreground pointer-coarse:min-h-11"
         >
           <span className="font-mono tabular-nums">{more}</span> more below <span aria-hidden="true">↓</span>
         </button>
@@ -274,33 +276,40 @@ const RoomRow = memo(function RoomRow({
   const level = live?.level ?? "ok";
   const tone = level === "block" ? "text-destructive" : level === "warn" ? "text-warning" : "text-foreground";
   // One number per row: the count. Capacity shows on hover, focus and selection.
+  // Named from what it shows (WCAG 2.5.3): the name, the level word when there is one, the count;
+  // the capacity is added for screen readers only, then the zone line as shown.
   return (
     <li>
       <button
         type="button"
         aria-current={selected || undefined}
-        aria-label={`${room.name}, ${zoneName}: ${live ? formatNumber(live.occupancy) : "—"} of ${formatNumber(room.capacity)}. ${levelWords(
-          level,
-          room.warn_at_pct,
-          room.block_at_pct,
-        )}.`}
         onClick={() => onSelect(room.id)}
         onPointerEnter={() => highlight.set(room.id)}
         onFocus={() => highlight.set(room.id)}
         onBlur={() => highlight.set(null)}
-        className="group/row relative grid min-h-9 w-full contain-content grid-cols-[0.5rem_minmax(0,1fr)_minmax(2rem,4rem)_4.5rem] items-center gap-3 px-4 py-1.5 text-left pointer-coarse:min-h-11 sm:px-5 transition-colors duration-120 ease-standard before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 hover:bg-foreground/4 focus-visible:bg-foreground/4 aria-current:bg-foreground/6 aria-current:before:bg-brand motion-reduce:transition-none"
+        className="group/row relative grid w-full contain-content grid-cols-[minmax(0,1fr)_auto_auto] items-baseline gap-x-3 px-5 py-2.5 text-left before:absolute before:inset-y-3 before:left-0 before:w-0.5 hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:-outline-offset-2 aria-current:bg-surface-2 aria-current:before:bg-brand"
       >
-        {/* Calm by default: a shape only for a room that is nearly full or full. */}
-        {level === "ok" ? <span aria-hidden="true" /> : <StatusDot state={levelState(level)} label={levelWords(level, room.warn_at_pct, room.block_at_pct)} />}
         {/* The name wraps at words onto a second line rather than being cut. */}
-        <span className="line-clamp-2 text-13 leading-tight">{room.name}</span>
-        <OccupancyBar ratio={0} level={level} fillRef={fill} className="h-1" />
+        <span className="line-clamp-2 text-13 leading-tight font-medium">{room.name}</span>
+        {/* Calm by default: a shape and a word only for a room that is nearly full or full. */}
+        {level === "ok" ? (
+          <span />
+        ) : (
+          <span className={`flex items-center gap-1.5 self-center text-12 font-medium ${level === "block" ? "text-destructive" : "text-warning"}`}>
+            <SignalShape state={levelState(level)} />
+            {level === "block" ? "Full" : "Nearly full"}
+          </span>
+        )}
         <span className="text-right font-mono text-13 tabular-nums">
+          <span className="sr-only">: </span>
           <span ref={count} className={tone} />
-          <span className="hidden text-12 text-muted-foreground group-hover/row:inline group-focus-visible/row:inline group-aria-current/row:inline">
+          <span aria-hidden="true" className="hidden text-12 text-muted-foreground group-hover/row:inline group-focus-visible/row:inline group-aria-current/row:inline">
             /{formatNumber(room.capacity)}
           </span>
+          <span className="sr-only">{` of ${formatNumber(room.capacity)}. `}</span>
         </span>
+        <span className="col-span-full mt-0.5 truncate text-12 text-muted-foreground">{zoneName}</span>
+        <OccupancyBar ratio={0} level={level} fillRef={fill} className="col-span-full mt-2 h-1" />
       </button>
     </li>
   );
@@ -333,7 +342,7 @@ export function RoomDetail({
   if (!room || !live) {
     return (
       <RailSection id="rail-room" title="Room" className="min-h-0 flex-1">
-        <p className="px-4 py-3 text-13 text-muted-foreground">That room is not part of this venue.</p>
+        <p className="px-5 pb-5 text-13 text-muted-foreground">That room is not part of this venue.</p>
       </RailSection>
     );
   }
@@ -346,15 +355,15 @@ export function RoomDetail({
     <RailSection
       id="rail-room"
       title={
-        <button type="button" onClick={onBack} className="text-muted-foreground hover:text-foreground">
+        <button type="button" onClick={onBack} className="-mx-2 px-2 py-1 uppercase hover:bg-surface-2 hover:text-foreground">
           ← All rooms
         </button>
       }
-      meta={zone ? `${zone.floor} · ${zone.name}` : undefined}
+      meta={zone ? [zone.name, zone.floor].filter(Boolean).join(" · ") : undefined}
       className="min-h-0 flex-1"
     >
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="flex items-start justify-between gap-3 px-4 pt-3">
+        <div className="flex items-start justify-between gap-3 px-5 pt-1">
           <div className="min-w-0">
             <h3 className="truncate font-display text-21 leading-tight">{room.name}</h3>
             <p className="mt-0.5 text-12 text-muted-foreground">
@@ -362,15 +371,11 @@ export function RoomDetail({
               {room.continuous ? " · continuously occupied" : " · resets when its session ends"}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onRecount}
-            className="shrink-0 border border-border px-3 py-1.5 text-12 font-medium transition-colors duration-120 ease-standard hover:border-foreground/50 motion-reduce:transition-none"
-          >
+          <Button size="compact" onClick={onRecount} className="shrink-0">
             Recount
-          </button>
+          </Button>
         </div>
-        <div className="px-4 pt-4">
+        <div className="px-5 pt-5">
           <CapacityMeter
             size="lg"
             occupancy={live.occupancy}
@@ -383,31 +388,31 @@ export function RoomDetail({
             <StatusDot state={levelState(live.level)} label={levelWords(live.level, room.warn_at_pct, room.block_at_pct)} showLabel />
           </p>
         </div>
-        <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-t border-border px-4 py-3">
+        <div className="mx-5 mt-5 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 bg-surface-2 px-4 py-3">
           <Sparkline values={samples} label={`${room.name} occupancy, last 3 minutes`} />
           <span className="text-right">
             <span className="block font-mono text-13 tabular-nums">{change === null ? "—" : formatNumber(change, { signed: true })}</span>
             <span className="block text-11 text-muted-foreground">last minute</span>
           </span>
         </div>
-        <div className="border-t border-border">
-          <p className="px-4 pt-2 pb-1 text-11 text-muted-foreground">{doors.length === 1 ? "Door" : "Doors"}</p>
-          <ul className="pb-1">
+        <div className="pt-5">
+          <p className="eyebrow-mono px-5 pb-1">{doors.length === 1 ? "Door" : "Doors"}</p>
+          <ul>
             {doors.map((door) => {
               const gate = gates.get(door.id);
               return gate ? <GateHealthRow key={door.id} gate={gate} label={door.label} now={now} /> : null;
             })}
           </ul>
         </div>
-        <div className="border-t border-border">
-          <p className="px-4 pt-2 pb-1 text-11 text-muted-foreground">Recent at the door</p>
+        <div className="pt-5 pb-5">
+          <p className="eyebrow-mono px-5 pb-1">Recent at the door</p>
           {recent.length === 0 ? (
-            <p className="px-4 pb-3 text-12 text-muted-foreground">No scans at this door since the page opened.</p>
+            <p className="px-5 text-13 text-muted-foreground">No scans at this door since the page opened.</p>
           ) : (
-            <ul className="pb-2">
+            <ul>
               {recent.map((scan, index) => (
-                <li key={`${scan.at}-${index}`} className="grid h-6 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 px-4">
-                  <span className="font-mono text-11 text-muted-foreground tabular-nums">{formatClock(scan.at, zoneTz)}</span>
+                <li key={`${scan.at}-${index}`} className="grid h-8 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 px-5">
+                  <span className="font-mono text-12 text-muted-foreground tabular-nums">{formatClock(scan.at, zoneTz)}</span>
                   <ResultChip result={scan.result} className="justify-self-start" />
                 </li>
               ))}
@@ -441,21 +446,21 @@ export function LiveFeed({ layout, timeZone }: { layout: VenueLayout; timeZone: 
       title="Recent activity"
       meta={
         <Can I="scans.view">
-          <Link to="/access-log" className="text-muted-foreground transition-colors duration-120 hover:text-foreground">
+          <Link to="/access-log" className="text-muted-foreground hover:text-foreground">
             Access log →
           </Link>
         </Can>
       }
       className="shrink-0"
     >
-      <ol aria-label="Recent refusals, alerts and gate changes" className="py-1.5">
+      <ol aria-label="Recent refusals, alerts and gate changes" className="pb-4">
         {rows.length === 0 ? (
-          <li className="px-4 py-1.5 text-13 leading-relaxed text-muted-foreground sm:px-5">
+          <li className="px-5 py-1.5 text-13 leading-relaxed text-muted-foreground">
             Nothing needs attention. Refusals, alerts and gate changes appear here.
           </li>
         ) : null}
         {rows.map((item) => (
-          <li key={item.id} className="grid min-h-8 grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-3 px-4 text-13 sm:px-5">
+          <li key={item.id} className="grid min-h-9 grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-3 px-5 text-13">
             <span className="font-mono text-12 text-muted-foreground tabular-nums">{formatClock(item.at, timeZone, { seconds: false })}</span>
             <FeedText item={item} label={label} exits={exits} roomName={roomName} />
           </li>

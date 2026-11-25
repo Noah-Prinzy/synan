@@ -18,7 +18,7 @@ export function newFloor(name = ""): FloorItem {
 
 /** Square icon button used in lists: 28px on a mouse, 44px under a coarse pointer. */
 export const iconButtonClass =
-  "pressable inline-grid size-7 shrink-0 place-items-center border border-transparent text-muted-foreground transition-colors duration-120 ease-standard hover:border-border hover:text-foreground disabled:pointer-events-none disabled:opacity-30 motion-reduce:transition-none pointer-coarse:size-11";
+  "pressable inline-grid size-7 shrink-0 place-items-center text-muted-foreground hover:bg-surface-2 hover:text-foreground disabled:pointer-events-none disabled:opacity-30 motion-reduce:transition-none pointer-coarse:size-11";
 
 type FocusTarget = { id: string; part: "input" | "up" | "down" | "remove" } | { id: null; part: "add" };
 
@@ -84,12 +84,12 @@ export function FloorsField({
   return (
     <fieldset className="min-w-0" aria-describedby={listError ? "floors-error" : "floors-hint"}>
       <legend className="mb-1.5 text-12 font-medium text-muted-foreground">Floors</legend>
-      <ol className="border-t border-border">
+      <ol className="">
         {floors.map((floor, index) => {
           const error = errors[floor.id];
           const label = `Floor ${index + 1} name`;
           return (
-            <li key={floor.id} className="border-b border-border py-1.5">
+            <li key={floor.id} className="py-1.5">
               <div className="flex items-center gap-2">
                 <span aria-hidden="true" className="w-5 shrink-0 text-right font-mono text-12 text-muted-foreground tabular-nums">
                   {index + 1}

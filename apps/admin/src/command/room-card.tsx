@@ -4,6 +4,7 @@
  * actions: Recount (D-10, audited) and Open room (drill in).
  */
 import { CapacityMeter, StatusDot, formatNumber } from "@synan/ui/data";
+import { Button } from "@synan/ui/components";
 import { useCommand } from "../live/context";
 import { useSlice } from "../live/slice";
 import { levelState, levelWords } from "./ui-state";
@@ -38,12 +39,12 @@ export function RoomCard({
   const door = doors[0] ? gates.get(doors[0].id) : undefined;
 
   return (
-    <div role="group" aria-label={`${room.name} details`} className="border border-foreground/25 bg-popover">
-      <div className="flex items-start justify-between gap-3 border-b border-border px-3 pt-2.5 pb-2">
+    <div role="group" aria-label={`${room.name} details`} className="bg-solid shadow-pop">
+      <div className="flex items-start justify-between gap-3 px-4 pt-3.5">
         <div className="min-w-0">
           <p className="truncate text-13 font-medium">{room.name}</p>
-          <p className="truncate text-11 text-muted-foreground">
-            {zone ? `${zone.floor} · ${zone.name}` : ""}
+          <p className="truncate text-12 text-muted-foreground">
+            {zone ? [zone.name, zone.floor].filter(Boolean).join(" · ") : ""}
             {room.continuous ? " · continuous" : ""}
           </p>
         </div>
@@ -53,7 +54,7 @@ export function RoomCard({
           className="pt-1"
         />
       </div>
-      <div className="px-3 pt-2.5 pb-1">
+      <div className="px-4 pt-3 pb-1">
         <CapacityMeter
           occupancy={live.occupancy}
           capacity={room.capacity}
@@ -62,13 +63,13 @@ export function RoomCard({
           level={live.level}
         />
       </div>
-      <dl className="grid grid-cols-2 border-t border-border text-12">
-        <div className="border-r border-border px-3 py-2">
-          <dt className="text-11 text-muted-foreground">Last minute</dt>
+      <dl className="grid grid-cols-2 gap-x-4 px-4 pt-2 pb-3 text-13">
+        <div>
+          <dt className="text-12 text-muted-foreground">Last minute</dt>
           <dd className="font-mono tabular-nums">{change === null ? "—" : formatNumber(change, { signed: true })}</dd>
         </div>
-        <div className="px-3 py-2">
-          <dt className="text-11 text-muted-foreground">Door</dt>
+        <div className="min-w-0">
+          <dt className="text-12 text-muted-foreground">Door</dt>
           <dd className="truncate font-mono tabular-nums">
             {door ? (
               door.link_state === "online" ? (
@@ -82,21 +83,13 @@ export function RoomCard({
           </dd>
         </div>
       </dl>
-      <div className="grid grid-cols-2 border-t border-border">
-        <button
-          type="button"
-          onClick={onRecount}
-          className="border-r border-border px-3 py-2 text-left text-12 font-medium transition-colors duration-120 ease-standard hover:bg-foreground/5 motion-reduce:transition-none"
-        >
+      <div className="flex gap-2 px-4 pb-4">
+        <Button size="compact" onClick={onRecount}>
           Recount
-        </button>
-        <button
-          type="button"
-          onClick={onOpen}
-          className="px-3 py-2 text-left text-12 text-muted-foreground transition-colors duration-120 ease-standard hover:bg-foreground/5 hover:text-foreground motion-reduce:transition-none"
-        >
+        </Button>
+        <Button size="compact" variant="quiet" onClick={onOpen}>
           Open room →
-        </button>
+        </Button>
       </div>
     </div>
   );

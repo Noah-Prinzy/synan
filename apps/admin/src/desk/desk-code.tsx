@@ -158,7 +158,7 @@ function CodeShown({
 
   return (
     <div className="flex flex-col gap-4 pt-4">
-      <div className="border border-border px-4 py-4">
+      <div className="px-4 py-4">
         <p className="text-12 text-muted-foreground">Desk code for band <span className="font-mono text-foreground">{issued.band}</span></p>
         <p
           className={`mt-2 font-mono text-40 leading-none tracking-[0.18em] tabular-nums ${expired ? "text-muted-foreground line-through" : ""}`}
@@ -201,7 +201,7 @@ function CodeShown({
 
       {!expired ? (
         <p role="status" className="flex items-center gap-2 text-12 text-muted-foreground">
-          <span aria-hidden="true" className="relative h-px w-10 overflow-hidden bg-border">
+          <span aria-hidden="true" className="relative h-px w-10 overflow-hidden bg-surface-3">
             <span className="animate-skeleton-sweep absolute inset-y-0 w-1/3 bg-foreground/50" />
           </span>
           Waiting for them to enter it…
@@ -237,11 +237,11 @@ function CodeShown({
 function MockRedeem({ code, registrationId, onRedeemed }: { code: string; registrationId: string; onRedeemed: () => void }) {
   const [problem, setProblem] = useState<string | null>(null);
   return (
-    <div className="border border-dashed border-foreground/30 px-3 py-2 text-12 text-muted-foreground">
+    <div className="bg-surface-2 px-3 py-2 text-12 text-muted-foreground">
       <span className="font-mono text-11 tracking-[0.12em] text-foreground">MOCK</span> · Nobody has a phone here.{" "}
       <button
         type="button"
-        className="min-h-8 text-foreground underline decoration-border underline-offset-4 hover:decoration-brand"
+        className="min-h-8 text-foreground underline decoration-foreground/30 underline-offset-4 hover:decoration-brand"
         onClick={() =>
           desk.mock.redeemDeskCode(code, registrationId).then(
             () => onRedeemed(),

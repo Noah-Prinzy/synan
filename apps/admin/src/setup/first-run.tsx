@@ -138,7 +138,7 @@ function SetupFlow({ organization: existing, venues }: { organization: Organizat
       {titles[step].lead ? <p className={`mt-3 text-15 leading-relaxed text-muted-foreground ${PROSE}`}>{titles[step].lead}</p> : null}
 
       <Stepper
-        className="mt-8 border-t"
+        className="mt-8"
         label="Setup steps"
         steps={STEPS}
         current={step}
@@ -254,7 +254,7 @@ function OrganisationStep({ organization, onDone }: { organization: Organization
         </Field>
       </div>
       {problem ? <Notice tone="danger">{problem}</Notice> : null}
-      <div className="flex justify-end border-t border-border pt-4">
+      <div className="flex justify-end pt-4">
         <ActionButton type="submit" action={save} doneLabel="Saved" failedLabel={failure} variant="primary" size="compact">
           {organization ? "Save and continue" : "Continue"}
         </ActionButton>
@@ -400,7 +400,7 @@ function VenueStep({ timezone: orgZone, venues, onDone }: { timezone: string; ve
         />
       </Field>
       {problem ? <Notice tone="danger">{problem}</Notice> : null}
-      <div className="flex justify-end border-t border-border pt-4">
+      <div className="flex justify-end pt-4">
         <ActionButton type="submit" action={create} doneLabel="Venue created" failedLabel={failure} reward keepDone variant="primary" size="compact">
           Create venue
         </ActionButton>

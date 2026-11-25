@@ -47,8 +47,8 @@ export function ReadinessChecklist({
 }): JSX.Element {
   const summary = readinessSummary(items, published);
   return (
-    <section aria-label={title} className="min-w-0 border border-border">
-      <header className="flex min-h-10 flex-wrap items-center justify-between gap-x-3 border-b border-border px-4">
+    <section aria-label={title} className="min-w-0">
+      <header className="flex min-h-10 flex-wrap items-center justify-between gap-x-3 px-4">
         <h2 className="py-2 text-13 font-medium">{title}</h2>
         <p role="status" className={cn("flex items-center gap-1.5 py-2 text-12", summary.ready ? "text-success" : "text-foreground")}>
           <SignalShape state={summary.ready ? "ok" : "stop"} className={summary.ready ? undefined : "text-destructive"} />
@@ -66,7 +66,7 @@ export function ReadinessChecklist({
           const state = stateOf(item) as "ok" | "stop" | "warn";
           const fixable = !item.met && item.step !== null && onFix;
           return (
-            <li key={item.key} className="grid grid-cols-[1rem_minmax(0,1fr)_auto] items-start gap-x-2 border-b border-border px-4 py-2.5 last:border-b-0">
+            <li key={item.key} className="grid grid-cols-[1rem_minmax(0,1fr)_auto] items-start gap-x-2 px-4 py-2.5">
               <SignalShape state={state} className={cn("mt-1", signalTone(state))} />
               <div className="min-w-0">
                 <p className="text-13">
@@ -84,7 +84,7 @@ export function ReadinessChecklist({
                     type="button"
                     onClick={() => onFix(item.step as WizardStep)}
                     aria-label={`Fix: ${item.label}`}
-                    className="text-12 text-foreground underline decoration-border underline-offset-4 transition-colors duration-120 ease-standard hover:decoration-brand motion-reduce:transition-none pointer-coarse:py-2"
+                    className="text-12 text-foreground underline decoration-foreground/30 underline-offset-4 transition-colors duration-120 ease-standard hover:decoration-brand motion-reduce:transition-none pointer-coarse:py-2"
                   >
                     Fix
                   </button>

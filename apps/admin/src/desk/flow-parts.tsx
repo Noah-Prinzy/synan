@@ -42,7 +42,7 @@ export function FlowFrame({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <section ref={ref} aria-labelledby={id} className="scroll-mt-14 border-t border-border">
+    <section ref={ref} aria-labelledby={id} className="scroll-mt-14">
       <header className={cn("flex items-start justify-between gap-3 pt-5", GUTTER_X)}>
         <div className="max-w-160 min-w-0">
           <h3 id={id} className="text-15 font-medium">
@@ -82,8 +82,8 @@ export function ReasonChips({ options, value, onPick }: { options: readonly stri
             aria-pressed={on}
             onClick={() => onPick(option)}
             className={cn(
-              "pressable min-h-11 border px-3 text-13 transition-colors duration-120 ease-standard motion-reduce:transition-none",
-              on ? "border-brand text-foreground" : "border-border text-muted-foreground hover:border-foreground/50 hover:text-foreground",
+              "pressable min-h-11 px-3 text-13",
+              on ? "bg-foreground text-background" : "bg-surface-2 text-foreground hover:bg-surface-3",
             )}
           >
             {option}
@@ -97,7 +97,7 @@ export function ReasonChips({ options, value, onPick }: { options: readonly stri
 /** What the action will do, one consequence per line, each with its state's shape. */
 export function Consequences({ items }: { items: { signal: SignalState; text: ReactNode }[] }) {
   return (
-    <ul className="flex flex-col gap-2 border-l border-border pl-3 text-13 leading-relaxed">
+    <ul className="flex flex-col gap-2 pl-3 text-13 leading-relaxed">
       {items.map((item, index) => (
         <li key={index} className="flex items-start gap-2.5">
           <SignalShape
@@ -155,7 +155,7 @@ export function OutcomePanel({ outcome, name }: { outcome: DeskOutcome; name: st
       break;
   }
   return (
-    <div role="status" className={cn("border-t border-border py-5", GUTTER_X)}>
+    <div role="status" className={cn("py-5", GUTTER_X)}>
       <RewardMoment className="text-17 font-medium">{word}</RewardMoment>
       <p className="mt-2 max-w-120 text-13 leading-relaxed text-muted-foreground">{detail}</p>
       <p className="mt-1 text-12 text-muted-foreground">The search is ready for the next person.</p>

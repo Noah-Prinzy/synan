@@ -160,7 +160,7 @@ export default function EventList() {
 
       {events.status === "ready" && rows.length > 0 ? (
         <>
-          <div className={`flex flex-wrap items-center justify-between gap-3 border-b border-border py-3 ${GUTTER_X}`}>
+          <div className={`flex flex-wrap items-center justify-between gap-3 pb-4 ${GUTTER_X}`}>
             <FilterChips<StateFilter>
               label="Filter by state"
               value={state}
@@ -299,7 +299,7 @@ function EventTable({
                 failedLabel="Try again"
                 variant="plain"
                 size="compact"
-                className="-mr-3 text-muted-foreground hover:border-border hover:text-foreground focus-visible:border-border focus-visible:text-foreground"
+                className="-mr-3 text-muted-foreground hover:bg-surface-2 hover:text-foreground focus-visible:text-foreground"
                 aria-label={`Duplicate ${row.title || "untitled draft"}`}
               >
                 <Copy size={14} strokeWidth={1.5} aria-hidden="true" />

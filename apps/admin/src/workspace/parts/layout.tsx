@@ -26,7 +26,7 @@ export const RAIL_ROW = cn("grid min-h-10 items-center gap-3 py-1.5 text-13", RA
 
 export function Toolbar({ children, actions, className }: { children?: ReactNode; actions?: ReactNode; className?: string }) {
   return (
-    <div className={cn("flex min-h-14 flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-border py-3", GUTTER_X, className)}>
+    <div className={cn("flex min-h-14 flex-wrap items-center justify-between gap-x-4 gap-y-3 py-3", GUTTER_X, className)}>
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 text-13 text-muted-foreground">{children}</div>
       {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
@@ -34,13 +34,13 @@ export function Toolbar({ children, actions, className }: { children?: ReactNode
 }
 
 export function RailNote({ children, className }: { children: ReactNode; className?: string }) {
-  return <p className={cn("border-t border-border py-4 text-12 leading-relaxed text-muted-foreground", RAIL_X, PROSE, className)}>{children}</p>;
+  return <p className={cn("py-4 text-12 leading-relaxed text-muted-foreground", RAIL_X, PROSE, className)}>{children}</p>;
 }
 
 export function Meter({ value, tone = "bg-foreground/60", className }: { value: number; tone?: string; className?: string }) {
   const share = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
   return (
-    <span aria-hidden="true" className={cn("relative block h-1 bg-border", className)}>
+    <span aria-hidden="true" className={cn("relative block h-1 bg-surface-3", className)}>
       <span className={cn("absolute inset-0 origin-left", tone)} style={{ transform: `scaleX(${share})` }} />
     </span>
   );

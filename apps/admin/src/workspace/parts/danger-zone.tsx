@@ -22,7 +22,7 @@ export function DangerZone({ event, onChanged }: { event: EventRecord; onChanged
 
   if (event.state === "draft") {
     return (
-      <div className="flex flex-wrap items-center justify-between gap-3 border border-border px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
         <p className="text-13 text-muted-foreground">
           <span className="text-foreground">Finish setup first.</span> A draft is not open to anyone yet; closing and archiving
           apply once it is published.
@@ -61,9 +61,9 @@ export function DangerZone({ event, onChanged }: { event: EventRecord; onChanged
   const purgeAt = (from: string) => new Date(Date.parse(from) + event.grace_buffer_hours * 3_600_000).toISOString();
 
   return (
-    <div className="border border-destructive/40">
+    <div className="bg-destructive/5">
       {justClosed || event.state === "closed" ? (
-        <div className="border-b border-destructive/40 px-4 py-3">
+        <div className="px-4 py-3">
           {justClosed ? (
             <Notice className="mb-3">
               The event is closed. Gates no longer admit for it.{" "}

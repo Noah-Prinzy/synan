@@ -168,14 +168,14 @@ export function NotLiveOps({ event, children }: { event: CommandEvent; children:
           </Link>
         </p>
       ) : null}
-      <div className="mt-8 border-t border-border">
+      <div className="mt-8">
         <p className="flex h-10 items-center text-13 font-medium">Live now</p>
         {live.length === 0 ? (
-          <p className="border-t border-border py-3 text-13 text-muted-foreground">No event in this organisation is live.</p>
+          <p className="py-3 text-13 text-muted-foreground">No event in this organisation is live.</p>
         ) : (
           <ul>
             {live.map((e) => (
-              <li key={e.id} className="flex min-h-14 items-center justify-between gap-4 border-t border-border py-2.5">
+              <li key={e.id} className="flex min-h-14 items-center justify-between gap-4 py-2.5">
                 <span className="min-w-0">
                   <span className="block truncate text-13">{e.title}</span>
                   <span className="block truncate text-12 text-muted-foreground">{e.venue_name}</span>
@@ -200,7 +200,7 @@ export function LastKnown({ className = "" }: { className?: string }) {
   if (link.status === "live" || link.status === "idle" || link.status === "connecting") return null;
   const since = link.lostAt ?? link.lastFrameAt;
   return (
-    <p role="status" className={cn("flex min-h-10 items-center gap-2 border-b border-border py-2 text-12 text-warning", GUTTER_X, className)}>
+    <p role="status" className={cn("flex min-h-10 items-center gap-2 py-2 text-12 text-warning", GUTTER_X, className)}>
       <SignalShape state="warn" className="shrink-0" />
       <span>
         Last known state{since ? <> · link lost <span className="font-mono tabular-nums">{formatAge(now - since)}</span> ago</> : null}.{" "}

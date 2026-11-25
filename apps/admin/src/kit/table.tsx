@@ -1,6 +1,7 @@
 /**
  * Tables (docs/05 §7 tier 3, `Table`; layout rules in kit/page.tsx): 13px rows of 40px (44px
- * under a coarse pointer), a 36px head in 12px, hairline row rules, numbers in mono and
+ * under a coarse pointer), a 36px head in mono capitals, no row rules (D-37: rows are held apart by
+ * their height; the row under the pointer is lifted on a tonal step), numbers in mono and
  * right-aligned, a sticky head inside a scrolling region. First and last cells line up with the
  * page gutter. A column that holds a short value (a number, a state, a date, an action) takes
  * `fit`, so it hugs its content and the text columns get the room. On a narrow screen the table
@@ -32,7 +33,7 @@ export function Th({
       scope="col"
       {...props}
       className={cn(
-        "sticky top-0 z-[1] h-9 border-b border-border bg-background px-3 text-12 font-normal whitespace-nowrap text-muted-foreground",
+        "sticky top-0 z-[1] h-9 bg-background px-3 font-mono text-12 font-normal tracking-[0.08em] whitespace-nowrap text-muted-foreground uppercase",
         edge,
         numeric ? "text-right" : "text-left",
         fit && "w-px",
@@ -52,7 +53,7 @@ export function Td({
     <td
       {...props}
       className={cn(
-        "h-10 border-b border-border px-3 align-middle pointer-coarse:h-11",
+        "h-10 px-3 align-middle pointer-coarse:h-11",
         edge,
         numeric && "text-right font-mono text-13 tabular-nums",
         fit && "w-px whitespace-nowrap",
@@ -62,10 +63,10 @@ export function Td({
   );
 }
 
-/** Row hover: a faint lift, never a fill colour. */
-export const rowClass = "transition-colors duration-120 ease-standard hover:bg-foreground/[0.03] motion-reduce:transition-none";
+/** Row hover: lifted on a tonal step, never a fill colour. */
+export const rowClass = "hover:bg-surface-2";
 
-/** A filter chip row (docs/05 `FilterChips`): square, hairline, active carries the brand border. */
+/** A filter chip row (docs/05 `FilterChips`): square tonal chips; the chosen one is ink. */
 export function FilterChips<V extends string>({
   options,
   value,
@@ -102,12 +103,12 @@ export function FilterChips<V extends string>({
             }}
             tabIndex={on ? 0 : -1}
             className={cn(
-              "pressable inline-flex h-8 items-center gap-2 border px-3 text-13 transition-colors duration-120 ease-standard motion-reduce:transition-none pointer-coarse:h-10",
-              on ? "border-brand text-foreground" : "border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground",
+              "pressable inline-flex h-8 items-center gap-2 px-3 text-13 pointer-coarse:h-11",
+              on ? "bg-foreground text-background" : "bg-surface-2 text-foreground hover:bg-surface-3",
             )}
           >
             {option.label}
-            {option.count !== undefined ? <span className="font-mono text-12 tabular-nums text-muted-foreground">{option.count}</span> : null}
+            {option.count !== undefined ? <span className={cn("font-mono text-12 tabular-nums", on ? "text-background/70" : "text-muted-foreground")}>{option.count}</span> : null}
           </button>
         );
       })}

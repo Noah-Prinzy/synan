@@ -324,10 +324,10 @@ export function LayoutCanvas({
     >
       {frame && gridBox ? (
         <>
-          {/* The drawable area: dots every few units while drawing, a quiet frame always. */}
+          {/* The drawable area: a quiet tone always, dots every few units while drawing. */}
           <div
             aria-hidden="true"
-            className={cn("absolute border", editing ? "border-foreground/20 border-dashed" : "border-border")}
+            className="absolute bg-surface"
             style={gridBox}
           />
           {editing ? (
@@ -349,15 +349,14 @@ export function LayoutCanvas({
                 key={zone.id}
                 aria-hidden="true"
                 className={cn(
-                  "absolute border bg-card/40",
-                  selected ? "border-brand" : invalid.has(zone.id) ? "border-destructive/60" : "border-foreground/15",
+                  "absolute bg-foreground/[0.06]",
+                  selected ? "shadow-[inset_0_0_0_2px_var(--brand)]" : invalid.has(zone.id) ? "shadow-[inset_0_0_0_2px_var(--destructive)]" : undefined,
                 )}
                 style={b}
               >
                 <div
                   className={cn(
                     "flex items-baseline gap-1 truncate px-2 text-12 text-muted-foreground",
-                    editing && "border-b border-dashed border-foreground/10",
                   )}
                   style={{ height: BAND, lineHeight: `${BAND - 2}px` }}
                 >
@@ -380,8 +379,8 @@ export function LayoutCanvas({
                 key={room.id}
                 aria-hidden="true"
                 className={cn(
-                  "absolute flex flex-col justify-between overflow-hidden border bg-foreground/[0.035]",
-                  selected ? "border-brand" : invalid.has(room.id) ? "border-destructive/60" : "border-foreground/15",
+                  "absolute flex flex-col justify-between overflow-hidden bg-foreground/[0.07]",
+                  selected ? "shadow-[inset_0_0_0_2px_var(--brand)]" : invalid.has(room.id) ? "shadow-[inset_0_0_0_2px_var(--destructive)]" : undefined,
                   lifted && "opacity-40",
                 )}
                 style={b}
@@ -429,14 +428,14 @@ function Preview({ rect, blocked, size }: { rect: { left: number; top: number; w
     <>
       <span
         aria-hidden="true"
-        className={cn("pointer-events-none absolute border border-dashed", blocked ? "border-destructive bg-destructive/5" : "border-brand")}
+        className={cn("pointer-events-none absolute", blocked ? "bg-destructive/10 shadow-[inset_0_0_0_2px_var(--destructive)]" : "shadow-[inset_0_0_0_2px_var(--brand)]")}
         style={rect}
       />
       <span
         aria-hidden="true"
         className={cn(
-          "pointer-events-none absolute max-w-64 border bg-background px-1.5 py-0.5 text-12",
-          blocked ? "border-destructive/50 text-destructive" : "border-border font-mono text-foreground tabular-nums",
+          "pointer-events-none absolute max-w-64 bg-solid px-1.5 py-0.5 text-12 shadow-pop",
+          blocked ? "text-destructive" : "font-mono text-foreground tabular-nums",
         )}
         style={{ left: rect.left, top: rect.top + rect.height + 4 }}
       >

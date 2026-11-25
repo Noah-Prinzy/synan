@@ -242,7 +242,7 @@ export default function VenueNew() {
             ) : null}
 
             <section aria-labelledby="venue-building" className="flex flex-col gap-4">
-              <h2 id="venue-building" className="border-b border-border pb-2 text-13 font-medium">
+              <h2 id="venue-building" className="pb-2 text-13 font-medium">
                 The building
               </h2>
               <Field label="Name" id="venue-name" error={errors.name} hint="As attendees know it, e.g. Kololo Pavilion.">
@@ -289,7 +289,7 @@ export default function VenueNew() {
             </section>
 
             <section aria-labelledby="venue-rooms" className="flex flex-col gap-4">
-              <h2 id="venue-rooms" className="border-b border-border pb-2 text-13 font-medium">
+              <h2 id="venue-rooms" className="pb-2 text-13 font-medium">
                 Rooms
               </h2>
               <Field
@@ -312,7 +312,7 @@ export default function VenueNew() {
 
             {problem ? <Notice tone="danger">{problem}</Notice> : null}
 
-            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-4">
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-4">
               <Link to="/venues" className={buttonClass("secondary", "compact")}>
                 Cancel
               </Link>
@@ -336,7 +336,7 @@ export default function VenueNew() {
         </FormColumn>
 
         <aside aria-label="What happens next" className="hidden py-6 xl:sticky xl:top-0 xl:block xl:self-start">
-          <h2 className="border-b border-border pb-2 text-13 font-medium">What happens next</h2>
+          <h2 className="pb-2 text-13 font-medium">What happens next</h2>
           <ol className="text-13">
             {[
               ["Create the venue", "Its name, city, time zone and floors."],
@@ -344,7 +344,7 @@ export default function VenueNew() {
               ["Draw rooms inside them", "Each with a capacity and the points where it warns and stops entry."],
               ["Publish the layout", "Gates and the Command Center map use it from then on."],
             ].map(([title, text], index) => (
-              <li key={title} className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-x-2 border-b border-border py-3">
+              <li key={title} className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-x-2 py-3">
                 <span className={`font-mono text-12 tabular-nums ${index === 0 ? "text-foreground" : "text-muted-foreground"}`}>{index + 1}</span>
                 <span>
                   <span className={index === 0 ? "text-foreground" : "text-foreground/80"}>{title}</span>

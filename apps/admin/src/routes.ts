@@ -1,22 +1,8 @@
 /**
  * Every Admin Command route in docs/06 §2.1, with what each screen is for and what a role
- * needs to open it. One table drives the router, the route guards, the navigation rail and
+ * needs to open it. One table drives the router, the route guards, the top bar's sections and
  * the honest placeholders, so a route cannot exist without saying what it is and who it is for.
  */
-import {
-  Bell,
-  Building,
-  CalendarDays,
-  ChartColumn,
-  DoorOpen,
-  IdCard,
-  LayoutGrid,
-  Nfc,
-  ScrollText,
-  Settings,
-  Users,
-} from "lucide-react";
-import { createElement, type ReactNode } from "react";
 import { matchPath } from "react-router-dom";
 import type { Capability } from "./access/capabilities";
 
@@ -275,8 +261,6 @@ export const SCREENS = {
 
 export type ScreenId = keyof typeof SCREENS;
 
-const icon = (component: typeof LayoutGrid): ReactNode => createElement(component, { size: 16, strokeWidth: 1.5 });
-
 /** What each event workspace tab needs (its screen's `need`), keyed by the tab's path segment. */
 export const WORKSPACE_TAB_NEED = {
   overview: SCREENS.eventOverview.need,
@@ -295,7 +279,8 @@ export type WorkspaceTab = keyof typeof WORKSPACE_TAB_NEED;
 export interface NavEntry {
   to: string;
   label: string;
-  icon: ReactNode;
+  /** One short line under the label in its section's menu: what the page is for. */
+  note: string;
   end?: boolean;
   /** What the signed-in role needs to see this entry (the screen it opens). */
   need: Capability;
@@ -307,35 +292,42 @@ export interface NavSection {
 }
 
 /**
- * Three groups, in the order an operator's day runs (docs/06 §2.1): what is happening now (Live),
- * the event and its people (Event), and what is set up once (Setup). A role sees only what it may
- * open (`navFor`); a group left empty is dropped.
+ * Four sections in the top bar (D-37), in the order an operator's day runs: what is happening now
+ * (Live), the events (Events), the people at them (People), and what is set up once (Setup). Each
+ * opens a menu of its pages. A role sees only what it may open (`navFor`); a section left empty is
+ * dropped.
  */
 export const NAV_GROUPS: NavSection[] = [
   {
     label: "Live",
     items: [
-      { to: "/", label: "Command Center", icon: icon(LayoutGrid), end: true, need: SCREENS.command.need },
-      { to: "/alerts", label: "Alerts", icon: icon(Bell), need: SCREENS.alerts.need },
-      { to: "/gates", label: "Gate health", icon: icon(DoorOpen), need: SCREENS.gates.need },
-      { to: "/access-log", label: "Access log", icon: icon(ScrollText), need: SCREENS.accessLog.need },
+      { to: "/", label: "Command Center", note: "The venue, right now", end: true, need: SCREENS.command.need },
+      { to: "/alerts", label: "Alerts", note: "What needs someone, most serious first", need: SCREENS.alerts.need },
+      { to: "/gates", label: "Gate health", note: "Readers, links and queues", need: SCREENS.gates.need },
+      { to: "/access-log", label: "Access log", note: "Every scan, as it happens", need: SCREENS.accessLog.need },
     ],
   },
   {
-    label: "Event",
+    label: "Events",
     items: [
-      { to: "/events", label: "Events", icon: icon(CalendarDays), need: SCREENS.events.need },
-      { to: "/attendees", label: "Attendees", icon: icon(Users), need: SCREENS.attendees.need },
-      { to: "/desk", label: "Wristband desk", icon: icon(Nfc), need: SCREENS.desk.need },
-      { to: "/reports", label: "Reports", icon: icon(ChartColumn), need: SCREENS.reports.need },
+      { to: "/events", label: "All events", note: "Live, coming up and past", need: SCREENS.events.need },
+      { to: "/events/new", label: "New event", note: "Start a draft", need: SCREENS.eventNew.need },
+    ],
+  },
+  {
+    label: "People",
+    items: [
+      { to: "/attendees", label: "Attendees", note: "Registrations and passes", need: SCREENS.attendees.need },
+      { to: "/desk", label: "Wristband desk", note: "Bind bands, resend passes", need: SCREENS.desk.need },
+      { to: "/staff", label: "Staff & shifts", note: "Roles, gates and shifts", need: SCREENS.staff.need },
     ],
   },
   {
     label: "Setup",
     items: [
-      { to: "/venues", label: "Venues", icon: icon(Building), need: SCREENS.venues.need },
-      { to: "/staff", label: "Staff & shifts", icon: icon(IdCard), need: SCREENS.staff.need },
-      { to: "/settings", label: "Settings", icon: icon(Settings), need: SCREENS.settings.need },
+      { to: "/venues", label: "Venues", note: "Floors, zones and rooms", need: SCREENS.venues.need },
+      { to: "/reports", label: "Reports", note: "Exports and summaries", need: SCREENS.reports.need },
+      { to: "/settings", label: "Settings", note: "Organisation and security", need: SCREENS.settings.need },
     ],
   },
 ];
@@ -362,13 +354,14 @@ export function mayOpen(pathname: string, can: (capability: Capability) => boole
  * Which navigation entry is active for a path: exactly one at a time. An entry is active on its
  * own path and the paths under it (Gate health on a gate's detail, Venues in the venue editor,
  * Alerts with an alert open). Inside an event workspace (`/events/:id/…`, its tabs and summary)
- * "Events" is the active entry and the workspace's own tabs say which tab you are on — so the
+ * "All events" is the active entry and the workspace's own tabs say which tab you are on — so the
  * "Attendees" entry that leads into the workspace tab is never the active one; it is active only
- * as the top-level lookup at `/attendees`.
+ * as the top-level lookup at `/attendees`. The wizard (`/events/new/…`) is "New event".
  */
 export function navItemActive(item: { to: string; end?: boolean }, pathname: string): boolean {
   const to = item.to.split("?")[0] ?? item.to;
   if (/^\/events\/[^/]+\/attendees$/.test(to)) return false;
+  if (to === "/events" && (pathname === "/events/new" || pathname.startsWith("/events/new/"))) return false;
   if (item.end || to === "/") return pathname === to;
   return pathname === to || pathname.startsWith(`${to}/`);
 }

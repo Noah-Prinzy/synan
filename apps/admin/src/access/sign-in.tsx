@@ -103,7 +103,7 @@ export function SignInForm({ reason }: { reason: SignedOutReason }) {
 
   return (
     <section aria-labelledby="sign-in" className="mt-10">
-      <h1 id="sign-in" className="font-display text-40 leading-tight tracking-tight text-balance">
+      <h1 id="sign-in" className="type-title">
         {intro.title}
       </h1>
       <p className="mt-3 max-w-120 text-15 leading-relaxed text-muted-foreground">{intro.text}</p>
@@ -148,7 +148,7 @@ export function SignInForm({ reason }: { reason: SignedOutReason }) {
           </ActionButton>
         </div>
       </form>
-      <p className="mt-8 max-w-120 border-t border-border pt-3 text-12 text-muted-foreground">
+      <p className="mt-8 max-w-120 text-12 text-muted-foreground">
         Forgotten your password, or new here without one? Ask an admin: they can send you a fresh activation link.
       </p>
     </section>

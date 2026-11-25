@@ -258,8 +258,8 @@ export function VenueStep({ record, forms, setForm, saved, goto, close, loadVenu
                     {allPicked ? "Clear all" : "Select all rooms"}
                   </Button>
                 </div>
-                <div role="group" aria-labelledby="venue-rooms" aria-describedby="rooms-message" className="border-t border-border">
-                  <div aria-hidden="true" className="grid h-9 grid-cols-[minmax(0,1fr)_4.5rem_7.5rem] items-center gap-3 border-b border-border text-12 text-muted-foreground">
+                <div role="group" aria-labelledby="venue-rooms" aria-describedby="rooms-message" className="">
+                  <div aria-hidden="true" className="grid h-9 grid-cols-[minmax(0,1fr)_4.5rem_7.5rem] items-center gap-3 text-12 text-muted-foreground">
                     <span className="pl-2">Room</span>
                     <span className="text-right">Venue</span>
                     <span>For this event</span>
@@ -271,7 +271,7 @@ export function VenueStep({ record, forms, setForm, saved, goto, close, loadVenu
                     return (
                       <fieldset key={group.id} className="min-w-0">
                         <legend className="sr-only">{group.label}</legend>
-                        <div className="flex min-h-9 items-center justify-between gap-3 border-b border-border bg-foreground/2.5 pl-2">
+                        <div className="flex min-h-9 items-center justify-between gap-3 bg-surface pl-2">
                           <span aria-hidden="true" className="text-12 text-muted-foreground">
                             {group.label}{" "}
                             <span className="font-mono tabular-nums">
@@ -281,7 +281,7 @@ export function VenueStep({ record, forms, setForm, saved, goto, close, loadVenu
                           <button
                             type="button"
                             onClick={() => setPicked(ids, !all)}
-                            className="self-stretch px-3 text-12 text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground hover:decoration-brand pointer-coarse:min-h-11"
+                            className="self-stretch px-3 text-12 text-muted-foreground underline decoration-foreground/30 underline-offset-4 hover:text-foreground hover:decoration-brand pointer-coarse:min-h-11"
                           >
                             {all ? "Clear" : "Select all"}
                             <span className="sr-only"> in {group.label}</span>
@@ -291,7 +291,7 @@ export function VenueStep({ record, forms, setForm, saved, goto, close, loadVenu
                           const choice = picked.get(room.id);
                           const error = errors[`room:${room.id}`];
                           return (
-                            <div key={room.id} className="border-b border-border">
+                            <div key={room.id} className="">
                               <div className="grid min-h-10 grid-cols-[minmax(0,1fr)_4.5rem_7.5rem] items-center gap-3 py-1">
                                 <Checkbox
                                   label={room.name}

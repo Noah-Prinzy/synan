@@ -39,7 +39,7 @@ export function AdminStatusBar() {
     <StatusBar>
       <span className={`flex items-center gap-2 px-3 ${live && !current ? "text-warning" : ""}`}>{line}</span>
       {live && queue > 0 ? (
-        <span className="flex items-center border-l border-border px-3 text-warning">
+        <span className="flex items-center px-3 text-warning">
           {formatNumber(queue)} scans waiting to sync{offline > 0 ? ` · ${offline} ${offline === 1 ? "gate" : "gates"} offline` : ""}
         </span>
       ) : null}
@@ -58,7 +58,7 @@ export function AdminStatusBar() {
           type="button"
           aria-expanded={details}
           onClick={() => setDetails((d) => !d)}
-          className="border-l border-border px-3 transition-colors duration-120 ease-standard hover:text-foreground focus-visible:-outline-offset-2 motion-reduce:transition-none"
+          className="px-3 hover:bg-surface-2 hover:text-foreground focus-visible:-outline-offset-2"
         >
           {details ? "Hide details" : "Details"}
         </button>

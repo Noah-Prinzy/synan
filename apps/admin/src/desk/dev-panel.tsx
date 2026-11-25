@@ -19,7 +19,7 @@ export function DeskDevPanel({ onStockChanged }: { onStockChanged: () => void })
   const offline = useOffline();
   const [note, setNote] = useState<string | null>(null);
   const button =
-    "min-h-8 border border-border px-2.5 text-left text-12 transition-colors duration-120 hover:border-foreground/50 disabled:opacity-40";
+    "min-h-8 px-2.5 text-left text-12 transition-colors duration-120 hover:border-foreground/50 disabled:opacity-40";
   return (
     <details className="mx-4 mt-10 mb-6 border border-dashed border-foreground/30 text-12 sm:mx-6 2xl:mx-8">
       <summary className="flex min-h-11 cursor-pointer items-center gap-2 px-3 text-muted-foreground">

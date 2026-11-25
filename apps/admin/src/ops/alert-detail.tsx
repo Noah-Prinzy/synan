@@ -143,7 +143,7 @@ export function AlertDetail({
         ) : null}
       </div>
 
-      <KeyValues rows={facts} className="border-t border-border" />
+      <KeyValues rows={facts} className="" />
 
       <Block title="Rule that fired">
         {ctx ? <p className="text-13 leading-relaxed">{ctx.rule}</p> : <Pending status={context.status} onRetry={() => context.reload()} />}
@@ -176,7 +176,7 @@ export function AlertDetail({
 /** A part of the detail: a hairline above, a 13px heading, the body on the panel's 16/20px edge. */
 function Block({ title, children, aside }: { title: string; children: ReactNode; aside?: ReactNode }) {
   return (
-    <section className="border-t border-border px-4 pt-3.5 pb-4 sm:px-5">
+    <section className="px-4 pt-3.5 pb-4 sm:px-5">
       <h4 className="mb-2.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
         <span className={TYPE.heading}>{title}</span>
         {aside ? <span className="text-12 text-muted-foreground">{aside}</span> : null}
@@ -206,9 +206,9 @@ function Evidence({ alert, ctx, timeZone }: { alert: BreachAlert; ctx: AlertCont
     const gap = Date.parse(b.corrected_at) - Date.parse(a.corrected_at);
     return (
       <Block title="Last two checkpoints" aside={<span className="font-mono tabular-nums">{formatAge(gap, { fine: true })} apart</span>}>
-        <ol className="border-t border-border">
+        <ol className="">
           {[a, b].map((scan, i) => (
-            <li key={scan.id} className="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-x-3 border-b border-border py-2.5">
+            <li key={scan.id} className="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-x-3 py-2.5">
               <span className="text-12 text-muted-foreground">{i === 0 ? "First" : "Then"}</span>
               <span className="min-w-0">
                 <span className="flex items-baseline justify-between gap-3">
@@ -227,9 +227,9 @@ function Evidence({ alert, ctx, timeZone }: { alert: BreachAlert; ctx: AlertCont
   if (alert.kind.startsWith("offline_conflict") && ctx.scans.length > 0) {
     return (
       <Block title="Scans involved" aside="Corrected times, oldest first">
-        <ol className="border-t border-border">
+        <ol className="">
           {ctx.scans.map((scan) => (
-            <li key={scan.id} className="border-b border-border py-2.5 text-12">
+            <li key={scan.id} className="py-2.5 text-12">
               <p className="flex items-baseline justify-between gap-3">
                 <span className="truncate text-13">{scan.checkpoint_label}</span>
                 <span className={cn("shrink-0", TYPE.value)}>{formatScanTime(scan.corrected_at, timeZone)}</span>
@@ -278,9 +278,9 @@ function Evidence({ alert, ctx, timeZone }: { alert: BreachAlert; ctx: AlertCont
 
 function ScanLines({ scans, timeZone }: { scans: (OpsScan & { checkpoint_label: string })[]; timeZone: string }) {
   return (
-    <ul className="border-t border-border">
+    <ul className="">
       {scans.map((scan) => (
-        <li key={scan.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-1 border-b border-border py-2.5">
+        <li key={scan.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-1 py-2.5">
           <span className="truncate text-13">{scan.checkpoint_label}</span>
           <span className="font-mono text-12 text-muted-foreground tabular-nums">{formatScanTime(scan.corrected_at, timeZone)}</span>
           <ResultChip result={scan.result} className="col-span-2 justify-self-start" />
@@ -398,7 +398,7 @@ function ReviewActions({
   };
 
   return (
-    <div className="mt-4 border-t border-border pt-4">
+    <div className="mt-4 pt-4">
       <Field
         label={mode === "clear" ? "Why is it safe to clear?" : "Why revoke?"}
         hint={mode === "clear" ? "The pass works again at once. Your note goes in the audit log." : "The pass stops working everywhere. Your note goes in the audit log."}
@@ -436,7 +436,7 @@ function ReviewActions({
           doneLabel={mode === "clear" ? "Cleared" : "Revoked"}
           failedLabel={error ? "Check the note" : "Didn't work — try again"}
           action={decide}
-          className={mode === "revoke" ? "border-destructive/60 text-destructive hover:border-destructive" : undefined}
+          className={mode === "revoke" ? "text-destructive" : undefined}
         >
           {mode === "clear" ? "Clear and reactivate" : "Revoke the pass"}
         </ActionButton>

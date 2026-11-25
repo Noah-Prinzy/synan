@@ -177,7 +177,7 @@ function GateBoard() {
       />
       <LastKnown />
       {failed ? (
-        <p role="status" className={cn("flex min-h-10 items-center gap-2 border-b border-border py-2 text-12 text-muted-foreground", GUTTER_X)}>
+        <p role="status" className={cn("flex min-h-10 items-center gap-2 py-2 text-12 text-muted-foreground", GUTTER_X)}>
           <SignalShape state="warn" className="shrink-0 text-warning" />
           Heartbeats and throughput could not be refreshed; showing the last values read. Retrying every five seconds.
         </p>
@@ -318,7 +318,7 @@ function Rows({ rows, now, loading }: { rows: GateRow[]; now: number; loading: b
       {/* Below 1024: one stacked block per gate, nothing wider than the screen. */}
       <ul aria-label="Gates, faults first" className="lg:hidden">
         {rows.map((row) => (
-          <li key={row.checkpoint.id} className={cn("relative border-b border-border py-3.5 transition-colors duration-120 ease-standard hover:bg-foreground/3 motion-reduce:transition-none", GUTTER_X)}>
+          <li key={row.checkpoint.id} className={cn("relative py-3.5 transition-colors duration-120 ease-standard hover:bg-surface-2 motion-reduce:transition-none", GUTTER_X)}>
             <div className="flex items-center justify-between gap-3">
               <Link
                 to={`/gates/${row.checkpoint.id}`}
@@ -351,7 +351,7 @@ function Rows({ rows, now, loading }: { rows: GateRow[]; now: number; loading: b
 /** One hairline cell per gate, for a display across the room. Faults first, so they sit top-left. */
 function Wall({ rows, now }: { rows: GateRow[]; now: number }) {
   return (
-    <ul aria-label="Gates, faults first" className="grid grid-cols-3 gap-px border-b border-border bg-border 2xl:grid-cols-4">
+    <ul aria-label="Gates, faults first" className="grid grid-cols-3 gap-px bg-surface-3 2xl:grid-cols-4">
       {rows.map((row) => {
         const gate = row.gate;
         const signal = gate ? gateSignal(gate) : null;
@@ -364,7 +364,7 @@ function Wall({ rows, now }: { rows: GateRow[]; now: number }) {
             ) : null}
             <Link
               to={`/gates/${row.checkpoint.id}`}
-              className="flex h-full flex-col px-5 pt-4 pb-4 outline-none transition-colors duration-120 ease-standard hover:bg-foreground/3 focus-visible:outline focus-visible:-outline-offset-1 focus-visible:outline-brand motion-reduce:transition-none"
+              className="flex h-full flex-col px-5 pt-4 pb-4 outline-none transition-colors duration-120 ease-standard hover:bg-surface-2 focus-visible:outline focus-visible:-outline-offset-1 focus-visible:outline-brand motion-reduce:transition-none"
             >
               <span className="flex items-baseline justify-between gap-3">
                 <span className="truncate text-15 font-medium">{row.checkpoint.label}</span>
@@ -388,7 +388,7 @@ function Wall({ rows, now }: { rows: GateRow[]; now: number }) {
                 )}
                 <Sparkline values={perMinute} label={`${row.checkpoint.label}, scans per minute, last 15 minutes`} className="mb-1 w-32" toneClassName="text-muted-foreground" />
               </span>
-              <Checks row={row} now={now} queueShown={gate?.link_state === "offline"} className="mt-4 block truncate border-t border-border pt-3 text-13" />
+              <Checks row={row} now={now} queueShown={gate?.link_state === "offline"} className="mt-4 block truncate pt-3 text-13" />
             </Link>
           </li>
         );

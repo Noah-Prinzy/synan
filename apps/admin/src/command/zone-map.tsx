@@ -310,11 +310,33 @@ function neighbour(rooms: PlacedRoom[], from: PlacedRoom, key: string): PlacedRo
   return best;
 }
 
-export function roomAriaLabel(room: Room, zone: Zone | undefined, live: RoomLive | undefined, alerting: boolean): string {
+/**
+ * A room block's accessible name. It starts with exactly what the block shows, in the order it shows
+ * it (WCAG 2.5.3, so a speech-input user can say the words they see): the label on the block (the
+ * full name, or a short form such as "GL" when the block is small), then the words of its status
+ * line when it has them ("Alert", "Nearly full", "Full"). A short form is followed by the full name,
+ * so a screen-reader user always hears which room it is: "GL: Green Lounge, Ground floor: 4 of 20…".
+ * `shown` is what the block renders; without it (a caller with no placement) the full name leads.
+ */
+export function roomAriaLabel(
+  room: Room,
+  zone: Zone | undefined,
+  live: RoomLive | undefined,
+  alerting: boolean,
+  shown?: Pick<PlacedRoom, "label" | "statusWords" | "fit">,
+): string {
   const where = zone ? `, ${zone.floor ?? ""} ${zone.name}` : "";
-  if (!live) return `${room.name}${where}`;
+  const label = shown ? shown.label : room.name;
+  const status = [
+    shown?.statusWords && alerting && shown.fit === "lg" ? "Alert" : "",
+    shown?.statusWords && live?.level === "warn" ? "Nearly full" : "",
+    shown?.statusWords && live?.level === "block" ? "Full" : "",
+  ].filter(Boolean);
+  const head = [label, ...status].filter(Boolean).join(", ");
+  const lead = label === room.name ? `${head}${where}` : head ? `${head}: ${room.name}${where}` : `${room.name}${where}`;
+  if (!live) return lead;
   const ratio = room.capacity > 0 ? live.occupancy / room.capacity : 0;
-  return `${room.name}${where}: ${formatNumber(live.occupancy)} of ${formatNumber(room.capacity)}, ${formatPercent(ratio)}. ${levelWords(
+  return `${lead}: ${formatNumber(live.occupancy)} of ${formatNumber(room.capacity)}, ${formatPercent(ratio)}. ${levelWords(
     live.level,
     room.warn_at_pct,
     room.block_at_pct,
@@ -436,7 +458,7 @@ export const ZoneMap = memo(function ZoneMap({
         const live = rooms.get(p.room.id);
         if (!n?.button || !live) continue;
         if (n.button.dataset.level !== live.level) n.button.dataset.level = live.level;
-        const label = roomAriaLabel(p.room, p.zone, live, alerting.has(p.room.id));
+        const label = roomAriaLabel(p.room, p.zone, live, alerting.has(p.room.id), p);
         if (n.button.getAttribute("aria-label") !== label) n.button.setAttribute("aria-label", label);
       }
     };
@@ -610,7 +632,7 @@ export const ZoneMap = memo(function ZoneMap({
                     ) : null}
                     <span className="map-room-level map-room-level-warn">
                       <SignalShape state="warn" />
-                      {p.statusWords ? <span>Nearly full</span> : null}
+                      {p.statusWords && (!alert || p.box.width >= 140) ? <span>Nearly full</span> : null}
                     </span>
                     <span className="map-room-level map-room-level-stop">
                       <SignalShape state="stop" />
@@ -750,21 +772,31 @@ function DoorFaults({ placed, layout }: { placed: PlacedRoom[]; layout: VenueLay
 
 /** What the map's tints, shapes and outlines mean. Lives under the map, in the panel. */
 export function MapLegend({ className = "" }: { className?: string }) {
-  // Four keys, in plain words. The neutral state needs no key: a quiet room is simply quiet.
+  // The shading in plain words, light to full, then the gate chip.
   return (
-    <ul aria-label="Map key" className={`flex flex-wrap items-center gap-x-5 gap-y-1.5 text-12 text-muted-foreground ${className}`}>
+    <ul aria-label="Map key" className={`flex flex-wrap items-center gap-x-5 gap-y-2 text-13 text-muted-foreground ${className}`}>
       <li className="flex items-center gap-2">
-        <span aria-hidden="true" className="map-legend-swatch" data-level="ok" />
-        Shading shows how full a room is
+        <span aria-hidden="true" className="map-legend-swatch" data-level="space" />
+        Space
       </li>
-      <li className="flex items-center gap-1.5">
-        <SignalShape state="warn" className="text-warning" /> Nearly full
+      <li className="flex items-center gap-2">
+        <span aria-hidden="true" className="map-legend-swatch" data-level="busy" />
+        Busy
       </li>
-      <li className="flex items-center gap-1.5">
-        <SignalShape state="stop" className="text-destructive" /> Full
+      <li className="flex items-center gap-2">
+        <span aria-hidden="true" className="map-legend-swatch" data-level="warn">
+          <SignalShape state="warn" />
+        </span>
+        Nearly full
       </li>
-      <li className="flex items-center gap-1.5">
-        <span aria-hidden="true" className="map-gate-key">G1</span> Gate, with its problem when it has one
+      <li className="flex items-center gap-2">
+        <span aria-hidden="true" className="map-legend-swatch" data-level="block">
+          <SignalShape state="stop" />
+        </span>
+        Full
+      </li>
+      <li className="flex items-center gap-2">
+        <span aria-hidden="true" className="map-gate-key">G1</span> Gate
       </li>
     </ul>
   );
@@ -785,7 +817,7 @@ function FlashLayer({ placed }: { placed: Placement }) {
     <span
       key={flash.key}
       aria-hidden="true"
-      className="flash-once pointer-events-none absolute border-2 border-destructive bg-destructive/15 opacity-0"
+      className="flash-once pointer-events-none absolute bg-destructive/15 opacity-0"
       style={{ left: box.left - 3, top: box.top - 3, width: box.width + 6, height: box.height + 6 }}
     />
   );
@@ -798,7 +830,7 @@ function LastKnown({ timeZone }: { timeZone: string }) {
   const at = link.lastFrameAt ?? link.lostAt;
   return (
     <div className="pointer-events-none absolute inset-0 grid place-items-center p-4" role="note">
-      <div className="max-w-full border border-border bg-background/90 px-8 py-5 text-center">
+      <div className="max-w-full bg-solid px-8 py-5 text-center shadow-pop">
         <p className="text-12 text-warning">Last known</p>
         <p className="mt-1 font-mono text-40 leading-none tracking-tight text-foreground/60 tabular-nums">
           {at ? formatClock(at, timeZone) : "—"}

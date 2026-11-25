@@ -139,7 +139,7 @@ export function StepLayout({
 export function StepSection({ id, title, children, meta }: { id: string; title: string; meta?: ReactNode; children: ReactNode }) {
   return (
     <section aria-labelledby={id} className="flex flex-col gap-4">
-      <div className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
+      <div className="flex items-baseline justify-between gap-3 pb-2">
         <h2 id={id} className="text-13 font-medium">
           {title}
         </h2>
@@ -154,7 +154,7 @@ export function StepSection({ id, title, children, meta }: { id: string; title: 
 export function AsideBlock({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="mb-8 last:mb-0">
-      <h2 className="border-b border-border pb-2 text-13 font-medium">{title}</h2>
+      <h2 className="pb-2 text-13 font-medium">{title}</h2>
       <div className="mt-3 text-13">{children}</div>
     </div>
   );
@@ -181,7 +181,7 @@ export function WizardFooter({
   extra?: ReactNode;
 }) {
   return (
-    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 pt-4">
       <div className="flex flex-wrap items-center gap-2">
         {onBack ? (
           <Button variant="secondary" size="compact" onClick={onBack}>

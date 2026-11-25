@@ -49,7 +49,7 @@ export default function RoleDock() {
       <summary className="cursor-pointer px-2 py-1 font-mono text-11 tracking-[0.12em] text-muted-foreground hover:text-foreground">
         DEV · view as
       </summary>
-      <div className="border-t border-border p-2">
+      <div className="p-2">
         <RolePicker />
       </div>
     </details>
