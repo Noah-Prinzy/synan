@@ -41,14 +41,18 @@ const LINKS = [
   { label: "Agenda", screen: "pass" },
 ] as const;
 
-/** True once the .dx root has scrolled past `offset` px from the bottom of the first screen. */
+/**
+ * True once the page has moved far enough that something on the picture (the back link first,
+ * then the glass card and the rooms panel) would slide under a clear bar: from then on the bar is
+ * solid, so words never sit on words.
+ */
 function usePastHero(enabled: boolean): boolean {
   const [past, setPast] = useState(false);
   useEffect(() => {
     if (!enabled) return;
     const root = document.querySelector(".dx");
     if (!root) return;
-    const on = () => setPast(root.scrollTop > root.clientHeight - 96);
+    const on = () => setPast(root.scrollTop > 12);
     on();
     root.addEventListener("scroll", on, { passive: true });
     return () => root.removeEventListener("scroll", on);
@@ -59,7 +63,7 @@ function usePastHero(enabled: boolean): boolean {
 /**
  * The site's one top bar. Signed in shows the holder's initials; signed out shows Sign in; `action`
  * (the event page's Register) takes that place. `over` (Chosen event page): the same bar lies
- * fixed and clear over the picture and turns solid once you scroll off it.
+ * fixed and clear over the picture and turns solid as soon as the page moves under it.
  */
 export function TopNav({
   signedIn = false,

@@ -65,7 +65,7 @@ function CalmShowcase() {
           <label className="dx-sr" htmlFor="dxs1-q">
             Find an event
           </label>
-          <input id="dxs1-q" className="dxs1-search-input" placeholder="Find an event, a venue or a speaker" autoComplete="off" />
+          <input id="dxs1-q" className="dxs1-search-input" placeholder="Find an event, venue or speaker" autoComplete="off" />
           <button type="submit" className="dx-btn is-action is-icon" aria-label="Search">
             <Arrow />
           </button>

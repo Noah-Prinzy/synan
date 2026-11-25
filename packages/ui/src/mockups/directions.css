@@ -640,9 +640,13 @@ select.dx-input option {
 
 /* ------------------------------------------------------------------ switcher (neutral, both modes) */
 
+/* Bottom centre: at the left it covered the event page's glass card and its Register button. */
 .dxs {
   position: fixed;
   left: 16px;
+  right: 16px;
+  width: fit-content;
+  margin: 0 auto;
   bottom: 16px;
   z-index: 200;
   display: flex;

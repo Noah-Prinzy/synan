@@ -44,22 +44,22 @@ export const DIRECTIONS: readonly Direction[] = [
     references:
       "Dark assistant everywhere on the site (Direction 1). The luxury stage only on the event page, read through Direction 3 (mono eyebrows, the live rooms panel). The developer instrument for the whole console (Direction 3). Rounded shapes from all three references are dropped.",
     moves:
-      "Site: the slow Gathering field, also below the event page's picture so the two read as one place; opening an event morphs its picture from the card into the full-width hero and back (about 0.4 s; text only fades); the navigation turns from clear to solid as you scroll off the picture. Reduced motion: none of it. Console: nothing moves.",
+      "Site: the slow Gathering field, also below the event page's picture so the two read as one place; opening an event morphs its picture from the card into the full-width hero and back (about 0.4 s; text only fades); the top bar lies clear over the picture and turns solid as soon as the page moves under it. Reduced motion: none of it. Console: nothing moves, not even the blue tick.",
     card: {
       surfaces:
-        "Ground #0A0A0A / #F7F5F0. Panels are tonal steps: white at 4.5–8 % on dark; white with soft depth (no outline) on light. Glass (ground at 68 %, frosted) only over the event picture. Menus and dialogs opaque. No borders anywhere; a tonal step does every job a line used to.",
+        "Ground #0A0A0A / #F7F5F0. Panels are tonal steps: white at 4.5–8 % on dark; white with soft depth (no outline) on light. Glass (the ground at 80 % on dark, 84 % on light, frosted) only over the event picture; words on glass use the glass’s own tones, so they keep 4.5:1 over any photograph. Menus and dialogs opaque. No borders anywhere; a tonal step does every job a line used to.",
       radii:
-        "Corners are square: 0 on frames, panels, cards, glass, image previews, buttons, inputs, chips, menus, dialogs, bars and tracks. Exceptions, round by nature: status dots (live, step, signal dots) and avatars (initials). No other radius was needed: focus rings, the QR card and thin meters work square.",
+        "Corners are square: 0 on frames, panels, cards, glass, image previews, buttons, inputs, chips, menus, dialogs, bars and tracks. Exceptions, round by nature: status dots (live, step and signal dots) and avatars (a person’s initials, round in both apps). No other radius was needed: focus rings, the QR card and thin meters work square.",
       separation:
         "Space first (8 px grid; 64–120 px between sections, 24–32 px inside a panel), then a tonal step, then type weight. Lists are rhythm, not rules. Buttons and chips are tonal blocks; the one filled action is ink.",
       navigation:
-        "Site: one minimal top bar on every page (wordmark, two words, one action). On the event page the same bar lies clear over the picture and turns solid when you scroll off it; its action becomes Register. Phone: a full-height menu with large words. Console: a full-width top bar with sections, the event switcher, live gate status and account; phone: bar plus menu sheet.",
+        "Site: one minimal top bar on every page (wordmark, two words, one action). On the event page the same bar lies clear over the picture and turns solid as soon as the page moves; its action becomes Register. Phone: a full-height menu with large words. Console: a full-width top bar with sections, the event switcher, live gate status and account; phone: bar plus menu sheet.",
       type:
         "Bricolage display for statements (56/40; the event name 64–184 px on the event page only), Instrument Sans for everything else (17 site, 14 console), Geist Mono for times, counts and ids. Eyebrows: sans on the site, mono capitals on the event page and in the console.",
       background:
         "Site: the Gathering field (points that gather in two slow crowds along the Fit seam), quiet under text, also under the event page below its picture. Event page: the picture, or the designed no-photo cover. Console: plain ground, a static dot grid under the venue map only.",
       motion:
-        "Site: field at 24 fps max, paused when hidden; picture morph into and out of the event page; images fade in once; the blue reward tick. Nothing moves text; reduced motion is static. Console: no animation at all except the reward tick.",
+        "Site: field at 24 fps max, paused when hidden; picture morph into and out of the event page; images fade in once; the blue reward tick. Nothing moves text; reduced motion is static. Console: no animation at all; the blue tick appears already drawn.",
     },
     admin:
       "Direction 3, square: a full-width top bar with live gate status, the four figures in one instrument strip, the venue map over a static dot grid, mono times and ids, no animation.",

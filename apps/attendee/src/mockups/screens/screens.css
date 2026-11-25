@@ -324,6 +324,10 @@
   .dx .dxs1-section {
     padding-top: 40px;
   }
+  /* The whole hint fits on a phone instead of being cut mid-word. */
+  .dx .dxs1-search-input {
+    font-size: 16px;
+  }
 }
 
 /* ------------------------------------------------------------------ showcase: Stage and Field */
@@ -981,6 +985,48 @@
 .dx .dxs2-stage:has(.dx-cover) .dxs2-shade {
   display: none;
 }
+/* Light glass lies over a dark picture, so it is a little darker than the page: the signal words
+   on it (the live count, "Nearly full", "Full") take a deeper shade to keep 4.5:1. */
+.dx[data-chosen][data-mode="light"] .dx-glass {
+  --dx-ok: #0f5c30;
+  --dx-warn: #6b4500;
+  --dx-stop: #9e2026;
+  --dx-ink-2: var(--dx-glass-ink-2);
+}
+/* Dark glass at 80 % (not 68–72 %): every word on it keeps 4.5:1 even if a real photograph is
+   white behind it; the second tone on glass is always the glass's own. */
+.dx[data-chosen][data-mode="dark"] .dx-glass {
+  background: rgb(12 12 14 / 0.8);
+  --dx-ink-2: var(--dx-glass-ink-2);
+}
+/* A quiet darkening across the top of a photograph, so the clear bar's words keep 4.5:1 even on a
+   bright daytime picture (on the night picture here it is barely visible). */
+.dx .dxs2-stage.is-chosen:not(:has(.dx-cover))::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 220px;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgb(0 0 0 / 0.7), rgb(0 0 0 / 0.42) 45%, rgb(0 0 0 / 0));
+}
+/* The glass card and the rooms panel stand on one line at the foot of the picture. */
+.dx .dxs2-stage.is-chosen .dxp-livepanel {
+  bottom: 24px;
+}
+/* The rooms are already on the picture (rooms now): the venue section does not repeat them. On a
+   phone the panel is not shown, so the venue section keeps the list there. */
+@media (min-width: 721px) {
+  .dx .dxs2-stage.is-chosen ~ .dxe2-venue .dxe2-venue-rooms {
+    display: none;
+  }
+}
+.dx .dxe-sec-head .dx-link {
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
 
 /* The site's top bar, fixed on the event page: clear over the picture, solid after it. */
 .dx .dxa-top.dxa-fixed {
@@ -1009,10 +1055,19 @@
 .dx .dxa-top.is-clear .dxa-top-link {
   color: rgb(255 255 255 / 0.88);
 }
-.dx .dxa-top.is-clear .dxa-top-link[aria-current="page"],
+/* The current page reads by colour alone, as on every other page of the site; hover is the tonal step. */
+.dx .dxa-top.is-clear .dxa-top-link[aria-current="page"] {
+  color: #fff;
+}
 .dx .dxa-top.is-clear .dxa-top-link:hover {
   color: #fff;
   background: rgb(255 255 255 / 0.12);
+}
+/* On the picture the focus ring is always the dark theme's blue: the light theme's deeper blue
+   would sink into a night sky. */
+.dx .dxa-top.is-clear :focus-visible,
+.dx .dxs2-stage.is-chosen .dxe-back:focus-visible {
+  outline-color: #8ab4ff;
 }
 .dx .dxa-top.is-clear .dx-btn.is-action {
   background: #f4f4f2;
@@ -1041,14 +1096,14 @@
   font-size: 15px;
   font-weight: 500;
   color: #fff;
-  background: rgb(0 0 0 / 0.42);
+  background: rgb(0 0 0 / 0.55);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   text-decoration: none;
   transition: background-color 120ms var(--dx-ease);
 }
 .dx .dxe-back:hover {
-  background: rgb(0 0 0 / 0.6);
+  background: rgb(0 0 0 / 0.68);
 }
 .dx[data-mode="light"] .dxs2-stage:has(.dx-cover) .dxe-back {
   color: var(--dx-ink);

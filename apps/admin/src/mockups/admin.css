@@ -244,6 +244,15 @@
 .dx[data-dir="3"] .dxc .dxc-avatar {
   border-radius: 12px;
 }
+/* Chosen (D-37): nothing in the console moves, not even the blue tick: it appears already drawn. */
+.dx[data-chosen][data-app="admin"] .dx-reward path {
+  animation: none;
+  stroke-dashoffset: 0;
+}
+/* Chosen: a person's initials are round by nature (as on the attendee site); every box around them is square. */
+.dx[data-chosen][data-dir="3"] .dxc .dxc-avatar {
+  border-radius: 999px;
+}
 
 /* segmented control (theme) */
 .dx .dxc-seg {
