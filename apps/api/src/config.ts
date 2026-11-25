@@ -194,6 +194,16 @@ export function validateConfig(c: Config): Config {
   if (c.repo === "postgres" && !c.databaseUrl) throw new ConfigError("DATABASE_URL is required with REPO=postgres");
   if (c.production) {
     if (c.seed === "dev") throw new ConfigError("SEED=dev is not allowed in production");
+    // Where links and tokens are sent, and whom the API answers: TLS only in production (03 §3 Transport).
+    const https = (name: string, v: string) => {
+      if (!v.trim().toLowerCase().startsWith("https://")) throw new ConfigError(`${name} must be an https:// URL in production, got "${v}"`);
+    };
+    https("ADMIN_APP_URL", c.adminAppUrl);
+    https("SCANNER_APP_URL", c.scannerAppUrl);
+    https("ATTENDEE_APP_ORIGIN", c.attendeeAppOrigin);
+    https("API_PUBLIC_ORIGIN", c.publicApiOrigin);
+    if (c.allowedOrigins.length === 0) throw new ConfigError("ALLOWED_ORIGINS is required in production");
+    for (const o of c.allowedOrigins) https("ALLOWED_ORIGINS", o);
     if (c.mailTransport === "console") throw new ConfigError("MAIL_TRANSPORT=console would write sign-in links to the log in production");
   }
   return c;
@@ -207,6 +217,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: readonly 
     if (env.REPO !== "postgres") throw new ConfigError("REPO=postgres is required in production");
     for (const k of ["DATABASE_URL", "DATABASE_VAULT_URL", "DATABASE_SCAN_URL", "DB_DATA_KEYS", "DB_BLIND_INDEX_KEYS"]) {
       if (!env[k]) throw new ConfigError(`${k} is required in production`);
+    }
+    // The app and API addresses have development defaults (localhost, http): production names them all.
+    for (const k of ["ADMIN_APP_URL", "SCANNER_APP_URL", "ATTENDEE_APP_ORIGIN", "API_PUBLIC_ORIGIN", "ALLOWED_ORIGINS"]) {
+      if (!env[k]?.trim()) throw new ConfigError(`${k} is required in production (the default points at a development server)`);
     }
   }
   return validateConfig({
