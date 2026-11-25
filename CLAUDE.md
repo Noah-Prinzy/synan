@@ -124,13 +124,36 @@ is destroyed; deleting a personal account stops sign-in at once and erases withi
 - The eleven many-organisers questions.
 - Confirm two small rules: the scanner works offline from an out-of-date pass list for 2 hours past
   the end of a shift, with a warning, then stops; and a 150 KB size ceiling for the scanner app.
-- Rename the project folder on the original laptop from `connexia` to `synan`, at a moment when
-  nothing is running. On the owner's second machine this is done: the project lives in a folder
-  named `Synan`, and the old `Connexia` folder there can be deleted once no session is open in it.
-  The repository is `Noah-Prinzy/synan` (O-56).
+- Let the lead agent stop every session on the original laptop for a few minutes, so its project
+  folder can be moved to `synan` (steps below, O-56). On the second PC, delete the old, empty
+  `D:\Connexia` folder. — Axel
 - Two things only the owner can start, because they take weeks: registering the "SYNAN" sender name
   with the mobile networks, and a lawyer's review of who answers for the data (D-28) and what
   declining presence tracking means (D-30).
+
+**Moving the project folder from `connexia` to `synan` (O-56)**
+
+Written by Axel, 2026-11-25. The GitHub repository is already `Noah-Prinzy/synan`, and the second PC
+already works from `D:\Synan`. Do this once on each device that still has a `connexia` folder,
+then delete this section and mark O-56 settled in `docs/00-index.md`.
+
+1. Stop everything that works inside the folder: every agent and Claude session, dev servers, the
+   end-to-end stack, editors, and terminals opened in it. Windows refuses to rename a folder that a
+   running program is working in; if it still refuses, a session is still open there.
+2. Rename the folder `connexia` to `synan`. If it cannot be freed, copy it instead into a new
+   sibling `synan` folder, leaving out every `node_modules` (on Windows:
+   `robocopy <old> <new> /E /XD node_modules /XJ`), and delete the old folder at the end.
+3. In the new folder: `git remote set-url origin https://github.com/Noah-Prinzy/synan.git`.
+4. The agents' working copies beside it (`synan-defects`, `synan-design`) are git worktrees that
+   point at the main folder by its full path. From the new main folder, run
+   `git worktree repair ../synan-defects ../synan-design`, then `git worktree list` to check.
+5. Run `corepack pnpm install` in the main folder and in each worktree: pnpm's links on Windows
+   hold full paths and break when the folder moves. Then `corepack pnpm -r typecheck`.
+6. The PostgreSQL 17 server is unaffected: it lives in `~/.synan-tools`, outside the project.
+7. Claude keeps its memory per folder path, under `~/.claude/projects/<the path with dashes>`.
+   Copy the old folder's `memory` directory to the new path's entry so it carries over.
+8. If the folder was copied, delete the old one with `rmdir /s /q <old>` (Windows) once nothing is
+   open in it. Do not use Explorer or `Remove-Item`, which can follow pnpm's links.
 
 **On the original laptop only**
 
