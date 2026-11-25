@@ -1,0 +1,125 @@
+/*
+ * The two candidate living backgrounds for the Attendee Portal (D-37, the owner is choosing):
+ * "lines" and "gradient". Loaded with their own chunk, after first paint, never on a screen's
+ * critical path. Both are fixed layers behind the page that move only by `transform` and
+ * `opacity` in CSS animations, which the browser runs off the main thread: no frame loop, no
+ * layout, no repaint of the page. A full cycle is 60 to 90 seconds. Still under reduced motion;
+ * paused while the tab is hidden ([data-bg-paused] on <html>).
+ */
+
+:root {
+  --bg-line: rgb(255 255 255 / 0.085);
+  --bg-line-strong: rgb(255 255 255 / 0.12);
+  --bg-line-accent: rgb(138 180 255 / 0.26);
+  --bg-lift: rgb(255 255 255 / 0.065);
+  --bg-tint: rgb(138 180 255 / 0.12);
+  --bg-grain: 0.05;
+}
+:root[data-theme="light"] {
+  --bg-line: rgb(18 17 16 / 0.08);
+  --bg-line-strong: rgb(18 17 16 / 0.11);
+  --bg-line-accent: rgb(47 98 217 / 0.16);
+  --bg-lift: rgb(255 255 255 / 0.9);
+  --bg-tint: rgb(138 180 255 / 0.18);
+  --bg-grain: 0.04;
+}
+
+.living-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+.living-bg > * {
+  position: absolute;
+  will-change: transform, opacity;
+  animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1);
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+
+/* ---- Lines: a few long, fine contours drifting past each other ---- */
+.living-bg-lines > svg {
+  inset: -12%;
+  width: 124%;
+  height: 124%;
+  fill: none;
+  stroke-width: 1;
+}
+.living-bg-lines > svg:nth-child(1) {
+  stroke: var(--bg-line);
+  animation-name: bg-drift-a;
+  animation-duration: 72s;
+}
+.living-bg-lines > svg:nth-child(2) {
+  stroke: var(--bg-line-strong);
+  animation-name: bg-drift-b;
+  animation-duration: 88s;
+}
+.living-bg-lines > svg:nth-child(3) {
+  stroke: var(--bg-line-accent);
+  animation-name: bg-drift-c;
+  animation-duration: 64s;
+}
+@keyframes bg-drift-a {
+  from { transform: translate3d(-3%, 1.5%, 0) rotate(-1deg); }
+  to { transform: translate3d(3%, -1.5%, 0) rotate(1deg); }
+}
+@keyframes bg-drift-b {
+  from { transform: translate3d(2.5%, -2%, 0) scale(1.02); }
+  to { transform: translate3d(-2.5%, 2%, 0) scale(1); }
+}
+@keyframes bg-drift-c {
+  0% { transform: translate3d(-4%, 2%, 0); opacity: 0.35; }
+  50% { opacity: 1; }
+  100% { transform: translate3d(4%, -2%, 0); opacity: 0.5; }
+}
+
+/* ---- Gradient: two large soft fields of light that drift and breathe ---- */
+.living-bg-gradient > div {
+  width: 110vmax;
+  height: 110vmax;
+}
+.living-bg-gradient > div:nth-child(1) {
+  left: -35vmax;
+  top: -45vmax;
+  background: radial-gradient(closest-side, var(--bg-lift), color-mix(in srgb, var(--bg-lift) 50%, transparent) 45%, transparent);
+  animation-name: bg-float-a;
+  animation-duration: 84s;
+}
+.living-bg-gradient > div:nth-child(2) {
+  right: -40vmax;
+  bottom: -50vmax;
+  background: radial-gradient(closest-side, var(--bg-tint), color-mix(in srgb, var(--bg-tint) 50%, transparent) 45%, transparent);
+  animation-name: bg-float-b;
+  animation-duration: 66s;
+}
+/* Grain over the light, still: it breaks the 8-bit steps a soft gradient shows on a dark,
+   near-empty page. Its own layer, so the moving fields never repaint it. */
+.living-bg-gradient > i {
+  inset: 0;
+  opacity: var(--bg-grain);
+  animation: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 1.6 -0.3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+@keyframes bg-float-a {
+  0% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.8; }
+  50% { opacity: 1; }
+  100% { transform: translate3d(22vmax, 14vmax, 0) scale(1.12); opacity: 0.85; }
+}
+@keyframes bg-float-b {
+  0% { transform: translate3d(0, 0, 0) scale(1.08); opacity: 1; }
+  50% { opacity: 0.7; }
+  100% { transform: translate3d(-18vmax, -12vmax, 0) scale(0.96); opacity: 0.95; }
+}
+
+:root[data-bg-paused] .living-bg > * {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .living-bg > * {
+    animation: none;
+  }
+}

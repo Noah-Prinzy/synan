@@ -93,21 +93,32 @@ export const THEME_CHOICES: { value: ThemeChoice; label: string }[] = [
 ];
 
 /**
- * The Gathering field behind every attendee page (D-37; ./gathering). It is never on the critical
+ * The living background behind every attendee page (D-37). Three kinds, while the owner chooses:
+ * "points" (the Gathering field, ./gathering), "lines" (a few long fine lines drifting, ./lines)
+ * and "gradient" (two soft fields of light drifting, ./gradient). It is never on the critical
  * path: nothing of it loads until the page has painted and the browser is idle, then its own
- * chunk arrives and draws. Admin Command and the Gate Scanner do not use it.
+ * chunk arrives. Admin Command and the Gate Scanner do not use it.
  */
-export function GatheringBackground(props: { quiet?: QuietZone; strength?: number }) {
-  const [Field, setField] = useState<ComponentType<{ quiet?: QuietZone; strength?: number }> | null>(null);
+export type BackgroundKind = "points" | "lines" | "gradient";
+
+type BackgroundProps = { quiet?: QuietZone; strength?: number };
+const loaders: Record<BackgroundKind, () => Promise<{ default: ComponentType<BackgroundProps> }>> = {
+  points: () => import("./gathering"),
+  lines: () => import("./lines"),
+  gradient: () => import("./gradient"),
+};
+
+export function GatheringBackground({ kind = "points", ...props }: BackgroundProps & { kind?: BackgroundKind }) {
+  const [Field, setField] = useState<{ kind: BackgroundKind; C: ComponentType<BackgroundProps> } | null>(null);
   useEffect(() => {
     let cancelled = false;
     const load = () => {
-      void import("./gathering").then(
+      void loaders[kind]().then(
         (m) => {
-          if (!cancelled) setField(() => m.default);
+          if (!cancelled) setField({ kind, C: m.default });
         },
         () => {
-          /* offline before the chunk was cached: the page simply has no field */
+          /* offline before the chunk was cached: the page simply has no background */
         },
       );
     };
@@ -119,6 +130,6 @@ export function GatheringBackground(props: { quiet?: QuietZone; strength?: numbe
       cancelled = true;
       window.removeEventListener("load", later);
     };
-  }, []);
-  return Field ? createElement(Field, props) : null;
+  }, [kind]);
+  return Field && Field.kind === kind ? createElement(Field.C, props) : null;
 }
