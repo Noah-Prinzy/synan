@@ -13,7 +13,13 @@
  *      The first admission (issued → active) has none: it is not news to the person at the door.
  *
  * The repository's `credentials.setState` is called from this file only (a test pins it), so a new
- * caller cannot write a state and forget the holder.
+ * caller cannot write a state and forget the holder; `credentials.update` refuses a state at run time.
+ *
+ * SQL-side writers: some @synan/db functions move a credential's state inside their own statement —
+ * `carrier_replace_lost` (to replaced; called today, and followed by `announce`) and
+ * `registration_set_state` (cancelling a registration revokes its credential; not called by the API
+ * yet). Whoever starts calling one of them must follow it with `announce(before, to)` for every
+ * credential it moved, or the holder's open pass and notifications will not hear of it.
  */
 import { EventEmitter } from "node:events";
 import { describeError } from "@synan/db";
