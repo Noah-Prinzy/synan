@@ -14,7 +14,7 @@ export interface BadgeProps {
 // A tonal chip, no outline (D-37): the signal tones sit on a faint tint of their own colour.
 const frame: Record<BadgeTone, string> = {
   neutral: "bg-surface-2 text-muted-foreground",
-  success: "bg-success/12 text-success",
+  success: "bg-success/12 text-success-on-tint",
   warning: "bg-warning/12 text-warning-on-tint",
   destructive: "bg-destructive/12 text-destructive-on-tint",
   brand: "bg-surface-2 text-brand",

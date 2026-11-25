@@ -27,7 +27,7 @@ export function RolePicker({ onPicked }: { onPicked?: () => void }) {
           }}
           className={cn(
             "border px-2 py-1 text-left text-11 transition-colors duration-120 hover:border-foreground/50 pointer-coarse:py-2.5",
-            option === role ? "border-brand text-foreground" : "border-border text-muted-foreground",
+            option === role ? "border-brand text-foreground" : "border-transparent bg-surface-2 text-muted-foreground",
           )}
         >
           <span className="block">{ROLE_LABEL[option]}</span>

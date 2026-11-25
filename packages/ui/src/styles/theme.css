@@ -35,11 +35,9 @@
   --muted-foreground: oklch(0.708 0 0); /* #A1A1A1 */
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
-  /* No ruled lines (D-37): nothing in the Attendee Portal or Admin Command draws a hairline.
-     These two stay transparent so a screen not yet rebuilt renders without lines; the Gate
-     Scanner, which keeps its ruled instrument look, restores them in scanner-lines.css. */
-  --border: transparent;
-  --input: transparent;
+  /* No ruled lines (D-37): the Attendee Portal and Admin Command have no hairline token. The
+     Gate Scanner keeps its ruled instrument look and declares --border and --input in
+     scanner-lines.css. */
   --ring: var(--brand);
   --radius: 0;
 
@@ -107,6 +105,7 @@
   /* A signal word set on its own faint tint (a nearly full or full room's shading, the critical
      alert cell). On dark the amber itself reads (6.3:1 hovered); the red lifts a step to stay AA
      on a full room's hovered shading (4.7:1; the signal itself was 4.4:1). Light deepens both. */
+  --success-on-tint: var(--success);
   --warning-on-tint: var(--warning);
   --destructive-on-tint: #ff7073;
 
@@ -144,7 +143,7 @@
  * Light (owner, 2026-11-24): the same brand in daylight. A warm off-white ground (the light
  * ground of the identity's own files, brand/fit.ts), near-black ink, and the hierarchy of the
  * dark theme kept step for step: a raised surface is lighter than the ground, a muted one a
- * step away from it, hairlines are ink at low opacity. Daybreak blue (#8AB4FF) is too pale to
+ * step away from it. Daybreak blue (#8AB4FF) is too pale to
  * carry text, a focus ring or a 1px rule on a light ground (1.9:1), so the accent deepens to
  * the identity's light accent, #2F62D9, same hue; Daybreak stays as the ambient tint. Signals
  * keep their meanings and deepen until text in them passes AA on the ground and on their own
@@ -187,6 +186,7 @@
   --warning: #8a5a00; /* 5.4:1: amber deepened to ochre so it can carry a word */
   --destructive: #c0292e; /* 5.4:1 */
   --destructive-on-action: #ff8a8c; /* 8.3:1 on the ink fill */
+  --success-on-tint: #136334; /* 5.7:1 on a success chip's tint over the ground (the signal itself is 4.5:1 there) */
   --warning-on-tint: #6e4700; /* 5.2:1 on a nearly full room's hovered shading */
   --destructive-on-tint: #911b21; /* 5.0:1 on a full room's hovered shading, 6.4:1 on the critical cell */
 
@@ -231,10 +231,9 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-on-action: var(--destructive-on-action);
+  --color-success-on-tint: var(--success-on-tint);
   --color-warning-on-tint: var(--warning-on-tint);
   --color-destructive-on-tint: var(--destructive-on-tint);
-  --color-border: var(--border);
-  --color-input: var(--input);
   --color-ring: var(--ring);
   --color-brand: var(--brand);
   --color-success: var(--success);

@@ -2,10 +2,8 @@
 @import "@synan/ui/theme.css";
 @import "@synan/ui/motion.css";
 @source "../../../packages/ui/src";
-/* Not scanned: parts this app never renders (the admin frame and data parts, the design
-   mock-ups, which draw with their own dx- classes). Every class they name would otherwise
-   land in the one CSS file the pass screen loads (size budget, docs/02 §9). */
-@source not "../../../packages/ui/src/mockups";
+/* Not scanned: parts this app never renders (the admin frame and data parts). Every class
+   they name would otherwise land in the one CSS file the pass screen loads (size budget, docs/02 §9). */
 @source not "../../../packages/ui/src/components/shell";
 @source not "../../../packages/ui/src/components/data";
 @source not "../../../packages/ui/src/components/overlay";
@@ -17,7 +15,6 @@
 @source not "../../../packages/ui/src/components/animated/animated-underline.tsx";
 @source not "../../../packages/ui/src/components/layout/card.tsx";
 @source not "../../../packages/ui/src/components/layout/separator.tsx";
-@source not "./mockups";
 @import "@fontsource-variable/bricolage-grotesque";
 @import "@fontsource-variable/instrument-sans";
 @import "@fontsource-variable/geist-mono";

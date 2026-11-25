@@ -15,9 +15,7 @@
     "./tokens": "./src/tokens/index.ts",
     "./theme.css": "./src/styles/theme.css",
     "./motion.css": "./src/styles/motion.css",
-    "./scanner-lines.css": "./src/styles/scanner-lines.css",
-    "./mockups": "./src/mockups/index.ts",
-    "./mockups.css": "./src/mockups/directions.css"
+    "./scanner-lines.css": "./src/styles/scanner-lines.css"
   },
   "scripts": {
     "build": "tsc --noEmit",

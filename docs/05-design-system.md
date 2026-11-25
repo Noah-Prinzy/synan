@@ -133,6 +133,7 @@ Further tokens, each with a dark and a light value:
 | --- | --- | --- | --- |
 | `--action`, `--action-foreground` | ink on ground | ink on ground | The one filled action per screen: neutral, never the brand colour |
 | `--destructive-on-action` | `#C0292E` | `#FF8A8C` | A failure word set on the filled action. The fill is the opposite of the ground, so the red is the other theme's (5.6:1 dark, 8.3:1 light) |
+| `--success-on-tint` | = `--success` | `#136334` | A success word on its own faint tint, such as a "Live now" chip (5.7:1) |
 | `--warning-on-tint` | = `--warning` | `#6E4700` | A warning word on its own faint tint, such as a nearly full room |
 | `--destructive-on-tint` | `#FF7073` | `#911B21` | A stop word on its own faint tint: a full room, the critical alert cell |
 | `--qr-field`, `--qr-ink` | `#FFFFFF`, `#0A0A0A` | the same | The pass QR, black on white in both themes |

@@ -20,6 +20,12 @@
   --input: rgb(18 17 16 / 0.22);
 }
 
+/* The scanner's border-border and border-input utilities. */
+@theme inline {
+  --color-border: var(--border);
+  --color-input: var(--input);
+}
+
 :root {
   --focus-width: 1px;
   --ctl-fill: transparent;

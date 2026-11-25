@@ -11,7 +11,7 @@ import { SignalShape, type SignalState } from "./status-dot";
 export type LiveState = "live" | "reconnecting" | "offline" | "idle";
 
 const view: Record<LiveState, { state: SignalState; text: string; spoken: string; tone: string }> = {
-  live: { state: "ok", text: "LIVE", spoken: "Live", tone: "text-success bg-success/12" },
+  live: { state: "ok", text: "LIVE", spoken: "Live", tone: "text-success-on-tint bg-success/12" },
   reconnecting: { state: "warn", text: "RECONNECTING", spoken: "Reconnecting", tone: "text-warning-on-tint bg-warning/12" },
   offline: { state: "stop", text: "OFFLINE", spoken: "Offline", tone: "text-destructive-on-tint bg-destructive/12" },
   idle: { state: "idle", text: "NOT LIVE", spoken: "No live event", tone: "text-muted-foreground bg-surface-2" },

@@ -39,8 +39,6 @@ const AttendeeLookup = lazy(() => import("./people/attendee-lookup"));
 
 /** Real API only: the second-factor prompt and authenticator set-up (absent from a mock build). */
 const StepUpHost = mode === "api" ? lazy(() => import("./access/step-up")) : null;
-/** Development only: design-direction mock-ups for the owner (delete with src/mockups once chosen). */
-const DevDirections = import.meta.env.DEV ? lazy(() => import("./mockups")) : null;
 
 function Lazy({ children }: { children: ReactNode }) {
   return <Suspense fallback={<LoadingState label="Opening…" />}>{children}</Suspense>;
@@ -82,7 +80,6 @@ export default function App() {
         ) : null}
         <CommandProvider>
           <Routes>
-            {DevDirections ? <Route path="/dev/directions/*" element={<Suspense fallback={null}><DevDirections /></Suspense>} /> : null}
             {/* Signing in and out happens in the session gate; an old sign-in link lands home. */}
             <Route path={SCREENS.signIn.path} element={<Navigate to="/" replace />} />
             <Route

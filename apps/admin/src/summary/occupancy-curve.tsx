@@ -118,7 +118,6 @@ export function OccupancyCurve({
           </desc>
           {ticks.map((t) => (
             <g key={t}>
-              <line x1={PAD.left} x2={width - PAD.right} y1={Math.round(y(t)) + 0.5} y2={Math.round(y(t)) + 0.5} className="stroke-border" />
               <text x={PAD.left - 10} y={y(t) + 4} textAnchor="end" className="fill-muted-foreground font-mono text-12">
                 {formatNumber(t)}
               </text>

@@ -14,6 +14,5 @@ const QUIET_WIDE: QuietZone = { x: 0.08, y: 0, w: 0.84, h: 1, floor: 0.4 };
 export function Ambient() {
   const { pathname, search } = useLocation();
   if (import.meta.env.DEV && new URLSearchParams(search).get("ambient") === "off") return null;
-  if (pathname.startsWith("/dev/directions")) return null;
   return <GatheringBackground quiet={/^\/events\/[^/]+\/?$/.test(pathname) ? QUIET_WIDE : QUIET_CENTRE} />;
 }

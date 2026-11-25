@@ -17,8 +17,6 @@ const Account = lazy(() => import("./screens/account"));
 const Invite = lazy(() => import("./screens/invite"));
 /** Development only: every control in every state (never in a production build). */
 const DevControls = import.meta.env.DEV ? lazy(() => import("./screens/dev-controls")) : null;
-/** Development only: design-direction mock-ups for the owner (delete with src/mockups once chosen). */
-const DevDirections = import.meta.env.DEV ? lazy(() => import("./mockups")) : null;
 
 /** RouteFallback: the bare ground while a route's chunk loads (the field shows through); no spinner for short waits. */
 function RouteFallback() {
@@ -54,7 +52,6 @@ export default function App() {
         <Route path="/invite" element={<Invite />} />
         <Route path="/invite/:token" element={<Invite />} />
         {DevControls ? <Route path="/dev/controls" element={<DevControls />} /> : null}
-        {DevDirections ? <Route path="/dev/directions/*" element={<DevDirections />} /> : null}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>
