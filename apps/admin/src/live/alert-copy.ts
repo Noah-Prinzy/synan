@@ -1,30 +1,16 @@
 /**
  * Words for alert kinds and severities.
  *
- * Belongs in `@synan/contracts/copy` next to SCAN_RESULT_COPY (02 §7: UI copy is
- * declared once, never retyped per screen). Requested from the backend; until it
- * lands it lives here, checked against the enums so a new kind is a type error.
+ * Alert kinds use `@synan/contracts/copy` ALERT_KIND_COPY, the one source (02 §7: UI copy is
+ * declared once, never retyped per screen), so the console says what the contracts say.
  */
+import { ALERT_KIND_COPY } from "@synan/contracts/copy";
 import type { AlertKind, Severity } from "@synan/contracts/enums";
 import type { SignalState } from "@synan/ui/data";
 
-export const ALERT_KIND_LABEL = {
-  invalid_qr: "Invalid QR",
-  pass_replayed: "Pass replayed",
-  unauthorised_tier: "Unauthorised tier",
-  impossible_travel: "Impossible travel",
-  capacity_warn: "Near capacity",
-  capacity_exceeded: "Capacity exceeded",
-  offline_conflict_pass_reuse: "Offline conflict · pass reused",
-  offline_conflict_passback: "Offline conflict · pass-back",
-  offline_conflict_capacity: "Offline conflict · capacity",
-  clock_skew: "Scanner clock wrong",
-  gate_offline: "Gate offline",
-  rogue_scanner: "Scanner outside assignment",
-  stale_allowlist: "Stale allowlist",
-  reconciliation_fault: "Count reconciliation",
-  band_reported_lost: "Wristband reported lost",
-} as const satisfies Record<AlertKind, string>;
+export const ALERT_KIND_LABEL = Object.fromEntries(
+  (Object.keys(ALERT_KIND_COPY) as AlertKind[]).map((kind) => [kind, ALERT_KIND_COPY[kind].label]),
+) as { readonly [K in AlertKind]: (typeof ALERT_KIND_COPY)[K]["label"] };
 
 export const SEVERITY_ORDER: readonly Severity[] = ["critical", "high", "medium", "low"];
 

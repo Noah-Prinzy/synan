@@ -842,8 +842,17 @@ class Runtime {
         canSend: Boolean(signer && others.some((r) => r.state === "pending" && canSend(r, signer))),
       },
     });
-    this.stream?.heartbeatNow();
+    // Gate health shows this gate's waiting scans from the last heartbeat: tell the server as soon as
+    // the count changes (a sync just emptied the queue), over the stream when it is open, else over
+    // REST, rather than leaving the console on the old count until the next 25 s REST beat.
+    const depth = waiting.length;
+    if (this.stream?.state === "open") this.stream.heartbeatNow();
+    else if (depth !== this.reportedDepth) void this.restHeartbeat();
+    this.reportedDepth = depth;
   }
+
+  /** The queue depth last handed to a heartbeat by `publish` (null: none yet). */
+  private reportedDepth: number | null = null;
 
   private changed() {
     this.channel?.postMessage({ type: "changed" });
