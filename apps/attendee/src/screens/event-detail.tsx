@@ -287,14 +287,15 @@ export default function EventDetail() {
         </Link>
       }
     >
-      <section aria-labelledby="event-title" className="relative h-svh min-h-160">
+      <section aria-labelledby="event-title" className="relative flex min-h-svh flex-col sm:block sm:h-svh sm:min-h-160">
         <div className="absolute inset-0" style={{ viewTransitionName: pictureName(event.slug) }}>
           <EventPicture event={event} big>
             {photo ? <div aria-hidden="true" className="absolute inset-0 bg-linear-to-b from-qr-ink/55 via-transparent to-qr-ink/45" /> : null}
           </EventPicture>
         </div>
 
-        <div className={`absolute inset-x-0 top-[22%] px-5 text-center md:top-[26%] ${photo ? "text-qr-field" : ""}`}>
+        {/* On a phone the name and the key facts stack in the flow, so a short screen never lays one over the other. */}
+        <div className={`relative px-5 pt-36 pb-10 text-center sm:absolute sm:inset-x-0 sm:top-[22%] sm:pt-0 sm:pb-0 md:top-[26%] ${photo ? "text-qr-field" : ""}`}>
           <p className={`eyebrow-mono ${photo ? "text-inherit" : ""}`}>
             {dateRange(event)} · {event.venue}
           </p>
@@ -313,7 +314,7 @@ export default function EventDetail() {
 
         <article
           aria-label="Key facts"
-          className={`absolute inset-x-3 ${passBar ? "bottom-19 md:bottom-6" : "bottom-3 sm:bottom-6"} flex flex-col items-start gap-4 bg-glass p-5 text-glass-ink backdrop-blur-xl sm:inset-x-auto sm:left-6 sm:w-100 sm:p-6`}
+          className={`relative mx-3 mt-auto ${passBar ? "mb-19 sm:bottom-19 md:bottom-6" : "mb-3 sm:bottom-6"} flex flex-col items-start gap-4 bg-glass p-5 text-glass-ink backdrop-blur-xl sm:absolute sm:left-6 sm:mx-0 sm:mb-0 sm:w-100 sm:p-6`}
         >
           {live ? (
             <Badge tone="success" dot pulse>
