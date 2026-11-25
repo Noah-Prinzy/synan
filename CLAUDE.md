@@ -65,56 +65,12 @@ questions) and `docs/07-roadmap.md` (§1 where we are, §2 the way forward).
 - Too many heavy agents at once slow a laptop until tests time out. About three test-running agents
   at a time is the limit found so far; tell agents to rerun on a timeout before drawing conclusions.
 
-## Task for an agent that can read GitHub Actions
-
-Added 2026-11-25. Remove this section when the task is done.
-
-The lead agent on the owner's laptop cannot read GitHub Actions results (the repository is private
-and that machine has no signed-in GitHub tool). If you can, please do this.
-
-**Goal:** make the CI workflow green on branch `integration/5.1`, then report.
-
-**What is known.** On the run for commit `4a0db19`, the gate job "All required checks" failed
-with one cause: `static-analysis failure`. Every other required job passed, including the real
-PostgreSQL job. The static analysis job is "Static analysis (semgrep)" in
-`.github/workflows/ci.yml`. It runs semgrep, then `scripts/semgrep-report.mjs`, which fails the
-job when a finding of severity ERROR, HIGH or CRITICAL is not listed in
-`.github/semgrep-accepted.json` (one entry per rule and file, each with a written reason).
-
-**A guess was already pushed** after that run: two test files used the plain `ws` scheme for
-`api.test` and were changed to the secure `wss` scheme (`apps/admin/test/live-stream.test.ts`,
-`apps/attendee/test/stream.test.ts`), because the rule `detect-insecure-websocket` flags insecure
-WebSocket addresses. That may or may not have been the cause. Check the newest run first.
-
-**Steps**
-
-1. Open the newest CI run for `integration/5.1`. If "All required checks" is green, skip to 5.
-2. Open "Static analysis (semgrep)". Read the findings in the job summary or the report step: each
-   has a severity, a rule, a file and a line.
-3. For every blocking finding, decide which it is:
-   - **A real problem:** fix the code. Do not accept it.
-   - **A false positive:** add an entry to `.github/semgrep-accepted.json` with the rule, the file
-     path and a plain reason a reviewer can check. Keep entries narrow: one rule, one file.
-
-   Never turn the job off, loosen the rule sets, or change `scripts/semgrep-report.mjs` to pass.
-4. Commit on `integration/5.1` with a clear message ending in
-   `Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>`, push, and wait for the new run.
-   Repeat until "All required checks" is green. Do not force-push. Do not push to `main` or
-   `build/synan-foundations`.
-5. Also look at the "End-to-end" job. It is not required yet and may be red; note its result and
-   any failing test names, but do not fix them (another engineer is fixing those on
-   `fix/e2e-defects`).
-6. Report to the owner in plain language: what the findings were, which were real and which were
-   false alarms and why, what you changed, and the final state of every job. Add one line under
-   "Where we are and what is next" in this file saying the checks are green on `integration/5.1`
-   and at which commit, then delete this task section and push.
-
-**Do not** merge `integration/5.1` into anything, delete branches, or change repository settings.
-The lead agent does the merge once the checks are green.
-
 ## Where we are and what is next
 
 Last updated: 2026-11-25, morning.
+
+CI checks green: "All required checks" passes on `integration/5.1` at commit `1bfbaf2`
+(2026-11-25; End-to-end, not required yet, still red on J6). — Axel
 
 **Branches on GitHub**
 
