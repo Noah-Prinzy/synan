@@ -67,49 +67,56 @@ questions) and `docs/07-roadmap.md` (§1 where we are, §2 the way forward).
 
 ## Where we are and what is next
 
-Last updated: 2026-11-25, midday.
+Last updated: 2026-11-25, afternoon.
 
 **Branches on GitHub**
 
 | Branch | What it is |
 | --- | --- |
-| `build/synan-foundations` | The main line of work. Everything verified is here. Start from this branch. |
-| `fix/e2e-defects` | Being built: fixes for the faults the end-to-end tests found. Merged into the main line when green. |
-| `design/rollout` | Being built: the confirmed design applied to the real apps, in six stages. Merged stage by stage once checked. |
-| `design/mockups` | The design mock-ups the owner chose from. Never merged; deleted when the rollout is finished. |
+| `build/synan-foundations` | The main line. Everything is here, including the confirmed design. Start from this branch. |
+| `design/rollout` | The branch the design was built on. Fully merged; delete it once its last report is in. |
 | `main` | The default branch, far behind. Nothing is pushed to it without the owner saying so. |
 
-The work branches `ci/foundations`, `tests/frontend-units`, `fix/leftovers`, `e2e/journeys`, and
-`integration/5.1` were merged into the main line on 2026-11-25 and deleted.
+**Roadmap step 5.1, "every change is checked automatically": done**
 
-**Roadmap step 5.1, "every change is checked automatically": nearly done**
-
-- The automatic checks run on GitHub for every push to `main`, `build/**`, `ci/**`, and
-  `integration/**`, and for every pull request. "All required checks" was green on the merged work
-  at commit `1bfbaf2` (read by Axel, the owner's agent with GitHub access), including the suites on
-  a real PostgreSQL 17.
-- The end-to-end job is not a required check yet. On GitHub it was red on journey J6 (the offline
-  scanner reconciling exactly once), which passes locally. Find out why before making it required.
+- The checks run on GitHub for every push to `main`, `build/**`, `ci/**`, and `integration/**`, and
+  for every pull request: typecheck, seven test suites, the database and API suites on a real
+  PostgreSQL 17, builds and size budgets, a dependency audit, a secret scan, a code scan, repository
+  hygiene, a test-count guard, and the end-to-end journeys with accessibility checks. All 18 jobs
+  were green on the main line on 2026-11-25.
+- To check a branch that does not match those patterns, push it to a `ci/<name>` branch, read the
+  run, then delete that branch.
+- The faults the end-to-end tests found are fixed and merged after an independent review: staff
+  activation, live "under review" on the pass, expired exports, accessible names.
 - Left to do:
-  1. Finish `fix/e2e-defects`: invited staff cannot activate their account (the emailed link points
-     at a page no app has); a pass put under review at the gate does not update live on the
-     attendee's phone; a deleted export still shows a download link; an accessibility rule ("label
-     in name") fails on some admin and scanner controls. Merge it, drop the `test.fail` markers and
-     the `--grep-invert @a11y` flag, raise the end-to-end baseline, and make the job required.
-  2. Give the owner the GitHub setting that makes the checks compulsory (Settings → Rules →
-     Rulesets: block force pushes, require a pull request, require the check "All required checks").
-  3. Bring `docs/07-roadmap.md` §1 up to date with the real-PostgreSQL results and the checks.
+  1. The owner applies the GitHub setting that makes the checks compulsory (Settings → Rules →
+     Rulesets: block force pushes, require a pull request, require the check "All required
+     checks"). It needs the repository owner's account.
+  2. Make the end-to-end job a required check once it has stayed green over several runs.
+  3. Bring `docs/07-roadmap.md` §1 up to date with the real-PostgreSQL results, the checks, and
+     the new design.
+  4. Small follow-ups from the review: a pending staff account whose invitations were cleaned up
+     after 30 days cannot be re-invited (take `invited_at` from the audit log in the backfill, or add
+     a way to delete a staff account); remove the unused `userInvites.consume`.
+  5. There is no screen in the Admin Command for inviting staff; it can only be done through the
+     API. Build it early in the next round.
 
-**Design (decision D-37): confirmed, rollout in progress**
+**Design (decision D-37): applied and merged**
 
-The owner confirmed the combined design on 2026-11-25 from a working mock-up: the calm direction
-for the whole Attendee Portal, except the event page, which takes the richer showcase style; the
-instrument direction for the Admin Command; square corners everywhere; subtle motion on the attendee
-side and none in the admin. It is being applied on `design/rollout` in six stages: shared pieces
-and the design document; attendee main screens; remaining attendee screens; admin frame and Command
-Center; remaining admin screens; clean-up and deletion of the mock-ups. Points to settle while
-building: a boundary for inputs that meets the accessibility standard without bringing lines back;
-a calm, cheap living background; staying inside the size budgets (pass screen 125 KB, admin 200 KB).
+The owner confirmed the design from mock-ups and it is now in the real apps: the calm direction for
+the Attendee Portal, the event page in the richer showcase style, the instrument direction for the
+Admin Command (a top bar replaces the side rail), square corners, no ruled lines, fields with a 2px
+foot edge. The attendee background is "Arrivals", chosen by the owner from a lab of ideas: a
+festival crowd drawn from small glyphs that walks across the whole screen (`packages/ui/src/theme/`).
+The owner rejected, in turn, a field of dots, thin drifting curves, and a soft gradient: they want a
+background that fills the whole screen with visible, gentle life. The admin has no animation and the
+Gate Scanner's look is unchanged.
+
+Open on the design: Arrivals is heavier than a plain background (the artist measured roughly 10% of
+main-thread time at phone size and 25–30% at desktop size in a test browser; it now runs at 12
+frames a second on a computer and 10 on a phone and steps down when painting is slow). Measure it on
+a real mid-range phone before launch, and make sure typing, scrolling and the pass screen never
+feel slow. `docs/05-design-system.md` and `docs/06-screens.md` describe the design as built.
 
 **Next (roadmap step 5.2, "Many organisers")**
 
@@ -161,5 +168,5 @@ then delete this section and mark O-56 settled in `docs/00-index.md`.
 
 These do not exist on a fresh clone: a PostgreSQL 17 server kept outside the repository
 (`corepack pnpm pg:start` and `pg:stop`), and extra working copies beside the main folder for
-agents (`synan-design`). On another device, clone the repository, check out
+agents (`synan-design`, removable now that the design is merged). On another device, clone the repository, check out
 `build/synan-foundations`, run `corepack pnpm install`, and work from there.
