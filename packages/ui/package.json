@@ -15,7 +15,9 @@
     "./tokens": "./src/tokens/index.ts",
     "./styles": "./src/styles/index.ts",
     "./theme.css": "./src/styles/theme.css",
-    "./motion.css": "./src/styles/motion.css"
+    "./motion.css": "./src/styles/motion.css",
+    "./mockups": "./src/mockups/index.ts",
+    "./mockups.css": "./src/mockups/directions.css"
   },
   "scripts": {
     "build": "tsc --noEmit",
