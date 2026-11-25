@@ -29,6 +29,9 @@ export const PATHS = {
   undoScan: { method: "POST", path: "/scans/:id/undo" },
   gateHeartbeat: { method: "POST", path: "/gates/heartbeat" },
   handover: { method: "POST", path: "/staff-assignments/:id/handover" },
+  // Public: staff activation (screens/activate.tsx), called without a session.
+  checkActivation: { method: "POST", path: "/auth/activate/check" },
+  activateStaff: { method: "POST", path: "/auth/activate" },
 } as const satisfies { [K in keyof Endpoints]?: { method: Endpoints[K]["method"]; path: string } };
 
 export type Op = keyof typeof PATHS;

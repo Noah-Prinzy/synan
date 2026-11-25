@@ -43,7 +43,14 @@ describe("response security headers (development)", () => {
 describe("response security headers (production)", () => {
   let h: Harness;
   beforeAll(async () => {
-    h = await startHarness({ config: { production: true, mailTransport: "memory" } });
+    h = await startHarness({
+      config: {
+        production: true, mailTransport: "memory",
+        // Production names every address, TLS only (config.ts).
+        adminAppUrl: "https://ops.example.test/admin", scannerAppUrl: "https://ops.example.test/scan", attendeeAppOrigin: "https://example.test",
+        publicApiOrigin: "https://api.example.test", allowedOrigins: ["https://example.test", "https://ops.example.test"],
+      },
+    });
   });
   afterAll(async () => h.close());
 

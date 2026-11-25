@@ -47,10 +47,13 @@ test("J6: offline admissions from the allowlist queue on the device and sync exa
   await scannerManualEntry(page, revokedBand);
   await expect(verdict(page)).toContainText("REVOKED");
 
+  // Every scan above was decided on the device and queued: three admissions and one refusal. Wait for
+  // the queue screen to show them (it reads the device's queue, which can take a moment on a slow
+  // runner), never read it once.
+  const queued = bands.length + 1;
   await page.getByRole("link", { name: /^Queue/ }).click();
   const waiting = page.getByRole("term").filter({ hasText: "Waiting" }).locator("xpath=following-sibling::dd[1]");
-  const queued = Number(await waiting.textContent());
-  expect(queued).toBeGreaterThanOrEqual(3);
+  await expect(waiting).toHaveText(String(queued));
   const byResult = page.getByRole("list", { name: "Waiting, by result" });
   await expect(byResult.getByRole("listitem").filter({ hasText: "ADMITTED" })).toHaveText(/ADMITTED\s*3$/);
   await expect(byResult.getByRole("listitem").filter({ hasText: "REVOKED" })).toHaveText(/REVOKED\s*1$/);
@@ -59,35 +62,35 @@ test("J6: offline admissions from the allowlist queue on the device and sync exa
     (await admin.call<{ items: { id: string; result: string }[] }>("GET", `/scans?event_id=${w.eventId}&checkpoint_id=${w.gates.entrance.id}&limit=100`)).items;
   expect(await serverScans(), "nothing reached the server while offline").toHaveLength(0);
 
+  // Back online: wait on the real conditions, the device's queue drained and the server holding the
+  // scans ("Online" shows only once nothing is waiting), with room for a slow headless runner.
   await ctx.setOffline(false);
-  await expect(status).toContainText("Online", { timeout: 20_000 });
-  await expect(waiting).toHaveText("0", { timeout: 20_000 });
+  await expect(waiting).toHaveText("0", { timeout: 60_000 });
+  await expect(status).toContainText("Online", { timeout: 30_000 });
+  await expect.poll(async () => (await serverScans()).length, { message: "the server holds every queued scan", timeout: 30_000 }).toBe(queued);
   await expect(page.getByRole("region", { name: "Conflicts found at the last sync" })).toContainText("None. Every scan from this device matched");
 
   // A second outage and return sends nothing again.
   await ctx.setOffline(true);
   await expect(status).toContainText("Offline");
   await ctx.setOffline(false);
-  await expect(status).toContainText("Online", { timeout: 20_000 });
+  await expect(status).toContainText("Online", { timeout: 30_000 });
   await expect(waiting).toHaveText("0");
 
+  // The device's own list: every scan it made, each marked sent (waited for, not counted at once).
   await page.getByRole("link", { name: "Recent" }).click();
-  // count() does not wait: read the rows only once the Recent screen shows them. Counted straight
-  // after the click, it read the Queue screen just left (its by-result list empty after the sync) as 0.
-  await expect(page.getByRole("heading", { name: "Recent scans" })).toBeVisible();
-  const rows = page.getByRole("main").getByRole("listitem");
-  await expect(rows, "the device lists every scan it queued").toHaveCount(queued);
-  const deviceCount = await rows.count();
-  await expect(rows.filter({ hasText: "Sent" })).toHaveCount(deviceCount);
+  const deviceScans = page.getByRole("main").getByRole("listitem");
+  await expect(deviceScans).toHaveCount(queued);
+  await expect(deviceScans.filter({ hasText: "Sent" })).toHaveCount(queued);
 
   const onServer = await serverScans();
-  expect(onServer.length, "server scan count equals the device's").toBe(deviceCount);
-  expect(onServer.length).toBe(queued);
+  expect(onServer.length, "server scan count equals the device's, after a second outage too").toBe(queued);
   expect(new Set(onServer.map((s) => s.id)).size).toBe(onServer.length);
   expect(onServer.filter((s) => s.result === "admitted")).toHaveLength(3);
   expect(onServer.filter((s) => s.result === "revoked")).toHaveLength(1);
-  const summary = await admin.call<{ on_site: number }>("GET", `/events/${w.eventId}/summary?series_minutes=0`);
-  expect(summary.on_site).toBe(3);
+  await expect
+    .poll(async () => (await admin.call<{ on_site: number }>("GET", `/events/${w.eventId}/summary?series_minutes=0`)).on_site, { timeout: 15_000 })
+    .toBe(3);
   test.info().annotations.push({ type: "scan uploads", description: `POST /scans batches: ${JSON.stringify(posts)}` });
   await ctx.close();
 });

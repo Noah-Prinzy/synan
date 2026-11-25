@@ -16,6 +16,7 @@ import {
   SCAN_RESULT_TONE,
 } from "../src/copy/index.js";
 import { ErrorCode } from "../src/errors/index.js";
+import { STAFF_PASSWORD } from "../src/copy/index.js";
 import * as errorsModule from "../src/errors/index.js";
 import {
   CARRIER_STATE_VALUES,
@@ -42,7 +43,15 @@ const subtle = webcrypto.subtle;
 
 describe("REST registry", () => {
   it("covers every endpoint in docs/02 §5 (68) plus 36 additive endpoints (email-link, logout, me/registration, credentials/:id/scans, venue update, checkpoint create/update, event state, event admin view, kiosk registration, desk code, staff invite and activation, shift handover, gate heartbeat, MFA enrolment and confirmation, six webhook endpoints, six device endpoints, five data-request endpoints, post-event summary, operator profile) and 6 more (four report-schedule endpoints, notification mark-read, operator broadcast) and the attendee's own pass resend", () => {
-    expect(Object.keys(endpoints)).toHaveLength(111 + 9 + 1 + 6 + 5);
+    expect(Object.keys(endpoints)).toHaveLength(111 + 9 + 1 + 6 + 5 + 1);
+  });
+  it("adds the activation-link check: public, the sign-in rate limit, the token in the body, and a state that names no account", () => {
+    expect(endpoints.checkActivation).toMatchObject({ method: "POST", path: "/auth/activate/check", access: ["public"], rateLimit: "auth" });
+    expect(endpoints.checkActivation.response.safeParse({ state: "used" }).success).toBe(true);
+    expect(endpoints.checkActivation.response.safeParse({ state: "valid", role: "supervisor", expires_at: new Date().toISOString() }).success).toBe(true);
+    expect(Object.keys(endpoints.checkActivation.response.shape).sort()).toEqual(["expires_at", "role", "state"]);
+    expect(endpoints.activateStaff.body.safeParse({ token: "x".repeat(20), password: "x".repeat(STAFF_PASSWORD.min - 1) }).success).toBe(false);
+    expect(endpoints.activateStaff.body.safeParse({ token: "x".repeat(20), password: "x".repeat(STAFF_PASSWORD.min) }).success).toBe(true);
   });
   it("adds five endpoints for the console and invitation gaps: alert detail, gate activity, one registration, invitation read, RSVP with the token in the body", () => {
     expect(endpoints.getAlert).toMatchObject({ method: "GET", path: "/alerts/:id", access: ["admin", "organiser", "supervisor"] });

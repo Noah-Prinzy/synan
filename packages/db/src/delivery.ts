@@ -145,8 +145,14 @@ export async function markExportedFilesDeleted(db: DbOrTx, ids: readonly string[
   return num(r[0]!.n);
 }
 
-export async function listExportedFiles(db: DbOrTx, q: { reportId?: string; dataRequestId?: string } = {}): Promise<ExportedFile[]> {
-  const conds = [q.reportId ? eq(exported_files.report_id, q.reportId) : undefined, q.dataRequestId ? eq(exported_files.data_request_id, q.dataRequestId) : undefined].filter(Boolean);
+/** `reportIds` (additive): the files of any of these reports (an empty list matches nothing). */
+export async function listExportedFiles(db: DbOrTx, q: { reportId?: string; reportIds?: readonly string[]; dataRequestId?: string } = {}): Promise<ExportedFile[]> {
+  if (q.reportIds && q.reportIds.length === 0) return [];
+  const conds = [
+    q.reportId ? eq(exported_files.report_id, q.reportId) : undefined,
+    q.reportIds ? inArray(exported_files.report_id, [...q.reportIds]) : undefined,
+    q.dataRequestId ? eq(exported_files.data_request_id, q.dataRequestId) : undefined,
+  ].filter(Boolean);
   return db.select().from(exported_files).where(conds.length ? and(...(conds as never[])) : undefined).orderBy(desc(exported_files.created_at));
 }
 

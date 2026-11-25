@@ -149,6 +149,10 @@
     "0036_carriers_lookup_index": {
       "sql": "152d0846f721603936cd8ecb65abb2aaccfffcca9cf91cd144447b6a535aefa1",
       "journal": "e1af319ed19a4b11cff37a922edcf42f31e2c9c6867c893046716bad869bae9d"
+    },
+    "0037_staff_invite_pending": {
+      "sql": "85c6983e02ea878855e850ebcbc9686556f7a40c6b4d29e6871600fc8cf58da3",
+      "journal": "bb0cb924c8f07d212fb043ebaa7f886891f2a9cb73aa3ea16a0e2316a66a0d85"
     }
   }
 }

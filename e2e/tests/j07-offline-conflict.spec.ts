@@ -68,10 +68,10 @@ test("J7: the same band admitted at two offline entrances raises one pass-back a
   await test.step("the console shows the one alert, live, and its detail names both gates", async () => {
     const main = page.getByRole("main");
     await expect(page.getByRole("radio", { name: "Open 1" })).toBeVisible({ timeout: 15_000 });
-    const row = main.getByRole("button", { name: /^Offline conflict · pass-back , High, Open, at Side Door/ });
+    const row = main.getByRole("button", { name: /^Offline: pass-back , High, Open, at Side Door/ });
     await expect(row).toHaveCount(1);
     await row.click();
-    const detail = page.getByRole("complementary", { name: "Offline conflict · pass-back" });
+    const detail = page.getByRole("complementary", { name: "Offline: pass-back" });
     await expect(detail.getByRole("heading", { name: /^Scans involved/ })).toBeVisible();
     const scans = detail.getByRole("listitem").filter({ hasText: "Device time" });
     await expect(scans).toHaveCount(2);

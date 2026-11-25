@@ -46,6 +46,8 @@ export interface UserRow {
   mfa_secret: string | null;
   /** users.display_name; null (or absent) when none was given. */
   display_name?: string | null;
+  /** First staff invitation (0037). Pending = invited and no password yet; null = never invited. */
+  invited_at?: Date | null;
 }
 
 export interface AttendeeRow {
@@ -419,6 +421,8 @@ export interface UsersRepo {
   list(opts: { after?: string; limit: number }): Promise<UserRow[]>;
   setPassword(id: string, passwordHash: string): Promise<void>;
   setRole(id: string, role: Role): Promise<void>;
+  /** The user, its row locked for the rest of the unit of work (SQL: SELECT … FOR UPDATE; call inside a transaction). */
+  lockForUpdate(id: string): Promise<UserRow | null>;
   /** Pending MFA enrolment, held encrypted on the user (SQL: @synan/db startMfaEnrolment and friends). */
   startMfaEnrolment(id: string, secret: string, now: Date): Promise<void>;
   readPendingMfaSecret(id: string, now: Date): Promise<string | null>;
@@ -586,7 +590,10 @@ export interface CredentialsRepo {
   byTokenHash(hash: string): Promise<CredentialRow | null>;
   forRegistration(registrationId: string): Promise<CredentialRow | null>;
   insert(row: CredentialRow): Promise<void>;
-  update(id: string, patch: Partial<Pick<CredentialRow, "state" | "zone_state" | "revoked_at">>): Promise<CredentialRow>;
+  /** Everything but the state: a state change goes through domain/credential-state.ts, which tells the holder. */
+  update(id: string, patch: Partial<Pick<CredentialRow, "zone_state">>): Promise<CredentialRow>;
+  /** The state write itself. Called only by CredentialStates (domain/credential-state.ts; a test pins it). */
+  setState(id: string, patch: Pick<CredentialRow, "state"> & Partial<Pick<CredentialRow, "zone_state" | "revoked_at">>): Promise<CredentialRow>;
   /** Ordered by id, keyset on id. `registrationIds` scopes to those registrations (empty = nothing). */
   page(opts: { registrationIds?: readonly string[]; state?: CredentialState; after?: string; limit: number }): Promise<CredentialRow[]>;
   /** Every credential (any state) of these registrations. */
@@ -770,9 +777,23 @@ export interface DeskCodesRepo {
 export interface UserInvitesRepo {
   /** A 72-hour single-use activation token; older open invites for the user are revoked. */
   create(i: { userId: string; createdBy: string | null; now: Date }): Promise<string>;
-  /** The user id if the token is known, unused, unrevoked and unexpired. */
-  consume(token: string, now: Date): Promise<string | null>;
+  /**
+   * Spends the token once: `consumed` with the user id if it was known, unused, unrevoked and
+   * unexpired; otherwise why not (SQL: @synan/db consumeUserInvite).
+   */
+  consume(token: string, now: Date): Promise<{ status: InviteStatus | "consumed"; userId: string | null }>;
+  /**
+   * The token's state without spending it (`valid` = activate would succeed now; `account_active`: a
+   * password is already set on the account). SQL: peekUserInvite.
+   */
+  peek(token: string, now: Date): Promise<{ status: InviteStatus | "valid"; userId: string | null; expiresAt: Date | null }>;
+  /**
+   * Sets the password and spends the token, in one step, only on an account with no password; on any
+   * other status nothing is written (SQL: user_invite_activate, migration 0037).
+   */
+  activate(token: string, passwordHash: string, now: Date): Promise<{ status: InviteStatus | "activated"; userId: string | null }>;
 }
+export type InviteStatus = "invalid" | "expired" | "already_used" | "revoked" | "account_active";
 
 export interface Repos {
   users: UsersRepo;
@@ -1151,7 +1172,8 @@ export interface ExportedFilesRepo {
   due(now: Date, limit: number): Promise<ExportedFileRow[]>;
   /** After their objects were removed. Returns how many were newly marked. */
   markDeleted(ids: readonly string[], i: { actorId: string | null; now: Date }): Promise<number>;
-  list(q: { reportId?: string; dataRequestId?: string }): Promise<ExportedFileRow[]>;
+  /** `reportIds`: the files of any of these reports (empty: none). */
+  list(q: { reportId?: string; reportIds?: readonly string[]; dataRequestId?: string }): Promise<ExportedFileRow[]>;
   /** Sent/failed email after 7 days, expired notifications, finished schedules after 30 days. */
   cleanupDelivery(now: Date): Promise<{ emails: number; notifications: number; schedules: number }>;
 }

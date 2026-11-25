@@ -42,7 +42,8 @@ import {
 import { OccupancyProjection, type RoomMeta } from "./occupancy.js";
 import type { AuthContext } from "./principal.js";
 import type { QrService } from "./qr.js";
-import { NOTE, type NotificationService } from "./notifications.js";
+import { CredentialStates } from "./credential-state.js";
+import type { NotificationService } from "./notifications.js";
 import { sha256b64url } from "../lib/crypto.js";
 import type { Clock } from "../lib/clock.js";
 import { KeyedMutex } from "../lib/mutex.js";
@@ -118,7 +119,13 @@ export class ScanService {
     private readonly clock: Clock,
     private readonly opts: { offlineSyncGraceMs: number; checkpointScansPerMin?: number; offlineLateSyncMs?: number; undoWindowMs?: number } = { offlineSyncGraceMs: 3600_000 },
     private readonly notes: NotificationService | null = null,
-  ) {}
+    /** Every credential state change (suspension at the gate, the first admission) goes through here. */
+    states: CredentialStates | null = null,
+  ) {
+    this.states = states ?? new CredentialStates(repos, clock, notes);
+  }
+
+  private readonly states: CredentialStates;
 
   /** Per-checkpoint scan load by minute of judged time (03 §4); kept a day past the clock-drift bound. */
   private readonly gateLoad = new MinuteBuckets(MAX_CLOCK_DRIFT_MS + 3600_000);
@@ -694,15 +701,14 @@ export class ScanService {
     let credential = r.credential;
     // Impossible travel → suspend for review before deciding (01 §7, D-06).
     let travelDetected = false;
-    let becameSuspended = false;
     let roomFilled: string | null = null;
     if (credential && credential.state !== "suspended_review" && credential.state !== "revoked" && credential.state !== "replaced") {
       const prev = proj.lastRead.get(eph) ?? null;
       const transit = await this.transitLookup(event.venue_id ?? "");
       if (isImpossibleTravel(prev, { checkpointId: cp.id, atMs: at }, transit)) {
         travelDetected = true;
-        becameSuspended = true;
-        credential = await this.repos.credentials.update(credential.id, { state: "suspended_review" });
+        // Through the one state path: the open pass flips to UNDER REVIEW and the holder gets the notice.
+        credential = await this.states.move(credential, "suspended_review");
         pendingAlerts.push({
           spec: {
             kind: "impossible_travel",
@@ -875,13 +881,12 @@ export class ScanService {
       // Credential bookkeeping. zone_state mirrors the perimeter state that drives anti-passback (02 §4.3).
       const perimeterNow = proj.perimeterOf.get(eph);
       const nextZone = perimeterNow !== undefined ? `INSIDE_${perimeterNow}` : "OUTSIDE";
-      const patch: Partial<Pick<CredentialRow, "state" | "zone_state">> = {};
-      if (nextZone !== credential.zone_state) patch.zone_state = nextZone;
-      if (credential.state === "issued") patch.state = "active";
       if (recorded === "admitted" && direction === "in" && credential.registration_id) {
         await this.repos.registrations.markCheckedIn(credential.registration_id, new Date(at));
       }
-      if (Object.keys(patch).length) credential = await this.repos.credentials.update(credential.id, patch);
+      // The first passage makes an issued pass active: a state change, so through the one state path.
+      if (credential.state === "issued") credential = await this.states.move(credential, "active", { zone_state: nextZone });
+      else if (nextZone !== credential.zone_state) credential = await this.repos.credentials.update(credential.id, { zone_state: nextZone });
       if (r.carrier?.kind === "nfc" && r.carrier.state === "bound") await this.repos.carriers.update(r.carrier.id, { state: "active" });
       if (r.carrier?.kind === "qr_email" && direction === "in") {
         if ((await this.repos.carriers.redeemOnce(r.carrier.id, new Date(at))) && !proj.emailRedeemScan.has(eph)) {
@@ -891,12 +896,11 @@ export class ScanService {
     } else if (credential && isDenial(recorded)) {
       proj.recordDenial(eph, at);
     }
+    // An offline conflict found at sync: under review, through the one state path (the open pass flips
+    // live, the holder gets the generic notice: no gate, room or time of the passage).
     if (suspendForConflict && credential && credential.state !== "revoked") {
-      if (credential.state !== "suspended_review") becameSuspended = true;
-      credential = await this.repos.credentials.update(credential.id, { state: "suspended_review" });
+      credential = await this.states.move(credential, "suspended_review");
     }
-    // Attendee notices: generic text only (no gate, room or time of the passage).
-    if (becameSuspended && credential) await this.notes?.forCredential(credential.id, NOTE.passReview);
     if (roomFilled) await this.notes?.roomFull(event.id, roomFilled, at);
 
     // Alerts carry the server's time; the scan's own time is on the scans they name.

@@ -6,7 +6,7 @@
  *
  *   node scripts/run-suite.mjs <suite> [<suite> …]       e.g. db api-memory
  *   node scripts/run-suite.mjs <suite> -- <extra args>    extra arguments for that one suite's runner
- *                                                         e.g. e2e -- --grep-invert @a11y
+ *                                                         e.g. e2e -- --grep @a11y
  *   node scripts/run-suite.mjs --list
  *
  * Vitest suites write vitest JSON; the end-to-end suite (Playwright) writes its own JSON report, which

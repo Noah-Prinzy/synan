@@ -6,6 +6,7 @@ import Scan from "./screens/scan";
 import Recent from "./screens/recent";
 import Queue from "./screens/queue";
 import Help from "./screens/help";
+import Activate from "./screens/activate";
 import { gateById, useApi } from "./data/world";
 import { setForceOffline, useOnline, useScanner } from "./data/store";
 import { unlockAudio } from "./data/feedback";
@@ -48,16 +49,25 @@ export default function App() {
 
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-      <Shell>
-        <Routes>
-          <Route path="/" element={<RequireGate><Scan /></RequireGate>} />
-          <Route path="/pair" element={<Pair />} />
-          <Route path="/recent" element={<Recent />} />
-          <Route path="/queue" element={<Queue />} />
-          <Route path="/help" element={<Help />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Shell>
+      <Routes>
+        {/* Public, a page of its own (no gate bar or tabs): a new gate staff member sets a password. */}
+        <Route path="/activate" element={<Activate />} />
+        <Route
+          path="*"
+          element={
+            <Shell>
+              <Routes>
+                <Route path="/" element={<RequireGate><Scan /></RequireGate>} />
+                <Route path="/pair" element={<Pair />} />
+                <Route path="/recent" element={<Recent />} />
+                <Route path="/queue" element={<Queue />} />
+                <Route path="/help" element={<Help />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Shell>
+          }
+        />
+      </Routes>
     </BrowserRouter>
   );
 }
@@ -123,13 +133,16 @@ function Shell({ children }: { children: ReactNode }) {
         {gate ? (
           <Link
             to="/pair"
-            aria-label={`Gate: ${gate.label}. Change gate`}
             className="flex min-h-14 min-w-0 flex-1 flex-col justify-center border-l border-border px-4 py-1.5 landscape:min-h-12 landscape:py-1 [[data-text-large]_&]:border-l-0"
           >
+            {/* Named from what it shows (WCAG 2.5.3): the gate and its link state, with "Gate:" and
+                "Change gate" for screen readers only: "Gate: Lounge Door Online. Change gate". */}
+            <span className="sr-only">Gate: </span>
             <span className="truncate text-15 font-medium leading-tight">{gate.label}</span>
             <span className="mt-0.5 text-13 leading-tight text-muted-foreground" aria-live="polite">
               <LinkState />
             </span>
+            <span className="sr-only">. Change gate</span>
           </Link>
         ) : (
           <span className="flex min-h-14 flex-1 items-center border-l border-border px-4 text-15 text-muted-foreground">

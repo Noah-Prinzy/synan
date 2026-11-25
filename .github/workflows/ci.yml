@@ -352,12 +352,9 @@ jobs:
         run: node scripts/test-counts.mjs check --except e2e ${BASE:+--base "$BASE"}
 
   e2e:
-    # NOT a required check yet (not in ci-ok's needs): until branch fix/e2e-defects (in progress)
-    # lands, tests fail by design: three accessibility tests (tag @a11y, left out here with
-    # --grep-invert) and the defect tests, which assert the broken behaviour with test.fail (counted
-    # as passed while the defect is there; they turn red as soon as a fix lands without its marker
-    # removed). When that branch is in, drop --grep-invert, raise the e2e baseline, and add this job
-    # to ci-ok's needs.
+    # NOT a required check yet (not in ci-ok's needs). fix/e2e-defects has landed: the whole suite runs,
+    # the accessibility tests (@a11y) included, and no test asserts a defect with test.fail any more.
+    # Make it required (add it to ci-ok's needs) once it has run green on this runner a few times.
     name: End-to-end journeys (Playwright, not required yet)
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -385,8 +382,8 @@ jobs:
       - name: Install Chromium's system libraries (browser restored from the cache)
         if: steps.browsers.outputs.cache-hit == 'true'
         run: pnpm --filter @synan/e2e exec playwright install-deps chromium
-      - name: Run the journeys (CI=1 pnpm --filter @synan/e2e test --grep-invert @a11y)
-        run: node scripts/run-suite.mjs e2e -- --grep-invert @a11y
+      - name: Run the journeys and the accessibility checks (CI=1 pnpm --filter @synan/e2e test)
+        run: node scripts/run-suite.mjs e2e
       - name: Compare with scripts/test-counts.json (e2e)
         if: ${{ !cancelled() }}
         run: node scripts/test-counts.mjs check --suites e2e

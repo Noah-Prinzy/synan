@@ -40,7 +40,7 @@ export function AdminStatusBar() {
       <span className={`flex items-center gap-2 px-3 ${live && !current ? "text-warning" : ""}`}>{line}</span>
       {live && queue > 0 ? (
         <span className="flex items-center border-l border-border px-3 text-warning">
-          {formatNumber(queue)} scans waiting to sync{offline > 0 ? ` · ${offline} ${offline === 1 ? "gate" : "gates"} offline` : ""}
+          {formatNumber(queue)} {queue === 1 ? "scan" : "scans"} waiting to sync{offline > 0 ? ` · ${offline} ${offline === 1 ? "gate" : "gates"} offline` : ""}
         </span>
       ) : null}
       <span className="flex-1" />
@@ -49,7 +49,7 @@ export function AdminStatusBar() {
           <span>round trip {link.latencyMs !== null ? `${link.latencyMs} ms` : "—"}</span>
           <span>last update {age !== null ? `${formatAge(age)} ago` : "—"}</span>
           <span>
-            {formatNumber(queue)} queued · {gates.size} gates
+            {formatNumber(queue)} queued · {gates.size} {gates.size === 1 ? "gate" : "gates"}
           </span>
         </span>
       ) : null}

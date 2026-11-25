@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { Email, Id, IsoDateTime, Ok, pageOf, PageQuery } from "../common.js";
 import { AttendeeTier, CheckpointDirection, EventState, ReportCadence, ReportKind, ReportScheduleState, ReportState, Role, Severity } from "../enums/index.js";
+import { STAFF_PASSWORD } from "../copy/index.js";
 import { ADMIN_ONLY, endpoint, IdParam, OPERATORS, PUBLIC, SCANNERS, SUPERVISE } from "./endpoint.js";
 
 /** PATCH /staff/:id (admin, MFA, audited): a user's role. Takes effect when their access token next refreshes. */
@@ -67,10 +68,32 @@ export const CreateStaffAssignment = z.object({
   event_id: Id.nullable().optional(),
 });
 
-/** Invite a staff member (01 §3): the user is created without a password and emailed a one-time activation link. */
+/**
+ * Invite a staff member (01 §3): the user is created without a password and emailed a one-time
+ * activation link (72 hours). The link opens the role's own app: the Gate Scanner for security
+ * staff, the Admin Command for every other role. Additive: inviting an address whose account was
+ * invited but never activated sends a new link (the earlier ones stop working) instead of CONFLICT;
+ * an activated account is still CONFLICT.
+ */
 export const InviteStaff = z.object({ email: Email, role: Role, display_name: z.string().max(200).optional() });
+/** The rules a staff password must meet (Zod-free in ../copy, so the scanner's bundle can show them too). */
+export { STAFF_PASSWORD };
+/** An activation token as it travels in the link fragment (`#token=…`). */
+export const ActivationToken = z.string().min(16).max(512);
 /** Redeem a staff activation link (the token travels in the link fragment). */
-export const ActivateStaff = z.object({ token: z.string().min(16).max(512), password: z.string().min(12).max(200) });
+export const ActivateStaff = z.object({ token: ActivationToken, password: z.string().min(STAFF_PASSWORD.min).max(STAFF_PASSWORD.max) });
+/** Additive: what an activation link is good for, before a password is chosen. */
+export const CheckActivation = z.object({ token: ActivationToken });
+export const ActivationState = z.enum(["valid", "expired", "used", "invalid"]);
+export type ActivationState = z.infer<typeof ActivationState>;
+/**
+ * `valid`: the link can set the password; `role` says which app the account uses. `expired`: past its
+ * 72 hours. `used`: a password was already set with it. `invalid`: not a link we issued, or one a
+ * newer invitation replaced. Only a valid link answers `role` and `expires_at`; nothing here names
+ * the account, its email or whether any other account exists.
+ */
+export const ActivationCheck = z.object({ state: ActivationState, role: Role.optional(), expires_at: IsoDateTime.optional() });
+export type ActivationCheck = z.infer<typeof ActivationCheck>;
 
 /** End-of-shift handover (01 §3): what the gate did during the shift. */
 export const HandoverSummary = z.object({
@@ -134,8 +157,15 @@ export const EventReportRow = z.object({
   created_at: IsoDateTime,
   /** What the export produces. */
   format: ExportFormat,
-  /** Signed short-lived link once state=ready. */
+  /** Signed short-lived link once state=ready; null before that, and once the file has expired (`expired_at`). */
   download_url: z.url().nullable(),
+  /**
+   * Additive: when the exported file stopped being available, from the register of exported files
+   * (03 §6): its retention ran out, or the retention job deleted it. `state` stays `ready` (the export
+   * did complete); `download_url` is then null, and a link made earlier answers 410 EXPORT_EXPIRED.
+   * Null or absent while the file can be downloaded (and for an export not ready yet).
+   */
+  expired_at: IsoDateTime.nullable().optional(),
 });
 /** Sections of each report kind, in order; the first is the default. */
 export const REPORT_SECTIONS = {
@@ -259,7 +289,13 @@ export const staffEndpoints = {
   inviteStaff: endpoint({ method: "POST", path: "/staff", access: ADMIN_ONLY, audited: true, body: InviteStaff, response: StaffMember, status: 201 }),
   /** D-23: change a user's role (never one's own). */
   changeStaffRole: endpoint({ method: "PATCH", path: "/staff/:id", access: ADMIN_ONLY, mfa: true, audited: true, params: IdParam, body: ChangeStaffRole, response: StaffMember }),
+  /**
+   * Sets the password and spends the link, in one step (audited `staff.activate`). LINK_EXPIRED past
+   * its 72 hours; LINK_INVALID when unknown, already used, or replaced by a newer invitation.
+   */
   activateStaff: endpoint({ method: "POST", path: "/auth/activate", access: PUBLIC, rateLimit: "auth", body: ActivateStaff, response: Ok }),
+  /** Additive: reads an activation link's state without spending it (the activation screens, before the password). */
+  checkActivation: endpoint({ method: "POST", path: "/auth/activate/check", access: PUBLIC, rateLimit: "auth", body: CheckActivation, response: ActivationCheck }),
   handover: endpoint({ method: "POST", path: "/staff-assignments/:id/handover", access: ["admin", "organiser", "security_staff"], audited: true, params: IdParam, response: HandoverSummary }),
   gateHeartbeat: endpoint({ method: "POST", path: "/gates/heartbeat", access: SCANNERS, rateLimit: "scan", body: GateHeartbeat, response: z.object({ server_time: IsoDateTime }) }),
   mfaEnrol: endpoint({ method: "POST", path: "/auth/mfa/enrol", access: ["admin", "organiser", "security_staff", "speaker", "crew", "supervisor", "desk_clerk"], rateLimit: "auth", response: MfaEnrolment, status: 201 }),
