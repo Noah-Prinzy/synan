@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * `corepack pnpm check` — the fast subset of CI, to run before pushing:
- * lockfile in sync, repository hygiene, Markdown links, migrations (journal in order, no recorded
+ * lockfile in sync, repository hygiene, Markdown links, theme utilities registered, migrations (journal in order, no recorded
  * migration edited, `drizzle-kit generate` finds no difference from the schema), typecheck of every
  * package, the unit suites (contracts, scanner, attendee, admin, db and API on PGlite, API in
  * memory), and the test-count guard for those suites.
@@ -26,6 +26,7 @@ const steps = [
   ["Lockfile in sync (pnpm install --frozen-lockfile)", () => pnpm(["install", "--frozen-lockfile", "--prefer-offline"])],
   ["Repository hygiene", node("scripts/hygiene.mjs")],
   ["Markdown links", node("scripts/check-links.mjs")],
+  ["Theme utilities registered", node("scripts/check-theme-utilities.mjs")],
   ["Migrations: order, none edited, schema matches (db:migrations:verify)", () => pnpm(["--filter", "@synan/db", "migrations:verify"])],
   ["Typecheck, all packages", () => pnpm(["-r", "typecheck"])],
   [`Tests: ${suites.join(", ")}`, node("scripts/run-suite.mjs", ...suites)],

@@ -311,6 +311,9 @@ jobs:
       - name: Markdown links in docs/ and the READMEs
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: node scripts/check-links.mjs
+      - name: Every theme token used as a utility is registered with Tailwind
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: node scripts/check-theme-utilities.mjs
       - name: Find the comparison base
         id: base
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}

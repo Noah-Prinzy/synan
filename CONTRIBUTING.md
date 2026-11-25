@@ -40,7 +40,7 @@ corepack pnpm check --quick    # without the PGlite suites, while iterating
 ```
 
 `check` runs: lockfile in sync, repository hygiene (root allow-list, file sizes, no `.env` files),
-Markdown links, migrations (journal in order, none edited, `drizzle-kit generate` finds no
+Markdown links, theme tokens registered as utilities (`scripts/check-theme-utilities.mjs`), migrations (journal in order, none edited, `drizzle-kit generate` finds no
 difference), typecheck of every package, the unit suites (contracts, scanner, attendee, admin, and
 the db and API suites in memory and on PGlite), and the test-count guard.
 
@@ -72,7 +72,7 @@ The workflow is `.github/workflows/ci.yml`. It runs on every pull request and on
 | Dependency audit | fails on a high or critical advisory in a production dependency |
 | Secret scan (gitleaks) | every commit; reviewed false positives in `.github/.gitleaksignore` |
 | Static analysis (semgrep) | semgrep's open rules; reviewed false positives in `.github/semgrep-accepted.json` |
-| Repository hygiene | root allow-list, file sizes, no `.env` files, frozen lockfile, Markdown links, applied migrations unchanged |
+| Repository hygiene | root allow-list, file sizes, no `.env` files, frozen lockfile, Markdown links, every theme token used as a utility registered with Tailwind, applied migrations unchanged |
 | Test counts | no suite passes fewer tests than `scripts/test-counts.json` without a recorded reason |
 | All required checks | passes only when every job above passed; this is the check branch protection requires |
 | End-to-end journeys | Playwright, the three apps against one API; not required yet (see its comment in the workflow) |
