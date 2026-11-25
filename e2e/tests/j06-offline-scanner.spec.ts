@@ -72,8 +72,13 @@ test("J6: offline admissions from the allowlist queue on the device and sync exa
   await expect(waiting).toHaveText("0");
 
   await page.getByRole("link", { name: "Recent" }).click();
-  const deviceCount = await page.getByRole("main").getByRole("listitem").count();
-  await expect(page.getByRole("main").getByRole("listitem").filter({ hasText: "Sent" })).toHaveCount(deviceCount);
+  // count() does not wait: read the rows only once the Recent screen shows them. Counted straight
+  // after the click, it read the Queue screen just left (its by-result list empty after the sync) as 0.
+  await expect(page.getByRole("heading", { name: "Recent scans" })).toBeVisible();
+  const rows = page.getByRole("main").getByRole("listitem");
+  await expect(rows, "the device lists every scan it queued").toHaveCount(queued);
+  const deviceCount = await rows.count();
+  await expect(rows.filter({ hasText: "Sent" })).toHaveCount(deviceCount);
 
   const onServer = await serverScans();
   expect(onServer.length, "server scan count equals the device's").toBe(deviceCount);
