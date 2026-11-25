@@ -6,7 +6,7 @@
 import { describeError } from "@synan/db";
 import express, { type Express } from "express";
 import { API_BASE_PATH } from "@synan/contracts/common";
-import { ContractError } from "@synan/contracts/errors";
+import { ContractError, ERROR_COPY } from "@synan/contracts/errors";
 import { endpoints } from "@synan/contracts/rest";
 import type { AppContext } from "../app.js";
 import { mount } from "../http/route.js";
@@ -23,10 +23,21 @@ const offsetOf = (cursor: string | undefined) => {
 };
 
 export function reportRoutes(x: Express, app: AppContext) {
-  const dto = (r: ReportRow) => ({
-    id: r.id, event_id: r.event_id, kind: r.kind, format: r.format, include_identity: r.include_identity, state: r.state, requested_by: r.requested_by ?? r.id, created_at: r.created_at.toISOString(),
-    download_url: app.reportExports.downloadUrl(r),
-  });
+  /**
+   * Report rows as the contract has them. Whether a ready export can still be downloaded comes from
+   * the register of exported files: one whose file expired or was deleted shows `expired_at` and no link.
+   */
+  const dtos = async (rows: ReportRow[]) => {
+    const expired = await app.reportExports.expiredAt(rows.filter((r) => r.state === "ready").map((r) => r.id));
+    return rows.map((r) => {
+      const gone = expired.get(r.id) ?? null;
+      return {
+        id: r.id, event_id: r.event_id, kind: r.kind, format: r.format, include_identity: r.include_identity, state: r.state, requested_by: r.requested_by ?? r.id, created_at: r.created_at.toISOString(),
+        download_url: gone ? null : app.reportExports.downloadUrl(r),
+        expired_at: gone?.toISOString() ?? null,
+      };
+    });
+  };
   const eventOr404 = async (id: string) => {
     const e = await app.repos.events.byId(id);
     if (!e) throw new ContractError("NOT_FOUND");
@@ -36,12 +47,12 @@ export function reportRoutes(x: Express, app: AppContext) {
   mount(x, app, endpoints.listReports, async ({ query }) => {
     const offset = offsetOf(query.cursor);
     const rows = await app.repos.reports.list({ offset, limit: query.limit + 1 });
-    return { items: rows.slice(0, query.limit).map(dto), next_cursor: rows.length > query.limit ? String(offset + query.limit) : null };
+    return { items: await dtos(rows.slice(0, query.limit)), next_cursor: rows.length > query.limit ? String(offset + query.limit) : null };
   });
 
   mount(x, app, endpoints.eventReports, async ({ params }) => {
     const e = await eventOr404(params.eventId);
-    return { items: (await app.repos.reports.list({ eventId: e.id, offset: 0, limit: 200 })).map(dto) };
+    return { items: await dtos(await app.repos.reports.list({ eventId: e.id, offset: 0, limit: 200 })) };
   });
 
   mount(x, app, endpoints.reportData, async ({ params, query }) => {
@@ -69,7 +80,7 @@ export function reportRoutes(x: Express, app: AppContext) {
     if (body.include_attendees) await app.audit.append({ actorId: ctx!.sub, action: "report.export_identity", target: `event:${e.id}`, meta: { report_id: id } });
     app.jobs.kick(JOB.reportExport);
     const row = (await app.repos.reports.list({ eventId: e.id, offset: 0, limit: 50 })).find((r) => r.id === id)!;
-    return dto(row);
+    return (await dtos([row]))[0]!;
   });
 
   /* ---- scheduled reports (01 §10) ---- */
@@ -146,7 +157,7 @@ export function reportRoutes(x: Express, app: AppContext) {
   mount(x, app, endpoints.postEventSummary, async ({ params }) => {
     const e = await eventOr404(params.id);
     const s = toSummaryDto(await loadSummary(app, e.id));
-    return { ...s, downloads: (await app.repos.reports.list({ eventId: e.id, offset: 0, limit: 50 })).map(dto) };
+    return { ...s, downloads: await dtos(await app.repos.reports.list({ eventId: e.id, offset: 0, limit: 50 })) };
   });
 
   // The signed link itself is the authorisation: no bearer token (a browser download carries none).
@@ -155,6 +166,10 @@ export function reportRoutes(x: Express, app: AppContext) {
       const { key, exp, sig } = req.query as Record<string, string | undefined>;
       const ok = key && exp && sig ? app.reportExports.verify(req.params.id, key, exp, sig) : null;
       if (!ok) return void res.status(403).json({ error: { code: "FORBIDDEN", message: "This download link is invalid or has expired." } });
+      // A genuine link to a file the register says is gone (retention ran out or deleted it): say so, typed.
+      if ((await app.reportExports.expiredAt([req.params.id])).has(req.params.id)) {
+        return void res.status(ERROR_COPY.EXPORT_EXPIRED.status).json({ error: { code: "EXPORT_EXPIRED", message: ERROR_COPY.EXPORT_EXPIRED.message } });
+      }
       const stream = await app.reportExports.open(ok);
       if (!stream) return void res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found." } });
       const ext = (ok.split(".").pop() ?? "csv") as keyof typeof CONTENT_TYPE;

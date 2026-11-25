@@ -14,10 +14,13 @@
  * - Every frame is validated against the channel's contract union; a frame that does not match is
  *   dropped and reported to `debug`.
  *
- * - `gate.health` frames arrive on /stream/alerts. GET /gates/health is read once when the channel
- *   is first followed (and again after a reconnect without replay), each gate emitted as a
- *   `gate.health` frame, so the store has every gate before the first change arrives. These
- *   synthetic frames carry ids starting `poll:` and never become `last_event_id`.
+ * - `gate.health` frames arrive on /stream/alerts. GET /gates/health is read when the channel is
+ *   first followed (and again after a reconnect without replay), each gate emitted as a
+ *   `gate.health` frame, so the store has every gate before the first change arrives; and again
+ *   every 30 s while the channel is live. The server publishes a gate only when its state differs
+ *   from what it last published, so a reading taken between two of its polls (a queue that emptied
+ *   seconds after the snapshot) would otherwise stay on screen until that gate changed again.
+ *   These synthetic frames carry ids starting `poll:` and never become `last_event_id`.
  * - When /stream/alerts reconnects without replay, GET /breach-alerts is read and each alert is
  *   emitted as `alert.updated` (ids `resync:`), so the store's list is right again.
  */
@@ -53,6 +56,8 @@ const MAX_DELAY_MS = 30_000;
 /** Server heartbeats arrive every 15 s; three missed is a dead connection. */
 const SILENCE_MS = 45_000;
 const PING_TIMEOUT_MS = 5_000;
+/** Gate health is re-read this often while /stream/alerts is live (see the header). */
+export const GATES_RESYNC_MS = 30_000;
 
 /** Delay before reconnect attempt `attempt` (0-based): exponential, capped, with jitter in its upper half. */
 export function backoff(attempt: number, random: () => number = Math.random): number {
@@ -92,6 +97,7 @@ export function openLiveStream(options: StreamOptions): LiveStream {
   let closed = false;
   let lastStatus: LinkStatus = "connecting";
   let gatesRead = false;
+  let gatesTimer: ReturnType<typeof setInterval> | null = null;
   let syntheticSeq = 0;
 
   /* ---------------------------------------------------------------- status */
@@ -339,6 +345,9 @@ export function openLiveStream(options: StreamOptions): LiveStream {
       if (link.channel === "/stream/alerts" && !gatesRead) {
         gatesRead = true;
         void readGates();
+        gatesTimer = setInterval(() => {
+          if (!closed && online() && link.state === "live") void readGates();
+        }, GATES_RESYNC_MS);
       }
       if (!closed && link.handlers.size === 1 && !link.socket && !link.retryTimer && link.state !== "stopped") void connect(link);
       publishStatus();
@@ -378,6 +387,8 @@ export function openLiveStream(options: StreamOptions): LiveStream {
     close() {
       if (closed) return;
       closed = true;
+      if (gatesTimer) clearInterval(gatesTimer);
+      gatesTimer = null;
       for (const link of links.values()) release(link);
       win?.removeEventListener?.("online", onOnline);
       win?.removeEventListener?.("offline", onOffline);

@@ -39,4 +39,26 @@ describe("error logging", () => {
     expect(text).toContain('GET /api/v1/events failed: pg 23505 ERROR _bt_check_unique: duplicate key value violates unique constraint "users_email_hash_uq"');
     for (const secret of ["s3cret-db-password", "visitor@example.org", "a1b2c3", "params", "select * from"]) expect(text).not.toContain(secret);
   });
+
+  it("a failed /stream/me push for a credential state logs the SQLSTATE, not the query or its parameters", async () => {
+    const regs = h.app.ctx.repos.registrations as unknown as { byId: (...a: unknown[]) => Promise<unknown> };
+    const original = regs.byId;
+    const pgError = Object.assign(new Error("canceling statement due to statement timeout"), { code: "57014", severity: "ERROR", routine: "ProcessInterrupts" });
+    regs.byId = async () => {
+      throw Object.assign(new Error("Failed query: select * from registrations where id = $1\nparams: holder@example.org"), { cause: pgError });
+    };
+    const logged: string[] = [];
+    const orig = console.error;
+    console.error = (...a: unknown[]) => void logged.push(a.map((x) => (typeof x === "string" ? x : JSON.stringify(x) ?? String(x))).join(" "));
+    try {
+      const cred = (await h.app.ctx.repos.credentials.byId(h.seed.attendees.vip.credentialId))!;
+      await h.app.ctx.credentials.states.refresh(cred);
+    } finally {
+      console.error = orig;
+      regs.byId = original;
+    }
+    const text = logged.join("\n");
+    expect(text).toContain("[credentials] state push failed: pg 57014");
+    for (const secret of ["holder@example.org", "params", "select * from"]) expect(text).not.toContain(secret);
+  });
 });

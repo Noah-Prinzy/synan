@@ -15,6 +15,8 @@ const Agenda = lazy(() => import("./screens/agenda"));
 const Notifications = lazy(() => import("./screens/notifications"));
 const Account = lazy(() => import("./screens/account"));
 const Invite = lazy(() => import("./screens/invite"));
+/** Old staff invitation links: forwarded to the Admin Command's activation page. */
+const StaffActivate = lazy(() => import("./screens/staff-activate"));
 /** Development only: every control in every state (never in a production build). */
 const DevControls = import.meta.env.DEV ? lazy(() => import("./screens/dev-controls")) : null;
 
@@ -51,6 +53,7 @@ export default function App() {
         {/* A10. The API's emailed link is /invite#token=…; /invite/:token moves its token there. */}
         <Route path="/invite" element={<Invite />} />
         <Route path="/invite/:token" element={<Invite />} />
+        <Route path="/staff/activate" element={<StaffActivate />} />
         {DevControls ? <Route path="/dev/controls" element={<DevControls />} /> : null}
         <Route path="*" element={<NotFound />} />
       </Routes>

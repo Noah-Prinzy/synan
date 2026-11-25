@@ -10,6 +10,7 @@ import type { Config } from "../config.js";
 import type { Clock } from "../lib/clock.js";
 import { randomToken, sha256b64url } from "../lib/crypto.js";
 import type { MailService } from "./mail.js";
+import type { CredentialStates } from "./credential-state.js";
 import { NOTE, type NotificationService } from "./notifications.js";
 import type { CarrierRow, CredentialRow, RegistrationRow, Repos } from "../repo/types.js";
 import type { AuditService } from "./audit.js";
@@ -82,8 +83,12 @@ export function carrierDto(c: CarrierRow): Credential["carriers"][number] {
 }
 
 export class CredentialService {
-  /** Emits `state` { event_id, registration_id, attendee_id, state } for `/stream/me`. */
-  readonly events = new EventEmitter();
+  /**
+   * `/stream/me`'s source: `state` { event_id, registration_id, attendee_id, state } after every
+   * credential transition (emitted by CredentialStates, the one path that writes a state), and
+   * `entitlements` when what the pass opens changed.
+   */
+  readonly events: EventEmitter;
 
   constructor(
     private readonly repos: Repos,
@@ -93,7 +98,11 @@ export class CredentialService {
     private readonly config: Config,
     private readonly clock: Clock,
     private readonly notes: NotificationService,
-  ) {}
+    /** Every state change goes through here (domain/credential-state.ts). */
+    readonly states: CredentialStates,
+  ) {
+    this.events = states.events;
+  }
 
   /** Issue a credential for a registration. The secret is generated, hashed, and discarded. */
   async issueForRegistration(registrationId: string): Promise<CredentialRow> {
@@ -264,25 +273,10 @@ export class CredentialService {
     }
   }
 
-  /** Tell `/stream/me` subscribers that a credential changed state. */
-  notifyState(cred: CredentialRow, state: CredentialState) {
-    void (async () => {
-      const reg = cred.registration_id ? await this.repos.registrations.byId(cred.registration_id) : null;
-      if (reg) this.events.emit("state", { event_id: reg.event_id, registration_id: reg.id, attendee_id: reg.attendee_id, state });
-    })().catch(() => undefined);
-  }
-
+  /** An operator's transition: written and told to the holder in one path (CredentialStates), then audited. */
   private async setState(actor: AuthContext, cred: CredentialRow, state: CredentialState, action: string, meta: Record<string, unknown>) {
-    const updated = await this.repos.credentials.update(cred.id, {
-      state,
-      ...(state === "revoked" ? { revoked_at: new Date(this.clock.now()) } : {}),
-    });
+    const updated = await this.states.move(cred, state);
     await this.audit.append({ actorId: actor.sub, action, target: `credential:${cred.id}`, meta: { from: cred.state, to: state, ...meta } });
-    const reg = cred.registration_id ? await this.repos.registrations.byId(cred.registration_id) : null;
-    if (reg) this.events.emit("state", { event_id: reg.event_id, registration_id: reg.id, attendee_id: reg.attendee_id, state });
-    if (state === "revoked") await this.notes.forRegistration(cred.registration_id, NOTE.passRevoked);
-    else if (state === "suspended_review") await this.notes.forRegistration(cred.registration_id, NOTE.passReview);
-    else if (state === "active" && cred.state === "suspended_review") await this.notes.forRegistration(cred.registration_id, NOTE.passCleared);
     return updated;
   }
 

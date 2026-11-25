@@ -44,7 +44,7 @@ test("J5a: a supervisor revokes a pass under review in the console; the open pas
     expect(b.alert_ids.length).toBeGreaterThan(0);
     expect(await credentialState(guest.credentialId)).toBe("suspended_review");
   });
-  // (That the open pass does not show UNDER REVIEW live is J5c, a known defect.)
+  await expect(pass, "the open pass flips to UNDER REVIEW live").toContainText("UNDER REVIEW", { timeout: 15_000 });
 
   const sup = await createStaffWithMfa(w.admin, "supervisor", "sup-j5");
   await adminSignIn(page, sup.email, sup.password);
@@ -94,7 +94,6 @@ test("J5b: an operator revokes an active pass; the open pass flips to REVOKED (c
 });
 
 test("J5c: a pass put under review by a gate conflict flips to UNDER REVIEW on the open pass", async ({ browser }) => {
-  test.fail(true, "DEFECT: the scan path suspends the credential (offline conflict, impossible travel) without pushing the new state on /stream/me — apps/api/src/domain/scan-service.ts sets suspended_review through repos.credentials.update and never calls CredentialService.notifyState. The pass shows READY until it is reloaded.");
   const guest = await registerGuest(w, { name: "Una Review" });
   const uid = await bindBand(w, guest);
   const ctx = await phone(browser);
@@ -105,8 +104,8 @@ test("J5c: a pass put under review by a gate conflict flips to UNDER REVIEW on t
   await scanAt(w.gates.entrance, w.eventId, { medium: "nfc", uid }, { offline: { atMs: now - 60_000 }, deviceId: "e2e-j5c-front" });
   await scanAt(w.gates.side, w.eventId, { medium: "nfc", uid }, { offline: { atMs: now - 30_000 }, deviceId: "e2e-j5c-side" });
   expect(await credentialState(guest.credentialId)).toBe("suspended_review");
-  await expect.soft(pass, "the open pass flips live").toContainText("UNDER REVIEW", { timeout: 15_000 });
-  // What a reload shows: the server state is right, only the live push is missing.
+  await expect(pass, "the open pass flips live").toContainText("UNDER REVIEW", { timeout: 15_000 });
+  // A reload shows the same state.
   await phonePage.reload();
   await expect(phonePage.getByRole("article", { name: `Pass for ${w.title}` }), "after a reload").toContainText("UNDER REVIEW");
   await ctx.close();

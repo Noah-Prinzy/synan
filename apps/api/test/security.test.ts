@@ -597,6 +597,8 @@ describe("#13 / #14 configuration fails closed", () => {
       NODE_ENV: "production", ACCESS_TOKEN_PRIVATE_JWK: "{}", MAIL_TRANSPORT: "memory", REPO: "postgres",
       DATABASE_URL: "postgres://api@db/app", DATABASE_VAULT_URL: "postgres://vault@db/app", DATABASE_SCAN_URL: "postgres://scan@db/app",
       DB_DATA_KEYS: "k1:AAAA", DB_BLIND_INDEX_KEYS: "bi1:AAAA",
+      ADMIN_APP_URL: "https://ops.example.test/admin", SCANNER_APP_URL: "https://ops.example.test/scan", ATTENDEE_APP_ORIGIN: "https://example.test",
+      API_PUBLIC_ORIGIN: "https://api.example.test", ALLOWED_ORIGINS: "https://example.test,https://ops.example.test",
     };
     expect(() => loadConfig(prod, [])).not.toThrow();
     expect(() => loadConfig({ ...prod, SEED: "dev" }, [])).toThrow(/SEED/);

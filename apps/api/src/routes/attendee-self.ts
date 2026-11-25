@@ -115,7 +115,8 @@ export function attendeeSelfRoutes(x: Express, app: AppContext) {
         kind: "pass" as const, title: "Wristband reported lost",
         body: `Your wristband for ${event} no longer opens doors. Collect a new one at the desk; your pass in the app still works.`,
       }));
-      app.credentials.notifyState(cred, cred.state);
+      // The credential's state is unchanged; its band is not: the open pass re-reads it.
+      await app.credentials.states.refresh(cred);
       // Supervisors and operators see it live on /stream/alerts (no gate: gate staff do not). Like
       // every alert it names the credential, never the person; desk clerks, who have no live
       // channel, find it as `band_lost` on the event's registrations.

@@ -22,7 +22,7 @@ test("J4: a QR admitted at the entrance and a band at the lounge door show on th
   const onSite = page.getByRole("term").filter({ hasText: "On site now" }).locator("xpath=following-sibling::dd[1]");
   await expect(onSite).toHaveText("0");
   const map = page.getByRole("region", { name: "Venue map" });
-  await expect(map.getByRole("group", { name: /^Venue map/ }).getByRole("button", { name: /^Green Lounge,/ })).toHaveAccessibleName(/: 0 of 20[,.]/);
+  await expect(map.getByRole("group", { name: /^Venue map/ }).getByRole("button", { name: /(^|: )Green Lounge,/ })).toHaveAccessibleName(/: 0 of 20[,.]/);
   const navigations: string[] = [];
   page.on("framenavigated", (f) => f === page.mainFrame() && navigations.push(f.url()));
 
@@ -40,11 +40,11 @@ test("J4: a QR admitted at the entrance and a band at the lounge door show on th
   await scannerManualEntry(door, uid);
   await expect(verdict(door)).toContainText("ADMITTED");
 
-  // The map's room (a button named with its live count) and the rooms rail both follow the scan.
-  const loungeOnMap = map.getByRole("group", { name: /^Venue map, 2 rooms/ }).getByRole("button", { name: /^Green Lounge,/ });
+  // The map's room (a button named with its live count; a small block leads with its short label, "GL: Green Lounge, …") and the rooms rail both follow the scan.
+  const loungeOnMap = map.getByRole("group", { name: /^Venue map, 2 rooms/ }).getByRole("button", { name: /(^|: )Green Lounge,/ });
   await expect(loungeOnMap).toHaveAccessibleName(/: 1 of 20[,.]/, { timeout: 15_000 });
-  await expect(map.getByRole("group", { name: /^Venue map/ }).getByRole("button", { name: /^Main Hall,/ })).toHaveAccessibleName(/: 0 of 100[,.]/);
-  await expect(page.getByRole("region", { name: "Rooms" }).getByRole("button", { name: /^Green Lounge,/ })).toHaveAccessibleName(/: 1 of 20[,.]/);
+  await expect(map.getByRole("group", { name: /^Venue map/ }).getByRole("button", { name: /(^|: )Main Hall,/ })).toHaveAccessibleName(/: 0 of 100[,.]/);
+  await expect(page.getByRole("region", { name: "Rooms" }).getByRole("button", { name: /^Green Lounge\b/ })).toHaveAccessibleName(/:\s*1 of 20[,.]/);
   expect(navigations, "the Command Center never reloaded").toEqual([]);
 
   // Server: the scans and the counts behind what the screen shows.

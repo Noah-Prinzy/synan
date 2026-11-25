@@ -76,6 +76,9 @@ const app = await createApp({
     host: HOST,
     allowedOrigins: [ORIGINS.attendee, ORIGINS.admin, ORIGINS.scanner],
     attendeeAppOrigin: ORIGINS.attendee,
+    // Staff invitations open the role's own app (activation links): the builds below.
+    adminAppUrl: `${ORIGINS.admin}/admin`,
+    scannerAppUrl: `${ORIGINS.scanner}/scan`,
     publicApiOrigin: ORIGINS.api,
     reportStorageDir: reportDir,
     mailTransport: "memory",
@@ -100,6 +103,9 @@ const APPS = [
 ] as const;
 
 process.env.VITE_API_URL = ORIGINS.api;
+// The apps hand an activation link to one another (and old /staff/activate links to the console).
+process.env.VITE_ADMIN_URL = `${ORIGINS.admin}/admin`;
+process.env.VITE_SCANNER_URL = `${ORIGINS.scanner}/scan`;
 const previews: PreviewServer[] = [];
 for (const a of APPS) {
   const root = path.join(repoRoot, "apps", a.name);

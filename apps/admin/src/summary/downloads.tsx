@@ -127,6 +127,18 @@ export function Downloads({
   );
 }
 
+/**
+ * A ready export whose file retention has deleted (`expired_at`, from the register of exported
+ * files, 03 §6): it says so, offers no link, and preparing it again makes a new file.
+ */
+export function ExpiredState({ className = "inline-flex gap-1.5" }: { className?: string }) {
+  return (
+    <span className={cn("items-center text-13 text-muted-foreground", className)}>
+      <SignalShape state="idle" /> Expired · file no longer kept
+    </span>
+  );
+}
+
 function JobState({ row, timeZone }: { row: Row | undefined; timeZone: string }) {
   if (!row) return <span className="text-13 text-muted-foreground">Not prepared</span>;
   if (row.state === "queued" || row.state === "running") {
@@ -146,6 +158,7 @@ function JobState({ row, timeZone }: { row: Row | undefined; timeZone: string })
       </span>
     );
   }
+  if (row.expired_at) return <ExpiredState className="flex gap-2" />;
   return (
     <span className="flex items-center gap-2 text-13">
       <SignalShape state="ok" className="text-success" />

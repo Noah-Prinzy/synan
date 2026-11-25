@@ -99,25 +99,23 @@ test("J9: export a workbook with the second factor, open it, and see it deleted 
   });
 
   await test.step("server: the deleted export cannot be downloaded any more", async () => {
-    const after = (await (await loginAs((await ctl.seed()).emails.admin)).call<{ items: { id: string; state: string; download_url: string | null }[] }>("GET", `/reports/${w.eventId}`)).items.find((r) => r.id === report.id)!;
-    test.info().annotations.push({ type: "report row after retention", description: JSON.stringify({ state: after.state, has_link: !!after.download_url }) });
-    if (after.download_url) {
-      const res = await fetch(after.download_url);
-      expect(res.status, "a fresh link to a deleted export").toBe(404);
-    }
+    const after = (await (await loginAs((await ctl.seed()).emails.admin)).call<{ items: { id: string; state: string; download_url: string | null; expired_at?: string | null }[] }>("GET", `/reports/${w.eventId}`)).items.find((r) => r.id === report.id)!;
+    test.info().annotations.push({ type: "report row after retention", description: JSON.stringify({ state: after.state, has_link: !!after.download_url, expired_at: after.expired_at }) });
+    expect(after.download_url, "no link to a deleted file").toBeNull();
+    expect(after.expired_at, "the row says when the file went").toBeTruthy();
   });
 });
 
 test("J9b: after retention the console no longer offers the deleted export for download", async ({ page }) => {
-  test.fail(true, "DEFECT: after the retention job deletes an export, GET /reports/:eventId still answers it as state \"ready\" with a fresh signed download_url, so the console keeps a Download link that answers 404 (apps/api/src/routes/reports.ts dto → reportExports.downloadUrl does not consult the exported-files register).");
   expect(reportId, "J9 made the export").not.toBe("");
   const admin = await loginAs((await ctl.seed()).emails.admin);
   const row = (await admin.call<{ items: { id: string; state: string; download_url: string | null }[] }>("GET", `/reports/${w.eventId}`)).items.find((r) => r.id === reportId)!;
-  expect.soft(row.download_url, "no download link for a deleted file").toBeNull();
+  expect(row.download_url, "no download link for a deleted file").toBeNull();
   await adminSignInSeeded(page);
   await chooseConsoleEvent(page, w.title);
   await page.goto(`${APP_URLS.admin}events/${w.eventId}/reports`);
   const table = page.getByRole("table", { name: "Prepared exports" });
   await expect(table).toBeVisible();
   await expect(table.getByRole("link", { name: /download/i }), "the console offers no download").toHaveCount(0);
+  await expect(table.getByRole("row").filter({ hasText: "Expired" }), "the deleted export reads expired").toHaveCount(1);
 });

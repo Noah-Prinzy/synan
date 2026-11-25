@@ -35,6 +35,7 @@ import {
 import { api } from "../live/backend";
 import { useWorkspaceEvent } from "./parts/context";
 import { HEAD_BLEED, RAIL_X } from "./parts/layout";
+import { ExpiredState } from "../summary/downloads";
 
 /** One export row: what it is on the left, its control on the right, on the page gutter. */
 const EXPORT_ROW = "flex flex-wrap items-center justify-between gap-x-8 gap-y-3 px-4 py-5 sm:px-6 2xl:px-8";
@@ -202,7 +203,7 @@ export default function WorkspaceReports() {
                       <JobState row={row} />
                     </Td>
                     <Td fit className="text-right">
-                      {row.state === "failed" ? (
+                      {row.state === "failed" || row.expired_at ? (
                         <button
                           type="button"
                           className={cn(ROW_ACTION, "-mr-2.5")}
@@ -267,6 +268,8 @@ function JobState({ row }: { row: ReportRow }) {
       </span>
     );
   }
+  // Retention deleted the file (03 §6): nothing to download, and nothing pretends otherwise.
+  if (row.expired_at) return <ExpiredState />;
   return (
     <span className="inline-flex items-center gap-1.5 text-13">
       <SignalShape state="ok" className="text-success" />

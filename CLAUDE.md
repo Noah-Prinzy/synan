@@ -125,7 +125,9 @@ is destroyed; deleting a personal account stops sign-in at once and erases withi
 - Confirm two small rules: the scanner works offline from an out-of-date pass list for 2 hours past
   the end of a shift, with a warning, then stops; and a 150 KB size ceiling for the scanner app.
 - Rename the project folder on the original laptop from `connexia` to `synan`, at a moment when
-  nothing is running (open question O-56).
+  nothing is running. On the owner's second machine this is done: the project lives in a folder
+  named `Synan`, and the old `Connexia` folder there can be deleted once no session is open in it.
+  The repository is `Noah-Prinzy/synan` (O-56).
 - Two things only the owner can start, because they take weeks: registering the "SYNAN" sender name
   with the mobile networks, and a lawyer's review of who answers for the data (D-28) and what
   declining presence tracking means (D-30).

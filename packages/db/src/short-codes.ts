@@ -11,6 +11,7 @@ import { setVaultScope } from "./client";
 import type { Cipher } from "./crypto/index";
 import { credentials } from "./schema/credentials";
 import { registrations } from "./schema/entitlement";
+import { user_invites } from "./schema/auth2";
 import { users } from "./schema/people";
 import { attendees } from "./schema/vault";
 import { decryptAttendeeRow, type AttendeeIdentity } from "./secrets";
@@ -121,6 +122,52 @@ export async function createUserInvite(
   )[0]!;
   const created = x.status === "created";
   return { status: x.status as "created" | "unknown_user", token: created ? token : null, expires_at: created ? expires : null, revoked: Number(x.revoked) };
+}
+
+/**
+ * Reads an activation token's state without consuming it (the activation screen, before a password
+ * is chosen): the status `consumeUserInvite` would answer, with `valid` for one it would consume.
+ */
+export async function peekUserInvite(
+  db: DbOrTx,
+  token: string,
+  now?: Date,
+): Promise<{ status: "valid" | "invalid" | "expired" | "already_used" | "revoked" | "account_active"; user_id: string | null; expires_at: Date | null }> {
+  const at = now ?? new Date();
+  const r = (
+    await db
+      .select({ invite: user_invites, password_hash: users.password_hash })
+      .from(user_invites)
+      .innerJoin(users, eq(users.id, user_invites.user_id))
+      .where(eq(user_invites.token_hash, hashToken(token)))
+      .limit(1)
+  )[0];
+  if (!r) return { status: "invalid", user_id: null, expires_at: null };
+  const i = r.invite;
+  const status = i.used_at
+    ? "already_used"
+    : i.revoked_at
+      ? "revoked"
+      : i.expires_at.getTime() <= at.getTime()
+        ? "expired"
+        : (r.password_hash ?? "") !== ""
+          ? "account_active"
+          : "valid";
+  return { status, user_id: i.user_id, expires_at: i.expires_at };
+}
+
+/**
+ * Sets the password of an invited account and spends the invite, in one step (migration 0037
+ * user_invite_activate): only on an account with no password, and the invite is spent only then.
+ */
+export async function activateUserInvite(
+  db: DbOrTx,
+  token: string,
+  passwordHash: string,
+  now?: Date,
+): Promise<{ status: "activated" | "invalid" | "expired" | "already_used" | "revoked" | "account_active"; user_id: string | null }> {
+  const x = (await rows(db, sql`select * from public.user_invite_activate(${hashToken(token)}, ${passwordHash}, ${tsOrNow(now)})`))[0]!;
+  return { status: x.status as "activated" | "invalid" | "expired" | "already_used" | "revoked" | "account_active", user_id: (x.user_id as string | null) ?? null };
 }
 
 /** Consumes an activation token exactly once. */

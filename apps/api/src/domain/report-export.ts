@@ -73,6 +73,28 @@ export class ReportExporter {
     return this.storage.openRead(key);
   }
 
+  /**
+   * From the register of exported files (03 §6): for each of these reports whose file is no longer
+   * available, when it stopped being so — deleted by the retention job (its `deleted_at`), or past its
+   * retention and not yet deleted (its `expires_at`: it is not offered past the promised period).
+   * A report with a file still kept is absent from the map; so is one with no registered file.
+   */
+  async expiredAt(reportIds: readonly string[]): Promise<Map<string, Date>> {
+    const out = new Map<string, Date>();
+    if (reportIds.length === 0) return out;
+    const now = this.clock.now();
+    const byReport = new Map<string, { kept: boolean; gone: number }>();
+    for (const f of await this.repos.exportedFiles.list({ reportIds })) {
+      if (!f.report_id) continue;
+      const s = byReport.get(f.report_id) ?? { kept: false, gone: 0 };
+      if (!f.deleted_at && f.expires_at.getTime() > now) s.kept = true;
+      else s.gone = Math.max(s.gone, (f.deleted_at ?? f.expires_at).getTime());
+      byReport.set(f.report_id, s);
+    }
+    for (const [id, s] of byReport) if (!s.kept) out.set(id, new Date(s.gone));
+    return out;
+  }
+
   /** Run every queued export once. Concurrent calls share one run. */
   drain(): Promise<void> {
     this.draining ??= this.run().finally(() => (this.draining = null));
