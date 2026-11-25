@@ -90,16 +90,13 @@ export const THEME_CHOICES: { value: ThemeChoice; label: string }[] = [
 ];
 
 /**
- * The slot for the Attendee Portal's living background (D-37). Until a scene is chosen it is
- * empty and the page shows the plain ground. To fill it: write the scene with the engine in
- * ./living.tsx (every guard is there: no frame loop, paused when hidden or off screen, a still
- * frame under reduced motion, calmer behind text, speed from --bg-motion), make it that module's
- * default export, and return `import("./living")` below. It is never on the critical path:
+ * The slot for the Attendee Portal's living background (D-37): "Arrivals" (./living.tsx wires it,
+ * ./arrivals.ts draws it). It is never on the critical path:
  * nothing of it loads until the page has painted and the browser is idle, and it arrives in its
  * own chunk. Admin Command and the Gate Scanner do not use it.
  */
 function loadScene(): Promise<{ default: ComponentType }> | null {
-  return null;
+  return import("./living");
 }
 
 export function LivingBackground() {

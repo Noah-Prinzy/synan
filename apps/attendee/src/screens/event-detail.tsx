@@ -296,7 +296,7 @@ export default function EventDetail() {
 
         {/* On a phone the name and the key facts stack in the flow, so a short screen never lays one over the other. */}
         <div className={`relative px-5 pt-36 pb-10 text-center sm:absolute sm:inset-x-0 sm:top-[22%] sm:pt-0 sm:pb-0 md:top-[26%] ${photo ? "text-qr-field" : ""}`}>
-          <p className={`eyebrow-mono ${photo ? "text-inherit" : ""}`}>
+          <p className={`eyebrow-mono ${photo ? "text-inherit" : "text-foreground"}`}>
             {dateRange(event)} · {event.venue}
           </p>
           <h1 id="event-title" className="type-event-name mx-auto mt-4 max-w-[12em] wrap-break-word" style={{ fontSize: nameSize }}>

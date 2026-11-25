@@ -40,7 +40,7 @@ layout expression they are allowed.
 | Character | Calm: one statement per screen, generous space; the event page alone is rich | An instrument: dense, exact | An instrument: one decision at a time |
 | Layout | A minimal top bar, one centred column, soft tonal panels; the event page opens on its picture | A full-width top bar, the figures in one instrument strip, tonal panels and tables without rules. No cards as decoration | Viewfinder and one verdict panel, in ruled cells (not part of D-37) |
 | Body size | 17px | 13px (14px in the top bar) | Verdict word at 96px |
-| Motion | Subtle: the living background, pictures fading in once, the reward tick. Text never moves | None at all: state changes are instant. Live data interpolates; nothing animates | State changes only |
+| Motion | Arrivals, the living background; pictures fading in once; the reward tick. Text never moves | None at all: state changes are instant. Live data interpolates; nothing animates | State changes only |
 | Imagery | The event picture, or the designed no-photo cover | None | None |
 | Target | Mobile-first 360–430, deliberate two-column at 1024+ | 1440–1920; a phone layout below 640 | Venue-owned Android phone or tablet, one-handed |
 
@@ -57,7 +57,7 @@ screens read as confusing ("too many lines").
 | --- | --- |
 | One minimal top bar: the wordmark, two words (Events, My pass), one action (Sign in, or the holder's initials). On a phone: the wordmark, the action and a menu button that opens a full-height menu of large words | Every attendee screen |
 | One centred statement in display type, its second sentence in the muted tone, and the thing the person came for right under it | Every screen but the event page |
-| The living background (§5) behind the page, calmer under text | Every screen; on the event page, below its picture |
+| Arrivals (§5), the living background, across the whole screen and calm behind every word | Every screen; on the event page, below its picture |
 | Events as pictures with their name, place and date set under them on the ground; no card frame | The showcase (A1) |
 | The event picture full width (or the designed no-photo cover), the event's name very large between sky and building, a glass card of key facts with the Register action, a small "rooms now" panel, mono capital eyebrows. The top bar lies clear over the picture and turns solid as soon as the page moves | The event page (A2) only |
 | Lists as rhythm: rows held apart by space; the current row lifted on a tonal step | Programme, agenda, updates |
@@ -108,7 +108,7 @@ Contrast in the light theme, as measured in `theme.css`:
 
 **Why the accent deepens in light.** Daybreak blue is too pale to carry text or a focus ring on a
 light ground (1.9:1). The light theme uses the identity's light accent, `#2F62D9`, the same hue,
-also for the blue of the living background. Signals keep their meanings
+also for the blue in the living background. Signals keep their meanings
 and deepen until text in them passes AA on the ground and on their own tints.
 
 There is one brand hue, `--brand`: Daybreak blue `#8AB4FF` (9.5:1 on the dark ground; chosen under
@@ -145,8 +145,7 @@ Further tokens, each with a dark and a light value:
 | `--field`, `--field-hover` | white at 6%, 9% | ink at 5%, 8% | A text field, select or text area |
 | `--field-edge` | `#767676` | `#77736B` | The 2px edge along a field's foot and round a checkbox (§5) |
 | `--glass`, `--glass-ink`, `--glass-ink-2` | ground at 80%, `#F6F5F2`, `#DDDCD7` | ground at 84%, `#121110`, `#45423C` | Frosted ground over an event picture, and the words on it |
-| `--field-dot`, `--field-tint` | white, Daybreak | ink, `#2F62D9` | The two colours of the living background |
-| `--bg-motion` | 1 | 1 | How fast the living background moves (1 gentle, 0 still) |
+| `--bg-motion` | 1 | 1 | How fast Arrivals moves: 1 gentle, 0.5 calm, 1.7 lively, 0 still |
 | `--focus-width` | 2px | 2px | The square focus ring |
 | `--hatch-step` | 3px | 3px | Pitch of the hatching on a room's stop cap |
 | `--sheen`, `--scrollbar`, `--check-tick` | | | A faint highlight, scrollbar colour, and the checkbox tick drawn in the ground colour |
@@ -259,18 +258,32 @@ every screen follows them without restating them.
 - Live data interpolates on `requestAnimationFrame` and never animates through a CSS transition on
   the same property ([02 §9](02-architecture.md)).
 - Bars grow with `transform: scaleX`, never `width`.
-- No infinite decorative animation, with one exception: the Attendee Portal's living background
-  (D-37), one full-screen canvas behind the page and below the event page's picture. Whatever it
-  draws, the engine that runs it (`packages/ui/src/theme/living.tsx`) holds the rules: no frame
-  loop (a timer asks for at most 12 frames a second), paused while the tab is hidden or the
-  canvas is off screen, one still frame under reduced motion, a quarter of its strength behind
-  the page's words, fields, buttons and the pass card, speed from `--bg-motion`, and loaded after
-  the page has painted, in its own chunk, so no screen waits for it and the pass screen's size
-  budget does not carry it. A frame loop drawn point by point measured about 20% of a slowed
-  phone's main thread, CSS animations of large layers 4–13%, a timer at a few frames a second
-  about 1%. Without a scene the ground is plain. Admin Command and the Gate Scanner have none.
-  Admin Command has no animation at all: state changes are instant and a check appears already
-  drawn.
+- No infinite decorative animation, with one exception: the Attendee Portal's living background,
+  **Arrivals** (D-37, chosen by the owner). An evening festival ground drawn entirely in small
+  monospace glyphs (`. ' : - ~ ; + = c o t x s % e a # 8 S X @ &`, light to dense) across the
+  whole screen, edge to edge at every size: a line of hills and houses at about a third of the
+  height, tents with flags, strings of festoon lights across the top, and people walking in lanes
+  toward and away from you, nearer lanes larger, some with children, bags, umbrellas or a
+  wristband that glints in Daybreak blue; now and then someone stops and waves, and someone waves
+  when the pointer passes. Ink glyphs at up to 70% (dark) or 60% (light) opacity, the accent for
+  the wristbands and some of the lights.
+  - **Behind the words.** Arrivals reads where every run of the page's text is, and every field,
+    button and picture (the pass's code card among them), after a resize, a scroll or a change in
+    the page, and draws at a tenth of its strength there (5% behind pictures) with a soft edge.
+    Measured over the moving scene, the weakest text on any attendee screen keeps 4.5:1 against
+    the brightest 5% of the background behind it, in both themes (§3; numbers in the rollout's
+    check).
+  - **Cost and guards.** One canvas, one glyph per cell drawn from a prepared atlas, and only the
+    cells that changed are redrawn. At most 15 frames a second, asked for by a timer, so nothing
+    runs between frames (an idle frame loop made the browser prepare a frame on every screen
+    refresh). Paused while the tab is hidden or the layer is off screen; one still frame under
+    reduced motion. It loads after the page has painted, in its own chunk, so no screen waits for
+    it and the pass screen's size budget does not carry it. Speed is `--bg-motion`.
+  - **Where it lives.** `packages/ui/src/theme/arrivals.ts` is the artist's drawing code, kept
+    whole so a new version can replace it; `living.tsx` wires it to the app (theme colours, speed,
+    calm behind text); `LivingBackground` in the theme module is the slot that loads it.
+  Admin Command and the Gate Scanner have none. Admin Command has no animation at all: state
+  changes are instant and a check appears already drawn.
 - No animation while the tab is hidden.
 - **Motion is spent on feedback, not atmosphere (D-22).** The interface is still by default. Every
   press is acknowledged within one frame. A button that starts work shows progress in place, then
@@ -282,8 +295,8 @@ every screen follows them without restating them.
   link hover all use the accent, the same way
   everywhere, so blue comes to mean "I can act here" or "I just acted". It is never a large
   fill and never a state colour.
-- **The background carries a touch of blue (D-22).** On the Attendee Portal, the living
-  background carries the accent in part. It is atmosphere, not a coloured surface, and never
+- **The background carries a touch of blue (D-22).** On the Attendee Portal, Arrivals carries the
+  accent in the wristbands and some of the lights. It is atmosphere, not a coloured surface, and never
   strong enough to affect text contrast. Admin Command's ground is plain.
 - **A disabled button is a quiet tonal block with muted words**, never a grey ink block and never
   an outline. The filled action loses its ink; quiet and danger buttons fade to half strength. A
@@ -426,7 +439,7 @@ everywhere (§7).
 
 **The theme module** (`packages/ui/src/theme`) is what the apps read and write for the theme
 choice: the stored choice, the resolved theme, a `useTheme` hook, the `ThemeSwitch` control, and
-`LivingBackground`, the slot that loads the Attendee Portal's living background (§5) after the
+`LivingBackground`, which loads Arrivals, the Attendee Portal's living background (§5), after the
 page has painted. It keeps in step with the small first-paint script in each app's page (§3).
 
 **One theme file.** `packages/ui/src/styles/theme.css` is the only place a palette value is
