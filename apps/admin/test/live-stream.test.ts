@@ -67,7 +67,7 @@ afterEach(() => vi.useRealTimers());
 function setup(call?: (name: string, input: unknown) => Promise<unknown>) {
   const calls: { name: string; input: unknown }[] = [];
   const client = {
-    wsBase: "ws://api.test",
+    wsBase: "wss://api.test",
     offsetMs: () => 0,
     call: vi.fn(async (name: string, input: unknown) => {
       calls.push({ name, input });
@@ -99,7 +99,7 @@ describe("the Command Center's live link", () => {
     stream.subscribe("/stream/telemetry", telemetry);
     stream.subscribe("/stream/telemetry", vi.fn());
     await settle();
-    expect(FakeSocket.all.map((s) => s.url)).toEqual(["ws://api.test/stream/telemetry"]);
+    expect(FakeSocket.all.map((s) => s.url)).toEqual(["wss://api.test/stream/telemetry"]);
     expect(FakeSocket.all[0]!.protocols).toEqual([WS_SUBPROTOCOL, "ticket.x"]);
   });
 
