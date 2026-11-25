@@ -22,7 +22,7 @@ import {
   REST_HEARTBEAT_MS,
   SYNC_BATCH,
 } from "./config";
-import { AllowlistRejected, ed25519Supported, emailCidHash, importKeys, nfcHash, verifyAllowlistJws, verifyQr, type TrustedKey } from "./crypto";
+import { AllowlistRejected, allowlistWindow, ed25519Supported, emailCidHash, importKeys, nfcHash, verifyAllowlistJws, verifyQr, type TrustedKey } from "./crypto";
 import { decideLocally, indexAllowlist, type AllowlistIndex, type LocalCheckpoint, type Resolution } from "./decide";
 import { Idb, KV } from "./idb";
 import {
@@ -94,6 +94,8 @@ export interface ApiState {
   stream: StreamState;
   ed25519: boolean | null;
   allowlistError: string | null;
+  /** How far the held list is trusted at the current gate (`offlineAllowlist`); null with none. */
+  allowlistTrust: AllowlistTrust | null;
   conflicts: Conflict[];
   earlier: EarlierShift;
 }
@@ -109,6 +111,7 @@ let api: ApiState = {
   stream: "idle",
   ed25519: null,
   allowlistError: null,
+  allowlistTrust: null,
   conflicts: [],
   earlier: { waiting: 0, held: 0, sentLate: 0, canSend: false },
 };
@@ -197,6 +200,35 @@ interface Trusted {
   fetchedAt: number;
   /** The signed-in person it was fetched for; null when not known. */
   user: string | null;
+}
+
+/** `allowlistError` while the held list is no longer trusted (past its window's grace, or another gate's). */
+export const ALLOWLIST_ENDED = "allowlist past its validity window";
+
+/**
+ * How far the held list may be trusted at a gate: `inside` its signed window; `grace` up to
+ * ALLOWLIST_END_GRACE_MS past `window_end` (decides offline, shown out of date, like a stale list);
+ * `untrusted` beyond that, before `window_start`, or a list for another event or gate (decides
+ * nothing: the no-list state); null with no list held.
+ */
+export type AllowlistTrust = "inside" | "grace" | "untrusted";
+
+/**
+ * The verified list this gate may decide with offline at `correctedNow` (server time), and how far
+ * it is trusted. `idx` is null unless the held list is this event's and this gate's and `inside` or
+ * in `grace`; otherwise an offline read resolves as unknown and is refused (fail closed, 03 §4).
+ */
+export function offlineAllowlist(
+  allow: Pick<Trusted, "idx" | "eventId" | "checkpointId"> | null,
+  eventId: string,
+  checkpointId: string,
+  correctedNow: number,
+): { idx: AllowlistIndex | null; trust: AllowlistTrust | null } {
+  if (!allow) return { idx: null, trust: null };
+  if (allow.eventId !== eventId || allow.checkpointId !== checkpointId) return { idx: null, trust: "untrusted" };
+  const where = allowlistWindow(allow.idx.payload, correctedNow);
+  if (where === "inside" || where === "grace") return { idx: allow.idx, trust: where };
+  return { idx: null, trust: "untrusted" };
 }
 
 /**
@@ -471,6 +503,8 @@ class Runtime {
 
   /** Every 15 s: drain what is due, settle undos, refresh what is old. */
   private async tick() {
+    // Offline too: a list that has passed its window shows as no list (decisions check it anyway).
+    this.checkWindow();
     if (!this.linkUp()) return;
     const gate = this.currentGate();
     const signer = this.signer();
@@ -702,6 +736,7 @@ class Runtime {
       this.trust(payload, c);
     } catch (e) {
       this.allow = null;
+      setApi({ allowlistTrust: null });
       this.host.patch({ allowlistAt: null });
       setApi({ allowlistError: e instanceof Error ? e.message : "allowlist" });
     }
@@ -713,6 +748,29 @@ class Runtime {
     // Pass-list age on S4 is shown in device time.
     this.host.patch({ allowlistAt: issuedAtMs - this.offset });
     setApi({ allowlistError: null });
+    this.checkWindow();
+  }
+
+  /**
+   * How far the held list is trusted at the current gate now (`offlineAllowlist`), for the screens.
+   * Untrusted (past its window's grace, or another event's or gate's): the no-list state, no pass-list
+   * age, so S4 does not say known passes are still let in. In the grace: kept, and S4 says it is out
+   * of date. Decisions check it themselves on every read.
+   */
+  private checkWindow() {
+    const a = this.allow;
+    const gate = this.currentGate();
+    const at = Date.now() + this.offset;
+    const trust = a ? offlineAllowlist(a, gate?.api?.eventId ?? a.eventId, gate?.id ?? a.checkpointId, at).trust : null;
+    if (trust === "untrusted") {
+      if (this.host.get().allowlistAt !== null) this.host.patch({ allowlistAt: null });
+      if (getApi().allowlistError !== ALLOWLIST_ENDED) setApi({ allowlistError: ALLOWLIST_ENDED });
+    } else if (a && trust !== null && this.host.get().allowlistAt === null) {
+      // Trusted again at this gate (back on the list's own gate): its age shows again.
+      this.host.patch({ allowlistAt: a.issuedAtMs - this.offset });
+      setApi({ allowlistError: null });
+    }
+    if (getApi().allowlistTrust !== trust) setApi({ allowlistTrust: trust });
   }
 
   /** GET /events/:id/allowlist for this gate, verified with an `allowlist` key before it is stored or used. */
@@ -860,13 +918,14 @@ class Runtime {
 
   /* ---------------------------------------------------------- decide */
 
-  private allowFor(eventId: string, checkpointId: string): AllowlistIndex | null {
-    const a = this.allow;
-    return a && a.eventId === eventId && a.checkpointId === checkpointId ? a.idx : null;
+  private allowFor(eventId: string, checkpointId: string, correctedNow: number): AllowlistIndex | null {
+    const { idx, trust } = offlineAllowlist(this.allow, eventId, checkpointId, correctedNow);
+    if (trust !== getApi().allowlistTrust) this.checkWindow();
+    return idx;
   }
 
   private async resolve(p: Presented, gate: Gate, correctedNow: number): Promise<{ r: Resolution; identifier: string }> {
-    const idx = this.allowFor(gate.api!.eventId, gate.id);
+    const idx = this.allowFor(gate.api!.eventId, gate.id, correctedNow);
     const trustedCrypto = await ed25519Supported();
     if (p.medium === "qr") {
       const q = parseSignedQr(p.data);

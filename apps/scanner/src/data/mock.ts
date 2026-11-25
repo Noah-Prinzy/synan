@@ -1,7 +1,8 @@
 /**
  * The scanner's mock world (docs/02 §8): the event, its gates and rooms, this staff
  * member's shift, and the passes and wristbands a gate can meet. Stands in for
- * GET /me/assignments, the signed offline allowlist and POST /scans until Phase 3.
+ * GET /me/assignments, the signed offline allowlist and POST /scans when VITE_API_URL is unset
+ * (the real API is data/api).
  *
  * Demo wristband numbers (type them with 123, or hold a band to an Android phone):
  *   04A29F31C7D0E2  Amara Okello, Ordinary        → admitted (then already inside)
@@ -72,7 +73,7 @@ export interface Holder {
 const workshop = GATES[3]?.roomId ?? "";
 const allRoomsBut = (roomId: string) => passEvent.rooms.map((room) => room.room_id).filter((id) => id !== roomId);
 
-/** The offline allowlist, keyed by band UID. Names are NOT IN CONTRACTS (see the report). */
+/** The offline allowlist, keyed by band UID. The names are the mock's own: the real API names nobody at a gate (03 §5). */
 export const BANDS: Record<string, Holder> = {
   "04A29F31C7D0E2": { name: "Amara Okello", tier: "ORDINARY", rooms: null, state: "active" },
   "04B7731E22A9F0": { name: "Jonas Weber", tier: "VIP", rooms: null, state: "active" },

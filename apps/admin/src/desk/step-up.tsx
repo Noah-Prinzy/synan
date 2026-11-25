@@ -129,7 +129,7 @@ function StepUpForm({ onConfirmed, onCancel }: { onConfirmed: () => void; onCanc
         />
       </Field>
       <p className="mt-3 border border-dashed border-foreground/30 px-3 py-2 text-12 text-muted-foreground">
-        <span className="font-mono text-11 tracking-[0.12em] text-foreground">MOCK</span> · The real prompt arrives with sign-in.
+        <span className="font-mono text-11 tracking-[0.12em] text-foreground">MOCK</span> · On the real API the console's own prompt asks.
         Any six digits are accepted here, except 000000.
       </p>
       <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-border pt-3">

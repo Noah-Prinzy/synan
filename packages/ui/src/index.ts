@@ -5,7 +5,8 @@
  * 
  * Usage:
  *   import { Button, Input, tokens, motion } from '@synan/ui';
- *   import '@synan/ui/styles';
+ *
+ * The apps' palette and type are CSS: `@import "@synan/ui/theme.css"` and "@synan/ui/motion.css".
  */
 
 // Re-export tokens
@@ -18,5 +19,3 @@ export * from './components';
 // `motion` timing token exported from './tokens'
 export * as motionPrimitives from './motion';
 
-// Re-export styles (CSS import)
-import './styles';

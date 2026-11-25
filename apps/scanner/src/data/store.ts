@@ -1,8 +1,8 @@
 /**
  * This device's state: the gate it is paired to, the scans it has decided, the offline
  * queue, the last sync, and the operator's sound and vibration choices. Persisted to
- * localStorage so a reload, a crash or a dead battery mid-shift loses nothing (the real
- * queue moves to IndexedDB with the Phase 3 ingest, D-17).
+ * localStorage so a reload, a crash or a dead battery mid-shift loses nothing (on the real
+ * API the queue is in IndexedDB instead: data/api/queue.ts, D-17).
  *
  * The decision follows docs/01 §7 in order; the mock decides locally online and offline
  * alike, and marks offline decisions LOCAL and queues them (docs/01 §8).
@@ -25,7 +25,7 @@ export interface Scan {
   medium: "qr" | "nfc";
   /** Shown in mono: the band UID, or the code's type. */
   identifier: string;
-  /** Who it is, where known. NOT IN CONTRACTS: ScanOutcome has no name today. */
+  /** Who it is: the mock's demo holders only. ScanOutcome names nobody, by design (03 §5), so null on the real API. */
   name: string | null;
   tier: AttendeeTier | null;
   /** Rooms this pass opens, for the ADMITTED chips. */
@@ -205,7 +205,7 @@ function resolve(presented: Presented): { credential: string | null; holder: Hol
   const parsed = parseSignedQr(presented.data);
   if (!parsed) return { credential: null, holder: null, identifier: "Not a pass", email: false };
   // Mock: the signature and time window are not checked (no keys, and the portal runs on
-  // its own demo clock). Phase 3 verifies with the event's public key (D-12).
+  // its own demo clock). On the real API, data/api/crypto.ts verifies with the server's public keys (D-12).
   const known = QR_REFS[parsed.ref];
   const holder: Holder = known?.holder ?? { name: "Guest", tier: "ORDINARY", rooms: null, state: "active" };
   return {

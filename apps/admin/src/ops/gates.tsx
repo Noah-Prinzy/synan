@@ -28,7 +28,7 @@ import { useSlice } from "../live/slice";
 import type { GateLive } from "../live/store";
 import { WIDE_QUERY, useMediaQuery } from "../shell/admin-shell";
 import { maintenance } from "./maintenance";
-import { DIRECTION_LABEL, LastKnown, LiveStates, Num, clockWrong, faultRank, gateSignal, isFault, roughAge, useLiveReady } from "./shared";
+import { DIRECTION_LABEL, LastKnown, LiveStates, Num, allowlistStale, clockWrong, faultRank, gateSignal, isFault, roughAge, useLiveReady } from "./shared";
 
 const POLL_MS = 5_000;
 /** Devices heartbeat every 15 s; two missed beats is worth a look before the 60 s offline rule. */
@@ -187,7 +187,8 @@ function GateBoard() {
       </div>
       <p className={cn("pt-5 text-12 leading-relaxed text-muted-foreground", GUTTER_X, PROSE)}>
         A gate is offline after 60 seconds without a heartbeat; it keeps scanning on its allowlist and queues scans until it reconnects. A clock more than two minutes out is flagged
-        and its scans are ordered by corrected time. Open a gate for its exact heartbeat, clock offset and last scans.
+        and its scans are ordered by corrected time. A pass list more than 15 minutes old is out of date: offline, the gate still lets known
+        passes in, and each one raises an alert. Open a gate for its exact heartbeat, clock offset and last scans.
       </p>
     </>
   );
@@ -200,7 +201,7 @@ const TONE_TEXT: Record<Tone, string> = { muted: "text-muted-foreground", warn: 
 
 /**
  * What is off with a gate, in words, worst first: the lost link, a late heartbeat, scans queued,
- * a wrong clock. A gate with nothing off reads "In sync".
+ * a wrong clock, a pass list out of date. A gate with nothing off reads "In sync".
  */
 function gateChecks(row: GateRow, now: number): { text: string; tone: Tone }[] {
   const gate = row.gate;
@@ -215,6 +216,7 @@ function gateChecks(row: GateRow, now: number): { text: string; tone: Tone }[] {
   }
   if (gate.queue_depth > 0) checks.push({ text: `${formatNumber(gate.queue_depth)} queued`, tone: "warn" });
   if (clockWrong(gate)) checks.push({ text: `Clock ${gate.clock_offset_ms !== null ? formatOffset(gate.clock_offset_ms) : "wrong"}`, tone: "warn" });
+  if (allowlistStale(gate)) checks.push({ text: "Pass list out of date", tone: "warn" });
   return checks.length > 0 ? checks : [{ text: "In sync", tone: "muted" }];
 }
 
@@ -256,7 +258,7 @@ function Throughput({ row, className }: { row: GateRow; className?: string }) {
 function Maintenance({ since }: { since: number | undefined }) {
   if (since === undefined) return null;
   return (
-    <span className="ml-2 inline-flex shrink-0 items-center gap-1.5 text-12 text-muted-foreground" title="Marked on this page only (mock)">
+    <span className="ml-2 inline-flex shrink-0 items-center gap-1.5 text-12 text-muted-foreground" title="Marked for maintenance">
       <SignalShape state="idle" /> Maintenance
     </span>
   );

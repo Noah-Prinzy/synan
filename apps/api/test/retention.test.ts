@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { entryHash } from "../src/domain/audit.js";
 import { JOB } from "../src/jobs.js";
 import type { MemoryTables } from "../src/repo/memory.js";
-import { startHarness, type Harness } from "./helpers.js";
+import { sqlAsOwner, startHarness, type Harness } from "./helpers.js";
 
 const MONTH = 30 * 24 * 3600_000;
 
@@ -19,8 +19,6 @@ beforeAll(async () => {
 });
 afterAll(async () => h.close());
 
-type PgClient = { exec(q: string): Promise<unknown> };
-const pg = () => (h.app.ctx.repos as unknown as { conn: { db: { $client: PgClient } } }).conn.db.$client;
 
 /**
  * Age the oldest `n` audit entries to 13 months and re-hash the chain consistently, as if the store
@@ -40,7 +38,7 @@ async function ageOldest(n: number) {
     t.auditHead.lastHash = prev;
     return;
   }
-  await pg().exec(`
+  await sqlAsOwner(h, `
     set session_replication_role = replica;
     update audit_log set at = now() - interval '13 months' where id in (select id from audit_log order by id limit ${n});
     do $$

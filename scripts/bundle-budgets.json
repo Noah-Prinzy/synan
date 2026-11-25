@@ -1,0 +1,45 @@
+{
+  "$comment": "Bundle budgets (docs/02 §9, O-15, O-26), checked by scripts/bundle-budget.mjs on production builds made with `vite build --manifest`. KB = 1024 bytes of gzip (level 9). `roots` are Vite manifest keys whose chunks, CSS and static imports load before the screen paints: the HTML entry, the route's chunk, and any module the app awaits at start-up with a top-level `await import(...)` (attendee src/data/backend.ts, admin src/live/backend.ts). Dynamic imports that are not awaited at start-up (the API client `remote`, lazy routes) and fonts are not counted. `enforce` lists the build modes in which a breach fails the check; other modes are reported only.",
+  "budgets": [
+    {
+      "id": "attendee-pass",
+      "label": "Attendee: pass screen (/pass)",
+      "app": "attendee",
+      "limitKb": 125,
+      "roots": {
+        "api": ["index.html", "src/screens/pass.tsx", "src/data/api/backend.ts"],
+        "mock": ["index.html", "src/screens/pass.tsx", "src/data/mock-backend.ts"]
+      },
+      "count": ["html", "css", "js"],
+      "enforce": ["api"],
+      "source": "docs/02 §9 and O-15: the pass paints within 125 KB gzip"
+    },
+    {
+      "id": "admin-initial",
+      "label": "Admin: initial JS (Command Center, signed in)",
+      "app": "admin",
+      "limitKb": 200,
+      "roots": {
+        "api": ["index.html", "src/api/index.ts"],
+        "mock": ["index.html", "src/live/mock-backend.ts"]
+      },
+      "count": ["js"],
+      "enforce": ["api"],
+      "source": "docs/02 §9 and O-26: admin initial JS within 200 KB gzip"
+    },
+    {
+      "id": "scanner-initial",
+      "label": "Scanner: start-up (HTML, CSS, JS)",
+      "app": "scanner",
+      "limitKb": 150,
+      "provisional": true,
+      "roots": {
+        "api": ["index.html"],
+        "mock": ["index.html"]
+      },
+      "count": ["html", "css", "js"],
+      "enforce": ["api"],
+      "source": "PROVISIONAL ceiling proposed by CI (5.1): measured 2026-11-24 at 133.3 KB (real-API build), plus room for the gate-code pairing; no budget is set in docs/02 §9 yet"
+    }
+  ]
+}

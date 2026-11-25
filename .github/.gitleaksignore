@@ -1,0 +1,10 @@
+# gitleaks findings reviewed and accepted (one fingerprint per line, from the gitleaks report).
+# Add a line only for a reviewed false positive, with a comment saying why; never for a real secret
+# (rotate it and remove it from history instead).
+
+# packages/db/test/constraints.test.ts: idem_key "orphan-key-01" is a test idempotency key, not a credential.
+af198e6bc8e11287f131f631daf627e64ad647fd:packages/db/test/constraints.test.ts:generic-api-key:172
+
+# apps/attendee/test/registration.test.ts (commit 350b136): a fake invitation token typed into a unit
+# test, never a credential; since replaced by a low-entropy literal, but it stays in history.
+350b136222a0b5654fefa316226d7128f0f4f2e5:apps/attendee/test/registration.test.ts:generic-api-key:115

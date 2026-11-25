@@ -16,6 +16,7 @@
  * - Each alert is audited (`security.scanner_refused`). Neither alert nor audit carries a token, a
  *   ticket or any part of one; the alert text carries no address either (the audit entry keeps it).
  */
+import { describeError } from "@synan/db";
 import type { AlertService } from "./alerts.js";
 import type { AuditService } from "./audit.js";
 import type { Clock } from "../lib/clock.js";
@@ -73,7 +74,7 @@ export class ScannerTrust {
     try {
       await this.handle(i);
     } catch (e) {
-      console.error(`[security] scanner refusal not recorded: ${e instanceof Error ? e.message.slice(0, 120) : "error"}`);
+      console.error(`[security] scanner refusal not recorded: ${describeError(e)}`);
     }
   }
 

@@ -3,9 +3,9 @@
  * medium, low — of every alert raised at the live event. Each row: kind, where, venue-local
  * time, age, state. The default view is everything not yet resolved; resolution (with a note)
  * is what takes an alert off it. `?alert=:id` opens the detail: a side panel at ≥1280, a dialog
- * below, so the alert strip's `Open` lands on the same alert.
+ * below, so the alert notice's `Open` lands on the same alert.
  *
- * Reads the CommandStore (GET /breach-alerts + stream/alerts), so the list moves with the strip.
+ * Reads the CommandStore (GET /breach-alerts + stream/alerts), so the list moves with the alert notice.
  * States: loading, error, not live, no open alerts, no match for the view, last known (link down).
  * Not built: the webhook delivery attempts tab (D14 shows the delivery log).
  */
@@ -239,7 +239,7 @@ function EmptyInbox({ view, counts, onView }: { view: View; counts: Record<View,
           <SignalShape state="ok" className="text-success" />
           Nothing needs attention at {event?.title ?? "this event"}.
         </p>
-        <p className="mt-1">New alerts appear here and on the strip above the moment they are raised.</p>
+        <p className="mt-1">New alerts appear here and in the alert notice at the top the moment they are raised.</p>
       </EmptyState>
     );
   }

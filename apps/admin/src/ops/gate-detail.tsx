@@ -1,9 +1,9 @@
 /**
  * D12b · Gate detail `/gates/:id` (docs/06 §2.3). One checkpoint: its hardware, direction and
- * link state; link history for the shift; throughput by 5-minute bucket over the last hour;
+ * link state and pass-list age; link history for the shift; throughput by 5-minute bucket over the last hour;
  * results by code; the last 50 scans; who is assigned now. Actions: `Test read` (a synthetic read
- * that is never logged as attendance), `Mark for maintenance` (MOCK: this page only) and
- * `Reassign` (to the event's staff tab; staff.manage only — absent otherwise).
+ * that is never logged as attendance) and `Reassign` (to the event's staff tab; staff.manage only —
+ * absent otherwise). `Mark for maintenance` is left out until the API stores it (maintenance.ts).
  *
  * Live link, queue and clock come from the CommandStore; the rest is polled every five seconds.
  * States: loading, error, not live, not found (a bad id), last known (link down).
@@ -43,8 +43,8 @@ import { useNow } from "../live/hooks";
 import { useSlice } from "../live/slice";
 import type { GateLive } from "../live/store";
 import { useGateActivity } from "./gates";
-import { maintenance, setMaintenance } from "./maintenance";
-import { CARRIER_LABEL, DIRECTION_LABEL, LINK_VIEW, LastKnown, LiveStates, clockWrong, formatScanTime, gateSignal, useLiveReady } from "./shared";
+import { MAINTENANCE_STORED, maintenance, setMaintenance } from "./maintenance";
+import { CARRIER_LABEL, DIRECTION_LABEL, LINK_VIEW, LastKnown, LiveStates, allowlistStale, clockWrong, formatScanTime, gateSignal, useLiveReady } from "./shared";
 
 const POLL_MS = 5_000;
 
@@ -182,29 +182,30 @@ function GateView({ checkpoint, eventId, timeZone, back }: { checkpoint: Checkpo
               Test read
             </ActionButton>
             )}
-            <Button
-              variant="secondary"
-              size="compact"
-              aria-pressed={marked !== undefined}
-              onClick={() => setMaintenance(checkpoint.id, marked === undefined, store.now())}
-            >
-              {marked === undefined ? "Mark for maintenance" : "End maintenance"}
-            </Button>
-            <Can I="staff.manage">
-              <Link to={`/events/${eventId}/staff`} className={buttonClass("secondary", "compact")}>
-                Reassign
-              </Link>
+            {/* Not offered until the API stores the mark (maintenance.ts). */}
+            {MAINTENANCE_STORED ? (
+              <Button
+                variant="secondary"
+                size="compact"
+                aria-pressed={marked !== undefined}
+                onClick={() => setMaintenance(checkpoint.id, marked === undefined, store.now())}
+              >
+                {marked === undefined ? "Mark for maintenance" : "End maintenance"}
+              </Button>
+            ) : null}
+            {/* The Staff tab lives in the event workspace: opening it needs both. */}
+            <Can I="events.view">
+              <Can I="staff.manage">
+                <Link to={`/events/${eventId}/staff`} className={buttonClass("secondary", "compact")}>
+                  Reassign
+                </Link>
+              </Can>
             </Can>
           </span>
         }
       />
       <LastKnown />
       {test ? <TestReadLine test={test} gate={gate} /> : null}
-      {marked !== undefined ? (
-        <p className={cn("border-b border-border py-2.5 text-12 text-muted-foreground", GUTTER_X)}>
-          Maintenance marks are kept on this page only in this preview: other operators do not see them yet, and a reload clears them.
-        </p>
-      ) : null}
 
       {detail.status === "loading" ? (
         <LoadingState label="Loading the gate's scans…" rows={6} className={GUTTER_X} />
@@ -248,6 +249,7 @@ function GateView({ checkpoint, eventId, timeZone, back }: { checkpoint: Checkpo
                     "—"
                   ),
                 ],
+                ["Pass list", <PassList gate={gate} now={now} />],
                 [
                   "Last 15 min",
                   activity ? (
@@ -325,6 +327,23 @@ function Heartbeat({ gate, at, now }: { gate: GateLive | undefined; at: string |
   return (
     <span>
       <span className={TYPE.value}>{formatAge(now - Date.parse(at))}</span> ago
+    </span>
+  );
+}
+
+/** The age of the gate's signed pass list (allowlist), and whether it is out of date (O-05). */
+function PassList({ gate, now }: { gate: GateLive | undefined; now: number }) {
+  const issued = gate?.allowlist_issued_at ? Date.parse(gate.allowlist_issued_at) : null;
+  const stale = gate ? allowlistStale(gate) : false;
+  if (issued === null && !stale) return <span className="text-muted-foreground">—</span>;
+  return (
+    <span className={cn(stale && "text-warning")}>
+      {issued !== null ? (
+        <>
+          Issued <span className={TYPE.value}>{formatAge(now - issued)}</span> ago
+        </>
+      ) : null}
+      {stale ? (issued !== null ? " · out of date" : "Out of date") : null}
     </span>
   );
 }

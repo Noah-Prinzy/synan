@@ -9,6 +9,7 @@
  * - Desk codes: six characters from a 32-symbol alphabet, single use, 10 minutes, stored hashed;
  *   wrong guesses are limited per attendee.
  */
+import { describeError } from "@synan/db";
 import type { Express } from "express";
 import { BAND_ERROR_COPY, ContractError } from "@synan/contracts/errors";
 import { endpoints } from "@synan/contracts/rest";
@@ -186,7 +187,7 @@ export function carrierRoutes(x: Express, app: AppContext) {
     await app.credentials.states.announce(cred, "replaced");
     // The old emailed code died with the old credential: send a new pass.
     if (fresh.registration_id) {
-      await app.credentials.sendEmailedQr(fresh.id).catch((e: unknown) => console.error("[mail] pass delivery failed:", e instanceof Error ? e.message : String(e)));
+      await app.credentials.sendEmailedQr(fresh.id).catch((e: unknown) => console.error("[mail] pass delivery failed:", describeError(e)));
     }
     app.scans.forgetProjections();
     return carrierDto((await app.repos.carriers.forCredential(fresh.id)).find((c) => c.id === r.new_carrier_id)!);

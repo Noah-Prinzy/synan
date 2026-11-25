@@ -40,7 +40,7 @@ import { systemClock, type Clock } from "./lib/clock.js";
 import { ConsoleMailer, MemoryMailer, type Mailer } from "./lib/mailer.js";
 import { attachWebSockets } from "./realtime/ws-server.js";
 import { TelemetryHub } from "./realtime/telemetry-hub.js";
-import { createCipher, createJobs, devKeyProvider, EnvKeyProvider, type Cipher } from "@synan/db";
+import { createCipher, createJobs, describeError, devKeyProvider, EnvKeyProvider, type Cipher } from "@synan/db";
 import { createPgliteRepos, createPostgresRepos } from "./repo/drizzle.js";
 import { createMemoryRepos } from "./repo/memory.js";
 import type { Repos } from "./repo/types.js";
@@ -135,7 +135,8 @@ function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunc
     status = 413;
     body = { error: { code: "VALIDATION_FAILED", message: "Body too large.", request_id: requestId } };
   } else {
-    console.error(`[api] ${req.method} ${loggablePath(req.path)} failed`, err);
+    // One redacted line, never the object: a database error carries query parameters, a driver error connection settings.
+    console.error(`[api] ${req.method} ${loggablePath(req.path)} failed: ${describeError(err)}`);
     status = 500;
     body = { error: { code: "INTERNAL", message: ERROR_COPY.INTERNAL.message, request_id: requestId } };
   }

@@ -7,6 +7,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { Room } from "@synan/contracts/rest";
+import { Can } from "../access/session";
 import {
   CapacityMeter,
   OccupancyBar,
@@ -27,6 +28,7 @@ import { useSlice } from "../live/slice";
 import type { FeedItem, GateLive, RoomLive } from "../live/store";
 import type { VenueLayout } from "../live/transport";
 import { minuteChange } from "./room-card";
+import { sortRooms } from "./rooms-order";
 import { highlight, levelState, levelWords } from "./ui-state";
 
 /* ----------------------------------------------------------------- shared */
@@ -120,9 +122,11 @@ export function GatesSection({ layout }: { layout: VenueLayout }) {
       id="rail-gates"
       title="Gates"
       meta={
-        <Link to="/gates" className="text-muted-foreground transition-colors duration-120 hover:text-foreground">
-          Gate health →
-        </Link>
+        <Can I="gates.view">
+          <Link to="/gates" className="text-muted-foreground transition-colors duration-120 hover:text-foreground">
+            Gate health →
+          </Link>
+        </Can>
       }
       className="shrink-0"
     >
@@ -142,15 +146,6 @@ export function GatesSection({ layout }: { layout: VenueLayout }) {
 
 /* ------------------------------------------------------------------ rooms */
 
-function utilisation(room: Room, live: RoomLive | undefined): number {
-  return live && room.capacity > 0 ? live.occupancy / room.capacity : 0;
-}
-
-function sortRooms(rooms: readonly Room[], live: ReadonlyMap<string, RoomLive>): string[] {
-  return [...rooms]
-    .sort((a, b) => utilisation(b, live.get(b.id)) - utilisation(a, live.get(a.id)) || a.name.localeCompare(b.name))
-    .map((room) => room.id);
-}
 
 const RESORT_MS = 2_000;
 
@@ -447,9 +442,11 @@ export function LiveFeed({ layout, timeZone }: { layout: VenueLayout; timeZone: 
       id="rail-feed"
       title="Recent activity"
       meta={
-        <Link to="/access-log" className="text-muted-foreground transition-colors duration-120 hover:text-foreground">
-          Access log →
-        </Link>
+        <Can I="scans.view">
+          <Link to="/access-log" className="text-muted-foreground transition-colors duration-120 hover:text-foreground">
+            Access log →
+          </Link>
+        </Can>
       }
       className="shrink-0"
     >

@@ -1,0 +1,154 @@
+{
+  "note": "SHA-256 of each recorded migration (SQL with LF line endings, and its journal entry). Checked by `migrations:verify`; new migrations are added with `migrations:manifest`. Never edit a recorded migration.",
+  "algorithm": "sha256-lf",
+  "migrations": {
+    "0000_prelude": {
+      "sql": "c8ba4c48d1787c584fcd5d5ac1e2ae4aa4f3adc03bb4681f649baad779caea12",
+      "journal": "72a00a2322783c48b9a75ff04e29352eeb40540a43fd0ab2089ae40e654c9006"
+    },
+    "0001_schema": {
+      "sql": "f9363ef3084f91c1099c98bd30b831c500bfc92a7cbf8d5eca619e5e7ff35253",
+      "journal": "ba940fc73150b9a2b99ced95f1d90ce577114a7b689a5d37254156c2a8984a7c"
+    },
+    "0002_rules": {
+      "sql": "a112f849fcc9db7d4ee1ba35ffe095161261a2afd13f58541d670b9093b1bb9a",
+      "journal": "eb97a1b9eee350835a53b9fec0c9a693ff7f2cec66fa0b505020023bc00adeef"
+    },
+    "0003_auth_tables": {
+      "sql": "a14208c9306faee8ad213605a5db885c43896eba57fb723cf1ddafeb9e077ec1",
+      "journal": "d9c233b4d153168089f5f875d01aae0c04cb45200df9e82f6c59c116ee0fc085"
+    },
+    "0004_auth_functions": {
+      "sql": "f585046f2a35a0752c11bface2910af254ee59ed50d9a454645bc2eb90b91dba",
+      "journal": "2be1e25238568c870b094cb5f94177485b20b83645f58132eb927a4025051785"
+    },
+    "0005_roles": {
+      "sql": "cfe5a977b60fd8c6d4db30efbe8fa377466b807b1ce39cc3447d0188890bb020",
+      "journal": "c2553cfac1c6b3352a8182e82cd0db755015e41fc990537e1c314e20397a9b43"
+    },
+    "0006_enforcement_prepared": {
+      "sql": "d253d367767c21f86f0e4a487be528068c94d8d13545fb8a3498583be9b8cad5",
+      "journal": "f39bca1553b4c77ddcd238290cf5c2adff483b6a092fdf2c1639ce48420447e8"
+    },
+    "0007_users_email_hash": {
+      "sql": "8cf6c9fc6876d3973f130af3e8279bd5dfb829d653b168abc748917755826676",
+      "journal": "337b7849183d071da9e5fcf196ce51be8801172e0750ec7d9a2e90fb1ba8d9a3"
+    },
+    "0008_enforce": {
+      "sql": "0ec7613bdbbd8ca53dd9a0d2ab29856546c47fdf4d8875822f3be1acb8ebe634",
+      "journal": "6d6081433d738bb572b222d3341927783c0a2f1304b4d1c771a1d65fbfe20554"
+    },
+    "0009_enforce_user_email": {
+      "sql": "09872c04c115927f3e34fd357cc11ec80ec5bdd76d241289cf955bc529afd2ca",
+      "journal": "bc8f333ef62e7f2aba47d064518fb2f9289587f30904c78fa4b817e7934047ac"
+    },
+    "0010_users_email_hash_required": {
+      "sql": "d38d944a91157eee7400aee9f37e01c02e4bd7c70e11145faf738a654033ed92",
+      "journal": "c51df969f4c7f2f9cb521c608cc9fcd0699e5cdd1e14764084f7790071edc770"
+    },
+    "0011_reporting_tables": {
+      "sql": "5a6741f4fac0aec91938c29ef20bc3bd414d856285018a96197ad95d0b34922b",
+      "journal": "1d42f4793701242a6bdf1454c7259e11152b7334002d91ab4333a364bbf905ac"
+    },
+    "0012_phase4_core": {
+      "sql": "2adf2c34ea4590dd5c6a224ff7e377d2f7e3a82b1244175f9a0638dc6558d460",
+      "journal": "37b06707d75a56c867cfd1e57136729870375e7f15133d32919f75e2612d1c2a"
+    },
+    "0013_phase4_tables": {
+      "sql": "fabddb315cab6a13782cfebd8e82ef8eb7ff2145b6853c843a0f74b908157b9c",
+      "journal": "20e28c248eeede1b02e599df8e6a2477bee46ea59d329c0040dd33598ae2b59b"
+    },
+    "0014_phase4_flows": {
+      "sql": "6eb8b46f655bdf0b144afdaaff286c766fc8d2d54de33ef65209aabe95285fac",
+      "journal": "1c963e8a477c298d0290a91bd444cf5af3e9d892e06b47a014bbf52d13ed248a"
+    },
+    "0015_short_codes": {
+      "sql": "a7fb061f1bfd29451ac043e8a16b7d86397dab0096721e9362a556a8d3911d89",
+      "journal": "306e1ad997a8d94d816ab19313a0aca1631b9bf0afc73031bdd1ee128e4162ef"
+    },
+    "0016_short_code_functions": {
+      "sql": "a73bf4c118b26923a77bb239ed4528e651baa9dc946b551b4f843608c141c164",
+      "journal": "60d3f4438321eb7332ee1010329f932be15b96e23ae220396811086ffa6cf9aa"
+    },
+    "0017_event_summary_tables": {
+      "sql": "a6bad7bfb1346acc9fa762fcc9b4018f702490d0e06b4922e0cc50a57e9709d3",
+      "journal": "5318c5383288b2bb212118cfb793bddd2a052558751d954fbc63f343e911bf53"
+    },
+    "0018_event_summary": {
+      "sql": "c65384cd875bce302bcf0d9283266a4c10ce6f58da7af82f857c7313c61ada06",
+      "journal": "4c9ab6b4339eb3b8b2ef11308db809826db90154686caea7d8e82f76a0587f6c"
+    },
+    "0019_delivery_tables": {
+      "sql": "222df6c80acc5917436ed65a15aea35bcf451f0b8db978b86ec3fa240c2c5cde",
+      "journal": "7da0f72e7a247c942591a6a64d82a48f0ecc9ad84e4ddead1ebc38c812b03e5a"
+    },
+    "0020_delivery_functions": {
+      "sql": "f3c1fd074211440d0ed265a4417853a7076163670f5b00b0dc7e7ef69d709f37",
+      "journal": "f6d8bd37d1d3fdb914729736f7047df13d410a2c17b64ae37c15922ad7d13911"
+    },
+    "0021_email_lease_checkpoint_position": {
+      "sql": "3ee6533aaa9b58bff48c6324330e03f5b888ef8309e98312afda964ef53efb80",
+      "journal": "03575acc62fe8aba6cee73547f97da0545fd8b22b42989bd61cbed99b9560a2a"
+    },
+    "0022_email_lease_retention": {
+      "sql": "c10417335e9e06c27ff0aa22a93ba241047bb89eb5bfe9a28a5e8d4a39f83c0f",
+      "journal": "63121e18ada2b43c446fdd7ccd58fd1b1f3437f8740bbb921948030d5fee28c9"
+    },
+    "0023_grid_shape_check": {
+      "sql": "6c7c700283c40e5a28e269ceb7d8b2cfe5a74f08dcf4a07981a957f74c66b97a",
+      "journal": "b51ac16f1660dead42f0950ef079cf3c7a692ce57a29dd12741a7ba9d2e1b969"
+    },
+    "0024_layout_drafts": {
+      "sql": "ddab0193328428a26daaee1267e06c9a70b38d47c3506d0a6955e42590b4eb8d",
+      "journal": "3018e7467e03625d4000eb23574da857d1ff469ed17e9773adbde5de85e9669c"
+    },
+    "0025_layout_publish_drafts": {
+      "sql": "a316d626af7adf211e1ff6798cc2d01686058de3d101f2072c7c682f83561bc8",
+      "journal": "d7f042038b2160a92de74dd6a2969d843d9c68e5b10a7a31fa515d5fb3f88bdd"
+    },
+    "0026_roles_supervisor_desk_clerk": {
+      "sql": "18e4717ed6b9ce94386a30f35bf6dd3bd32b77a2940e4505b84bcdea68864a51",
+      "journal": "700836dd545d52fe119a7a44cdf7c16832f896ad84f25d09bdff6c7fb2313be4"
+    },
+    "0027_allowlist_live_codes": {
+      "sql": "159820d329783c54e9b91f910a8d55765be6d864502b13511821323fc1a629b2",
+      "journal": "46a9ba17dfe2ab0a99704958c8fac563ae7f370b2687546d68cf3a624b95106a"
+    },
+    "0028_scanner_attendee_gaps": {
+      "sql": "8392108f53ff345e88a3e69344b5fd177f84577a7af3e4ee4a97a6e39449bcd2",
+      "journal": "c1861c01e6a21ed17d68b7cf483c1558f54a894722f83aeeb565b1bddc996c98"
+    },
+    "0029_scanner_attendee_functions": {
+      "sql": "2ff49f8fd6114055af4c8ee6ac2ff89271e3525c9ce3168959d2a64cab465fab",
+      "journal": "bd45c040c7aca634c42520835ded7ee009e635848bf1d7f2b014525dd0eb484d"
+    },
+    "0030_attendee_phone": {
+      "sql": "f2c5404aae93c588fa8e666f761c8f74276f9b2039bc43da73090a7bbe9438cb",
+      "journal": "ff5b7c23fa5db2109ef1428eb499abee27263d1b987fd0b24e6d59e2bbc6ff84"
+    },
+    "0031_attendee_phone_erasure": {
+      "sql": "e13e69319f38ff29735b5cec4739df556a7720ad19cccf34ed8863b48c31580d",
+      "journal": "866c32354fd6bb862337b773ce6a7e87f78a670703cc394c2c8cdf758ef994a3"
+    },
+    "0032_console_invitation_gaps": {
+      "sql": "b9ced049d135700e4e67edb8a8ce58f3a1f58573a898bf282364ea8a65da251d",
+      "journal": "08cc30cded78cd716fce4e2d44fdb8829cea10662ac3571a99b45cc256e93ac1"
+    },
+    "0033_scanner_install_devices": {
+      "sql": "262376bd434c4bb631b54f69ab8c20e38058c64b164042a8dccf94d262e61eb2",
+      "journal": "916f337112a6d046646e845070517d1fa3b8c63f672ac1f8b0e81df7f684548d"
+    },
+    "0034_handover_undone_scanner_rows": {
+      "sql": "1b68288d418b9fd2f08d45779cd61664df886e91e8b0b3866444644cb9b7aef9",
+      "journal": "f94da7a62987058971f37e7654b9951a12931ddff8657327ab303ff65e6939f3"
+    },
+    "0035_band_hint": {
+      "sql": "1d92f46dc5a96833ee4093ba72e361d5975925cf311eba346d2a6cae2eeda997",
+      "journal": "c6935ac3d0c005bd12815e4726f2f153c7630047768b137189fec077a7ee0c33"
+    },
+    "0036_carriers_lookup_index": {
+      "sql": "152d0846f721603936cd8ecb65abb2aaccfffcca9cf91cd144447b6a535aefa1",
+      "journal": "e1af319ed19a4b11cff37a922edcf42f31e2c9c6867c893046716bad869bae9d"
+    }
+  }
+}

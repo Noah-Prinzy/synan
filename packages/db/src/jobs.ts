@@ -49,8 +49,15 @@ export const JOB_QUEUES = {
 } as const;
 export type JobQueue = (typeof JOB_QUEUES)[keyof typeof JOB_QUEUES];
 
-/** Suggested cron schedules for the maintenance process (scheduleDefaultJobs). */
+/**
+ * Cron schedules for the maintenance process (scheduleDefaultJobs). Every queue the in-process runner
+ * runs on a timer has one, so nothing depends on a kick alone: report.export and email.send are
+ * otherwise only kicked or enqueued, and a kick lost to a crash between commit and send would leave
+ * an export queued, or a failed email unretried, for good (found bringing pg-boss up on PostgreSQL 17).
+ */
 export const JOB_SCHEDULES: { queue: JobQueue; cron: string }[] = [
+  { queue: JOB_QUEUES.reportExport, cron: "* * * * *" },
+  { queue: JOB_QUEUES.email, cron: "* * * * *" },
   { queue: JOB_QUEUES.purge, cron: "*/15 * * * *" },
   { queue: JOB_QUEUES.sessionReset, cron: "* * * * *" },
   { queue: JOB_QUEUES.rollupRebuild, cron: "*/5 * * * *" },
@@ -100,7 +107,15 @@ export async function installJobSchema(target: Target): Promise<void> {
  * migrates or supervises. `maintenance`: one per deployment, logged in as a member of app_jobs;
  * runs supervision and cron schedules. Call `.start()` yourself.
  */
-export function createJobs(target: Target & { mode?: "worker" | "maintenance"; applicationName?: string; max?: number }): PgBoss {
+export function createJobs(
+  target: Target & {
+    mode?: "worker" | "maintenance";
+    applicationName?: string;
+    max?: number;
+    /** Further pg-boss constructor options (e.g. cronMonitorIntervalSeconds in tests). */
+    options?: Record<string, unknown>;
+  },
+): PgBoss {
   const maintenance = target.mode === "maintenance";
   return new PgBoss({
     ...dbOptions(target),
@@ -111,6 +126,7 @@ export function createJobs(target: Target & { mode?: "worker" | "maintenance"; a
     supervise: maintenance,
     schedule: maintenance,
     application_name: target.applicationName ?? (maintenance ? "jobs-maintenance" : "jobs-worker"),
+    ...target.options,
   } as never);
 }
 

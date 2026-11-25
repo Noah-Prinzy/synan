@@ -83,10 +83,14 @@ export const carriers = pgTable(
     created_at: tstz("created_at").notNull().defaultNow(),
   },
   (t) => [
-    // A band / token identifier resolves to at most one non-retired carrier: the scan lookup.
+    // A band / token identifier resolves to at most one non-retired carrier.
     uniqueIndex("carriers_identifier_uq")
       .on(t.kind, t.identifier)
       .where(sql`${t.identifier} IS NOT NULL AND ${t.state} <> 'retired'`),
+    // The scan lookup itself (kind + identifier, retired bands included so a retired band is reported
+    // as such): the partial index above cannot serve it, which made every scan read the whole table
+    // (measured on PostgreSQL 17 with 60,000 carriers: ≈14 ms of a scan's ≈16 ms in the database; 0036).
+    index("carriers_kind_identifier_idx").on(t.kind, t.identifier),
     // At most one live carrier of each kind per credential.
     uniqueIndex("carriers_one_live_per_kind_uq")
       .on(t.credential_id, t.kind)

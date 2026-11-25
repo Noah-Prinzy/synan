@@ -24,7 +24,7 @@ import {
   signWebhookBody,
 } from "../src/webhooks";
 import { devCipher, miniVenue, type MiniVenue } from "./fixtures";
-import { createTestDb, q, rejects, type TestDb } from "./helpers";
+import { createTestDb, jobTarget, q, rejects, type TestDb } from "./helpers";
 
 let db: TestDb;
 let v: MiniVenue;
@@ -41,8 +41,8 @@ afterAll(async () => {
 
 describe("pg-boss under the roles", () => {
   it("installs as the owner, creates every queue, and hands the schema to app_jobs", async () => {
-    await installJobSchema({ pglite: db.$client });
-    await installJobSchema({ pglite: db.$client }); // idempotent
+    await installJobSchema(jobTarget(db, "owner"));
+    await installJobSchema(jobTarget(db, "owner")); // idempotent
     const queues = await q<{ name: string }>(db, `select name from pgboss.queue order by 1`);
     expect(queues.map((x) => x.name)).toEqual(Object.values(JOB_QUEUES).sort());
     const owners = await q<{ owner: string; n: number }>(
@@ -55,7 +55,7 @@ describe("pg-boss under the roles", () => {
 
   it("lets app_api send (also inside its own transaction), fetch and complete — and nothing more", async () => {
     await q(db, "set role app_api");
-    const boss = createJobs({ pglite: db.$client });
+    const boss = createJobs(jobTarget(db, "app_api"));
     boss.on("error", () => undefined);
     await boss.start();
     try {
@@ -89,7 +89,7 @@ describe("pg-boss under the roles", () => {
 
   it("lets app_jobs run maintenance (supervision)", async () => {
     await q(db, "set role app_jobs");
-    const boss = createJobs({ pglite: db.$client, mode: "maintenance" });
+    const boss = createJobs({ ...jobTarget(db, "app_jobs"), mode: "maintenance" });
     const errors: string[] = [];
     boss.on("error", (e) => errors.push((e as Error).message));
     await boss.start();

@@ -11,6 +11,8 @@ corepack pnpm --filter @synan/api dev        # http://127.0.0.1:5180, in-memory 
 corepack pnpm --filter @synan/api dev:pg     # same, on in-process PostgreSQL (PGlite) with @synan/db migrations
 corepack pnpm --filter @synan/api test       # unit + integration, in-memory store
 corepack pnpm --filter @synan/api test:pg    # the same suite on PGlite
+corepack pnpm test:realpg                    # (root) the db and API suites on a real PostgreSQL (pg:start first)
+corepack pnpm --filter @synan/api worker     # REPO=postgres: works every queue and runs the job schedules (DATABASE_JOBS_URL)
 corepack pnpm --filter @synan/api typecheck
 ```
 
@@ -46,9 +48,13 @@ the persistence boundary with `memory.ts` and `drizzle.ts` implementations.
 ## Background jobs
 
 One small interface (`src/lib/jobs.ts`) with two runners: in process (memory and PGlite backends,
-tests) and pg-boss (`src/lib/pgboss-jobs.ts`, `REPO=postgres`; this process only works queues, the
-maintenance process runs the schedules). Queue names are `@synan/db`'s `JOB_QUEUES`; handlers are
-registered in `src/jobs.ts`. The pg-boss path has not run against a real PostgreSQL server.
+tests) and pg-boss (`src/lib/pgboss-jobs.ts`, `REPO=postgres`). Every API process works the queues; the
+worker process (`src/worker.ts`, script `worker`, run exactly one) works them too and runs the pg-boss
+maintenance instance as the app_jobs login (`DATABASE_JOBS_URL`), which writes and fires the cron
+schedules of `JOB_SCHEDULES`. Queue names are `@synan/db`'s `JOB_QUEUES`; handlers are registered in
+`src/jobs.ts`. Verified on PostgreSQL 17: `test/realpg/jobs-effects-realpg.test.ts` runs every queue through
+pg-boss with its real effect (the purge drops the event's scan partition). Not yet: a record of each job's
+last success with an overdue alert, and API processes that only send (roadmap 5.3).
 
 ## Report exports
 

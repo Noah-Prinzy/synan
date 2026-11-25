@@ -1,0 +1,16 @@
+{
+  "$comment": "Passing tests per suite (scripts/run-suite.mjs), checked by scripts/test-counts.mjs on every change. Raise a number when tests are added (node scripts/test-counts.mjs update). Lower one only with a `reductions` entry giving the reason (update --reason); that change needs independent review (docs/07 §2.6). realpg-* are the whole db and API suites on a real PostgreSQL server (CI's service container, or locally `corepack pnpm test:realpg`). e2e counts Playwright tests that ended as expected (test.fail defect markers included) and runs with --grep-invert @a11y until fix/e2e-defects lands; CI checks it in its own, non-required job.",
+  "suites": {
+    "contracts": 21,
+    "db": 230,
+    "api-memory": 415,
+    "api-pglite": 415,
+    "scanner": 85,
+    "realpg-db": 242,
+    "realpg-api": 425,
+    "attendee": 108,
+    "admin": 130,
+    "e2e": 20
+  },
+  "reductions": []
+}

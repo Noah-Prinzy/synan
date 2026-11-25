@@ -1,4 +1,5 @@
 /** Credentials and their QR carriers (01 §5, 03 §2, D-05, D-12). */
+import { describeError } from "@synan/db";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { ContractError } from "@synan/contracts/errors";
@@ -267,7 +268,7 @@ export class CredentialService {
       const { code } = await this.sendEmailedQr(credential.id);
       return { credential, code };
     } catch (e) {
-      console.error("[mail] pass delivery failed:", e instanceof Error ? e.message : String(e));
+      console.error("[mail] pass delivery failed:", describeError(e));
       return { credential, code: null };
     }
   }

@@ -209,3 +209,33 @@ export async function verifyAllowlistJws(jws: string, kidBeside: string, keys: r
   }
   return checkAllowlistPayload(payload);
 }
+
+/**
+ * Tolerance before a list's `window_start`. The server starts a staff list's window when it issues
+ * it, and a device's corrected clock can trail the server's by a little, so a list fetched a moment
+ * ago is not refused as "not yet valid".
+ */
+export const ALLOWLIST_START_LEEWAY_MS = 60_000;
+
+/**
+ * How long past its `window_end` a list may still decide offline, as a stale list does (the lead's
+ * rule, 2026-11-24; to be written into docs/03 §4 and 01 §8, and the length confirmed by the owner).
+ */
+export const ALLOWLIST_END_GRACE_MS = 2 * 60 * 60_000;
+
+/**
+ * Where `nowMs` (server-corrected) falls in a verified list's signed validity window:
+ *   before  ahead of `window_start` (less the tolerance): decides nothing;
+ *   inside  from then until `window_end`: decides (stale after 15 minutes since issue, O-05);
+ *   grace   up to ALLOWLIST_END_GRACE_MS past `window_end`: still decides offline, shown as out of
+ *           date, like a stale list (fail open, alerts at sync);
+ *   ended   later than that: not trusted, the scanner has no list and refuses what it cannot check.
+ * Written as "must be inside", so a non-finite time or bound fails closed.
+ */
+export function allowlistWindow(payload: Pick<AllowlistPayload, "window_start" | "window_end">, nowMs: number): "before" | "inside" | "grace" | "ended" {
+  const start = Date.parse(payload.window_start);
+  const end = Date.parse(payload.window_end);
+  if (!(nowMs < end + ALLOWLIST_END_GRACE_MS)) return "ended";
+  if (!(nowMs >= start - ALLOWLIST_START_LEEWAY_MS)) return "before";
+  return nowMs < end ? "inside" : "grace";
+}

@@ -23,8 +23,31 @@ import { runMigrations } from "../src/migrate";
 import { createInvitation } from "../src/registration";
 import * as s from "../src/schema/index";
 import { createAttendee, insertUser, readAttendee } from "../src/secrets";
+import { pgErrorCode } from "../src/errors";
+import { REAL_PG } from "./helpers";
+
+/** The SQLSTATE and server message of the PostgreSQL error a promise rejects with (through Drizzle's wrapper). */
+async function sqlstate(p: Promise<unknown>): Promise<{ code: string | undefined; message: string }> {
+  try {
+    await p;
+  } catch (e) {
+    let pgErr: unknown = e;
+    for (let x: unknown = e; x; x = (x as { cause?: unknown }).cause) if ((x as { severity?: unknown }).severity) pgErr = x;
+    return { code: pgErrorCode(e), message: String((pgErr as Error).message) };
+  }
+  throw new Error("expected the statement to be refused, but it succeeded");
+}
+
+/** Refused for lack of privilege: SQLSTATE 42501, with the server's own reason. */
+async function denied(p: Promise<unknown>, reason: RegExp): Promise<void> {
+  const r = await sqlstate(p);
+  expect(r.code).toBe("42501");
+  expect(r.message).toMatch(reason);
+}
 
 const ADMIN = process.env.REAL_PG_ADMIN_URL;
+// In the realpg mode these checks must run: a missing server is a failure, not a skip.
+if (REAL_PG && !ADMIN) throw new Error("realpg mode: REAL_PG_ADMIN_URL is not set");
 const suffix = randomBytes(4).toString("hex");
 const dbName = `check_${suffix}`;
 const logins = { api: `api_${suffix}`, vault: `vault_${suffix}`, scan: `scan_${suffix}`, jobs: `jobs_${suffix}` };
@@ -89,8 +112,35 @@ describe.skipIf(!ADMIN)("real PostgreSQL", () => {
     await assertRoleSeparation(dbs);
     const cipher = await cipherP;
     const id = await createAttendee(dbs.db, cipher, { email: "real@example.test", full_name: "Real Person" }); // write-only
-    await expect(withVaultScope(dbs.db, "system", (tx) => tx.select().from(s.attendees))).rejects.toThrow(/permission denied/);
+    // Drizzle wraps the driver error ("Failed query: …"); the PostgreSQL error is its cause. Decide on the
+    // SQLSTATE: 42501 insufficient_privilege, on the table itself (USAGE on pii_vault is granted to app_api).
+    expect(await sqlstate(withVaultScope(dbs.db, "system", (tx) => tx.select().from(s.attendees)))).toEqual({ code: "42501", message: "permission denied for table attendees" });
     expect((await readAttendee(dbs.vault, cipher, id, "operator"))!.email).toBe("real@example.test");
+  });
+
+  it("a pool survives a connection the server ends, and logs it without credentials", async () => {
+    const seen: Error[] = [];
+    const p = createDb(urlFor(ADMIN!, logins.api), { max: 2, onIdleError: (e) => seen.push(e) });
+    const logged: string[] = [];
+    const orig = console.error;
+    console.error = (...a: unknown[]) => void logged.push(a.map(String).join(" "));
+    const q = createDb(urlFor(ADMIN!, logins.api), { max: 1 }); // the default listener: one redacted line
+    try {
+      for (const d of [p, q]) await d.$client.query(`select 1`);
+      // An administrator ends every session of the login (as a restart or failover would).
+      await admin.query(`select pg_terminate_backend(pid) from pg_stat_activity where usename = $1 and datname = $2`, [logins.api, dbName]);
+      for (let i = 0; i < 50 && (seen.length === 0 || logged.length === 0); i++) await new Promise((r) => setTimeout(r, 100));
+      expect(seen.map((e) => pgErrorCode(e))).toContain("57P01"); // admin_shutdown, delivered to the listener, not thrown
+      expect(logged.join("\n")).toMatch(/\[db\] idle connection failed: pg 57P01 FATAL/);
+      expect(logged.join("\n")).not.toContain(password);
+      // The pool opens a new connection on the next query.
+      expect((await p.$client.query(`select 2 as n`)).rows[0].n).toBe(2);
+      expect((await dbs.db.$client.query(`select 3 as n`)).rows[0].n).toBe(3); // the app's own pools too
+    } finally {
+      console.error = orig;
+      await p.$client.end();
+      await q.$client.end();
+    }
   });
 
   it("refresh rotation under concurrency: exactly one exchange wins, the rest are treated as reuse", async () => {
@@ -182,11 +232,59 @@ describe.skipIf(!ADMIN)("real PostgreSQL", () => {
       }).returning();
       others.push(e!.id);
     }
+    const parts = async () =>
+      (await owner.$client.query(`select count(*)::int n from pg_inherits where inhparent = 'public.scans'::regclass`)).rows[0].n as number;
+    const withNew = await parts();
     for (const id of others) await purgeEventMovementData(dbs.db, id, { force: true });
     stop = true;
     await writer;
+    expect(await parts()).toBe(withNew - others.length); // each purge dropped a real partition
     const n = await owner.$client.query(`select count(*)::int n from scans where event_id = $1`, [eventId]);
     expect(n.rows[0].n).toBeGreaterThanOrEqual(inserted);
+    expect(inserted).toBeGreaterThan(0);
+  });
+
+  it("scan idempotency: the same key raced over separate connections is stored once", async () => {
+    const idem = `race-${randomUUID()}`;
+    const results = await Promise.allSettled(
+      Array.from({ length: 10 }, () =>
+        dbs.scan.insert(s.scans).values({ event_id: eventId, checkpoint_id: checkpointId, result: "unknown_token", occurred_at: new Date(), idem_key: idem })),
+    );
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    for (const r of results) {
+      if (r.status === "rejected") expect(pgErrorCode(r.reason)).toBe("23505"); // unique_violation
+    }
+    const n = await owner.$client.query(`select count(*)::int n from scans where event_id = $1 and idem_key = $2`, [eventId, idem]);
+    expect(n.rows[0].n).toBe(1);
+  });
+
+  it("row-level security, grants and extension privileges as seen from each login", async () => {
+    const raw = async (d: Db, text: string) => (await d.$client.query(text)).rows;
+    // No application login is privileged.
+    const flags = await raw(owner, `select rolname, rolsuper, rolbypassrls, rolcreaterole, rolcreatedb from pg_roles where rolname in ('${Object.values(logins).join("','")}')`);
+    expect(flags).toHaveLength(4);
+    for (const f of flags) expect([f.rolsuper, f.rolbypassrls, f.rolcreaterole, f.rolcreatedb]).toEqual([false, false, false, false]);
+    // app_api: operational tables, never identity or the ephemeral mapping; no DDL; cannot become another role.
+    expect(await raw(dbs.db, `select count(*)::int n from events`)).toEqual([{ n: expect.any(Number) }]);
+    await denied(raw(dbs.db, `select * from pii_vault.ephemeral_ids`), /permission denied for table ephemeral_ids/);
+    await denied(raw(dbs.db, `create table public.intruder (x int)`), /permission denied for schema public/);
+    await denied(raw(dbs.db, `create extension if not exists pg_trgm`), /permission denied/);
+    await denied(raw(dbs.db, `set role app_vault`), /permission denied to set role/);
+    await denied(raw(dbs.db, `alter table scans disable row level security`), /must be owner/);
+    // app_vault: identity in a scope only, nothing operational.
+    await denied(raw(dbs.vault, `select * from events`), /permission denied for table events/);
+    expect(await raw(dbs.vault, `select count(*)::int n from pii_vault.attendees`)).toEqual([{ n: 0 }]); // no scope: RLS hides all
+    const scoped = await withVaultScope(dbs.vault, "system", (tx) => tx.select().from(s.attendees));
+    expect(scoped.length).toBeGreaterThan(0);
+    // app_scan: the mapping inside the scan scope only, never identity.
+    await denied(raw(dbs.scan, `select * from pii_vault.attendees`), /permission denied for table attendees/);
+    expect(await raw(dbs.scan, `select count(*)::int n from pii_vault.ephemeral_ids`)).toEqual([{ n: 0 }]);
+    // The extension the exclusion constraint needs is installed, and owned by the migrating role.
+    const ext = await raw(owner, `select e.extname, r.rolname from pg_extension e join pg_roles r on r.oid = e.extowner where e.extname = 'btree_gist'`);
+    expect(ext).toHaveLength(1);
+    // The identity tables force RLS even for their owner.
+    const forced = await raw(owner, `select relname from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'pii_vault' and c.relkind = 'r' and not c.relforcerowsecurity`);
+    expect(forced).toEqual([]);
   });
 
   it("pg-boss over node-postgres: app_api works jobs, app_jobs supervises", async () => {
@@ -203,6 +301,57 @@ describe.skipIf(!ADMIN)("real PostgreSQL", () => {
     } finally {
       await worker.stop({ graceful: false } as never);
       await maint.stop({ graceful: false } as never);
+    }
+  });
+});
+
+/**
+ * The managed-service case: the migrating role is NOT a superuser, only CREATEROLE + CREATEDB, owning
+ * its database. On PostgreSQL 16+ granting a role needs ADMIN OPTION on it, even when the membership
+ * already exists (0005 runs `GRANT app_api TO app_scan`). A role gets ADMIN OPTION on the roles it
+ * creates itself, so on a fresh server the migrating role is enough; where app_api, app_scan,
+ * app_vault and app_jobs already exist (created by someone else, as on this shared test server), it
+ * must be given ADMIN OPTION on them first. That is what this test does.
+ */
+describe.skipIf(!ADMIN)("real PostgreSQL: a non-superuser migrating role", () => {
+  const migr = `migr_${suffix}`;
+  const db2 = `mig_${suffix}`;
+  let admin: pg.Client;
+  beforeAll(async () => {
+    admin = new pg.Client({ connectionString: ADMIN });
+    await admin.connect();
+    await admin.query(`create role ${migr} login password '${password}' createrole createdb`);
+    await admin.query(`grant app_api, app_scan, app_vault, app_jobs to ${migr} with admin option`);
+    await admin.query(`create database ${db2} owner ${migr}`);
+  });
+  afterAll(async () => {
+    if (!admin) return;
+    await admin.query(`drop database if exists ${db2} with (force)`);
+    // Memberships it granted (recorded with it as grantor) go before the role can.
+    const g = await admin.query<{ role: string; member: string }>(
+      `select r.rolname role, m.rolname member from pg_auth_members a join pg_roles r on r.oid = a.roleid join pg_roles m on m.oid = a.member
+        where a.grantor = (select oid from pg_roles where rolname = $1)`, [migr]);
+    for (const x of g.rows) await admin.query(`revoke "${x.role}" from "${x.member}" granted by ${migr}`).catch(() => undefined);
+    await admin.query(`drop role if exists ${migr}`);
+    await admin.end();
+  });
+
+  it("applies every migration, creates btree_gist, and installs the job schema for app_jobs", async () => {
+    const u = new URL(ADMIN!);
+    u.username = migr;
+    u.password = password;
+    u.pathname = `/${db2}`;
+    await runMigrations(u.toString());
+    const c = new pg.Client({ connectionString: u.toString() });
+    await c.connect();
+    try {
+      const { JOURNAL_ENTRIES } = await import("./helpers");
+      expect((await c.query(`select count(*)::int n from drizzle.__drizzle_migrations`)).rows[0].n).toBe(JOURNAL_ENTRIES);
+      expect((await c.query(`select rolsuper from pg_roles where rolname = current_user`)).rows[0].rolsuper).toBe(false);
+      expect((await c.query(`select count(*)::int n from pg_extension where extname = 'btree_gist'`)).rows[0].n).toBe(1);
+      expect((await c.query(`select pg_get_userbyid(nspowner) o from pg_namespace where nspname = 'pgboss'`)).rows[0].o).toBe("app_jobs");
+    } finally {
+      await c.end();
     }
   });
 });

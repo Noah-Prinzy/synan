@@ -7,7 +7,11 @@ import { useEffect, useState } from "react";
 import { SCAN_RESULT_COPY } from "@synan/contracts/copy";
 import { ResultChip } from "@synan/ui/data";
 import { ActionButton } from "@synan/ui/components";
-import { undo, undoDeadline, useScanner } from "../data/store";
+import { tierLabel } from "../components/verdict";
+import { undo, undoDeadline, useScanner, type Scan } from "../data/store";
+
+/** Who the scan was for, as far as the device knows: the name (mock), else the tier; null when neither. */
+const holder = (scan: Scan): string | null => scan.name ?? (scan.tier ? tierLabel[scan.tier] : null);
 
 function time(ms: number): string {
   return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
@@ -50,9 +54,13 @@ export default function Recent() {
                     <ResultChip result={scan.result} className="text-12" />
                     {scan.undone ? <span className="text-13 text-muted-foreground">Undone</span> : null}
                   </p>
+                  {/* No name on the real API (the outcome names nobody, 03 §5): the tier, else the identifier alone. */}
                   <p className="mt-1 truncate text-15">
-                    {scan.name ?? <span className="text-muted-foreground">Unknown</span>}
-                    <span className="font-mono text-13 text-muted-foreground"> · {scan.identifier}</span>
+                    {holder(scan)}
+                    <span className="font-mono text-13 text-muted-foreground">
+                      {holder(scan) ? " · " : ""}
+                      {scan.identifier}
+                    </span>
                   </p>
                 </div>
                 <div className="shrink-0 text-right">

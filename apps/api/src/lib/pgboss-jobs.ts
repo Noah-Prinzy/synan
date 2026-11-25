@@ -1,13 +1,14 @@
 /**
- * Jobs on pg-boss (D-17), for the PostgreSQL backend. This process is a worker: it works the queues
- * (as app_api) and sends `kick`s; the one maintenance process per deployment (createJobs mode
- * "maintenance", member of app_jobs) supervises and runs the cron schedules (scheduleDefaultJobs).
- * Handlers are the same idempotent functions the in-process runner uses.
+ * Jobs on pg-boss (D-17), for the PostgreSQL backend. Every API process is a worker: it works the
+ * queues (as app_api) and sends `kick`s. The worker process (src/worker.ts) is a worker too, and also
+ * runs the one maintenance instance per deployment (startJobMaintenance, a login in app_jobs), which
+ * supervises pg-boss and fires the cron schedules (scheduleDefaultJobs). Handlers are the same
+ * idempotent functions the in-process runner uses.
  *
- * NOT VERIFIED: there is no PostgreSQL server on the development machine; this path typechecks but
- * has not run. The in-process runner is what the test suites exercise.
+ * Verified on PostgreSQL 17 (test/realpg/jobs-effects-realpg.test.ts): every registered queue is worked
+ * through pg-boss as app_api, and the schedules are written and fired by the app_jobs login.
  */
-import { enqueueInTransaction, type createJobs, type JobQueue } from "@synan/db";
+import { createJobs, describeError, enqueueInTransaction, scheduleDefaultJobs, type JobQueue } from "@synan/db";
 import type { TxScope } from "../repo/types.js";
 import type { JobDef, Jobs } from "./jobs.js";
 
@@ -16,6 +17,8 @@ type Boss = ReturnType<typeof createJobs>;
 export class PgBossJobs implements Jobs {
   private defs = new Map<string, JobDef>();
   private started = false;
+  /** Resolves once pg-boss has started and every registered queue has a worker. */
+  ready: Promise<void> = Promise.resolve();
 
   constructor(private readonly boss: Boss) {}
 
@@ -28,7 +31,7 @@ export class PgBossJobs implements Jobs {
     // One pending kick per queue is enough: the handler drains everything that is due.
     void (this.boss as unknown as { send(n: string, d: object, o: object): Promise<unknown> })
       .send(name, {}, { singletonKey: name, singletonSeconds: 2 })
-      .catch((e: unknown) => console.error(`[jobs] kick ${name} failed:`, e instanceof Error ? e.message : String(e)));
+      .catch((e: unknown) => console.error(`[jobs] kick ${name} failed:`, describeError(e)));
   }
 
   /**
@@ -60,8 +63,8 @@ export class PgBossJobs implements Jobs {
       work(n: string, f: (jobs: Job[]) => Promise<unknown>): Promise<unknown>;
       on(e: string, f: (e: unknown) => void): void;
     };
-    boss.on("error", (e) => console.error("[jobs] pg-boss:", e instanceof Error ? e.message : String(e)));
-    void boss
+    boss.on("error", (e) => console.error("[jobs] pg-boss:", describeError(e)));
+    this.ready = boss
       .start()
       .then(async () => {
         // A queued item carries its payload (ids only); cron runs and kicks carry none and drain what is due.
@@ -71,14 +74,39 @@ export class PgBossJobs implements Jobs {
             .work(d.name, async (jobs) => {
               for (const j of jobs) await d.run(j.data && Object.keys(j.data).length ? j.data : undefined);
             })
-            .catch((e: unknown) => console.error(`[jobs] cannot work ${d.name}:`, e instanceof Error ? e.message : String(e)));
+            .catch((e: unknown) => console.error(`[jobs] cannot work ${d.name}:`, describeError(e)));
         }
       })
-      .catch((e: unknown) => console.error("[jobs] pg-boss start failed:", e instanceof Error ? e.message : String(e)));
+      .catch((e: unknown) => console.error("[jobs] pg-boss start failed:", describeError(e)));
   }
 
   async stop() {
     this.started = false;
+    await this.ready;
     await (this.boss as unknown as { stop(o: object): Promise<unknown> }).stop({ graceful: true, wait: true });
   }
+}
+
+export interface JobMaintenance {
+  boss: Boss;
+  stop(): Promise<void>;
+}
+
+/**
+ * The deployment's one pg-boss maintenance instance: supervision (expiry, retention, pg-boss's own
+ * partitions) and the cron schedules of @synan/db JOB_SCHEDULES, written on start (idempotent: a
+ * second run replaces them). `connectionString` is a login in app_jobs (and app_api). More than one
+ * running is harmless (pg-boss elects one cron pass per minute) but pointless.
+ */
+export async function startJobMaintenance(connectionString: string, options?: Record<string, unknown>): Promise<JobMaintenance> {
+  const boss = createJobs({ connectionString, mode: "maintenance", options });
+  boss.on("error", (e: unknown) => console.error("[jobs] maintenance:", describeError(e)));
+  await boss.start();
+  try {
+    await scheduleDefaultJobs(boss);
+  } catch (e) {
+    await boss.stop({ graceful: false, wait: true } as never);
+    throw e;
+  }
+  return { boss, stop: () => boss.stop({ graceful: true, wait: true } as never) as Promise<void> };
 }

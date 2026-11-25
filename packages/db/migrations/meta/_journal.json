@@ -253,6 +253,13 @@
       "when": 1795509706840,
       "tag": "0035_band_hint",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1795524606538,
+      "tag": "0036_carriers_lookup_index",
+      "breakpoints": true
     }
   ]
 }

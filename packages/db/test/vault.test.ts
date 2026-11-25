@@ -21,8 +21,10 @@ beforeAll(async () => {
   v = await miniVenue(db);
   alice = await attendeeWithCredential(db, v.eventId);
   bob = await attendeeWithCredential(db, v.eventId);
+  // Roles belong to the whole server, not one database: on a real server another test database may
+  // have created app_user already.
   await db.$client.exec(`
-    create role app_user nologin;
+    do $$ begin if not exists (select 1 from pg_roles where rolname = 'app_user') then create role app_user nologin; end if; end $$;
     grant usage on schema public, pii_vault to app_user;
     grant select, insert, update, delete on all tables in schema public, pii_vault to app_user;
     grant usage on all sequences in schema public to app_user;

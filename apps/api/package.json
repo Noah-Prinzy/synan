@@ -7,10 +7,13 @@
   "scripts": {
     "dev": "tsx watch src/main.ts --seed=dev",
     "start": "tsx src/main.ts",
+    "worker": "tsx src/worker.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:pg": "vitest run --mode pglite",
+    "test:realpg": "vitest run --mode realpg",
     "secrets:maintain": "tsx src/tasks/secrets.ts",
+    "seed:load": "tsx src/tasks/seed-load.ts",
     "dev:pg": "tsx watch src/main.ts --repo=pglite --seed=dev"
   },
   "dependencies": {

@@ -9,7 +9,11 @@
  *   ahead of expiry, and once more if the server refuses one that looked fresh. Refresh tokens are
  *   single-use, so refreshes (and step-ups, which replace the session family) run one at a time
  *   across tabs under a Web Lock; a tab that waited reuses the pair another tab stored. A refused
- *   refresh ends the session (`onSignedOut`).
+ *   refresh ends the session (`onSignedOut`). A refresh whose answer is lost (venue Wi-Fi) is sent
+ *   again at once with the SAME token: the server re-issues a rotated token to the same client within
+ *   its 10-second reuse grace and reads anything later as theft, so the refresh has a short timeout
+ *   and one quick retry, both inside the grace (as the scanner's refreshWithRetry). No answer twice
+ *   keeps the session.
  * - MFA step-up (03 §3: 15 minutes, privileged actions): when a call answers MFA_REQUIRED and a
  *   step-up handler is registered, the handler receives a typed `StepUpRequest` (which call, which
  *   attempt, why the last code failed), answers with a code or a cancel, and the original call is
@@ -108,6 +112,13 @@ const EXPIRY_MARGIN_MS = 30_000;
 /** A wrong code may be re-entered this many times per prompt (the server allows 5 per 15 minutes). */
 export const STEP_UP_ATTEMPTS = 3;
 const LOCK_NAME = "synan.admin.auth";
+/**
+ * A refresh waits at most this long, then the SAME token is sent once more after
+ * REFRESH_RETRY_DELAY_MS: both attempts fit inside the server's 10-second reuse grace (4 + 0.5 + 4 s),
+ * where a later retry would read as reuse and end the session. As the scanner (apps/scanner config.ts).
+ */
+export const REFRESH_TIMEOUT_MS = 4000;
+export const REFRESH_RETRY_DELAY_MS = 500;
 
 function defaultLock<T>(name: string, task: () => Promise<T>): Promise<T> {
   const locks = (globalThis as { navigator?: { locks?: LockManager } }).navigator?.locks;
@@ -169,7 +180,7 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
   };
 
   /** One HTTP exchange, no token logic. Throws ApiFailure; returns the validated response. */
-  async function send<K extends EndpointName>(name: K, input: CallInput<K>, token: string | null, signal?: AbortSignal): Promise<CallResult<K>> {
+  async function send<K extends EndpointName>(name: K, input: CallInput<K>, token: string | null, signal?: AbortSignal, waitMs = timeoutMs): Promise<CallResult<K>> {
     const def = endpoints[name] as EndpointDef;
     const params = checked(def.params, input.params ?? {}, "params") as Record<string, unknown>;
     // The query is checked against its schema, but sent as the caller wrote it: a schema may transform
@@ -189,7 +200,7 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     }
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timer = setTimeout(() => controller.abort(), waitMs);
     const onAbort = () => controller.abort();
     signal?.addEventListener("abort", onAbort);
     let response: Response;
@@ -234,6 +245,22 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     return result.data as CallResult<K>;
   }
 
+  /**
+   * POST /auth/refresh with one retry of the SAME token when no answer came back (no answer, timeout,
+   * 5xx): the server may have rotated it and lost the answer, and re-issues to the same client within
+   * 10 seconds. A refusal (4xx) is never retried.
+   */
+  async function refreshWithRetry(token: string): Promise<TokenPair> {
+    const exchange = () => send("refresh", { body: { refresh_token: token } }, null, undefined, REFRESH_TIMEOUT_MS) as Promise<TokenPair>;
+    try {
+      return await exchange();
+    } catch (error) {
+      if (!(error instanceof ApiFailure && (error.kind === "network" || error.status >= 500))) throw error;
+      await new Promise((resolve) => setTimeout(resolve, REFRESH_RETRY_DELAY_MS));
+      return exchange();
+    }
+  }
+
   /** Exchange the refresh token, once per browser at a time. Resolves with the stored session. */
   function refresh(stale: OperatorSession): Promise<OperatorSession> {
     refreshing ??= lock(LOCK_NAME, async () => {
@@ -242,7 +269,7 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       // Another tab refreshed (or stepped up) while this one waited: use its pair.
       if (current.refresh_token !== stale.refresh_token && fresh(current)) return current;
       try {
-        const pair = (await send("refresh", { body: { refresh_token: current.refresh_token } }, null)) as TokenPair;
+        const pair = await refreshWithRetry(current.refresh_token);
         return session.save(pair, "refresh");
       } catch (error) {
         if (error instanceof ApiFailure && error.kind === "http" && (error.status === 401 || error.status === 400)) {

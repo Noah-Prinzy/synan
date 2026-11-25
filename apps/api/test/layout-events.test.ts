@@ -4,7 +4,7 @@ import type { AccessRule, Checkpoint, EventAdmin, EventSummary, Room, ScanBatchR
 import { createApp } from "../src/app.js";
 import { hashPassword } from "../src/lib/crypto.js";
 import { ManualClock } from "../src/lib/clock.js";
-import { band, devEmail, errCode, mfaCode, postScans, REPO_UNDER_TEST, scan, startHarness, addAttendee, type Harness } from "./helpers.js";
+import { band, devEmail, errCode, mfaCode, postScans, backend, scan, startHarness, addAttendee, type Harness } from "./helpers.js";
 
 let h: Harness;
 let admin: string;
@@ -20,7 +20,8 @@ const auditActions = async () => (await h.app.ctx.repos.audit.all()).map((a) => 
 
 describe("slice 1 · first-run setup", () => {
   it("creates the single organisation once; a venue before it is refused", async () => {
-    const app = await createApp({ clock: new ManualClock(Date.now()), seed: false, config: { repo: REPO_UNDER_TEST } });
+    const be = await backend();
+    const app = await createApp({ clock: new ManualClock(Date.now()), seed: false, config: be.config, ...(be.jobs ? { jobs: be.jobs } : {}) });
     try {
       const base = await app.listen(0, "127.0.0.1");
       const id = "7a000000-0000-4000-8000-000000000001";
@@ -38,6 +39,7 @@ describe("slice 1 · first-run setup", () => {
       expect((await call("POST", "/venues", venue, tok)).status).toBe(201);
     } finally {
       await app.close();
+      await be.release();
     }
   });
 });

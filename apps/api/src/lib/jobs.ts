@@ -7,6 +7,7 @@
  * InProcessJobs runs handlers in this process on timers. It is used by the memory backend and in
  * tests; a pg-boss implementation shares the same handlers.
  */
+import { describeError } from "@synan/db";
 import type { TxScope } from "../repo/types.js";
 
 export interface JobDef {
@@ -73,7 +74,7 @@ export class InProcessJobs implements Jobs {
     if (!p) {
       p = def
         .run()
-        .then(() => undefined, (e: unknown) => console.error(`[jobs] ${name} failed:`, e instanceof Error ? e.message : String(e)))
+        .then(() => undefined, (e: unknown) => console.error(`[jobs] ${name} failed:`, describeError(e)))
         .finally(() => {
           this.running.delete(name);
           if (this.again.delete(name)) this.kick(name);
