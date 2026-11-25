@@ -21,7 +21,7 @@ import { endpoints } from "@synan/contracts/rest";
 import type { AppContext } from "../app.js";
 import { BRAND } from "../brand.js";
 import { currentAssignments, deskEventIds, noteScanner } from "../domain/scope.js";
-import { mount } from "../http/route.js";
+import { ipBucketKey, mount } from "../http/route.js";
 import { hashPassword, newTotpSecret, verifyTotp } from "../lib/crypto.js";
 import type { InviteStatus, StaffAssignmentRow, UserRow } from "../repo/types.js";
 import type { Config } from "../config.js";
@@ -59,7 +59,7 @@ export function inviteMail(config: Pick<Config, "adminAppUrl" | "scannerAppUrl">
   };
 }
 
-const activationRefused = (status: InviteStatus | "valid" | "consumed") =>
+const activationRefused = (status: InviteStatus | "valid" | "activated") =>
   status === "expired"
     ? new ContractError("LINK_EXPIRED", "This activation link has expired. Ask an admin to send you a new invitation.")
     : new ContractError("LINK_INVALID", "This activation link is not valid, or was already used. Ask an admin to send you a new invitation.");
@@ -98,36 +98,51 @@ export function staffRoutes(x: Express, app: AppContext) {
   });
 
   mount(x, app, endpoints.inviteStaff, async ({ body, ctx }) => {
-    const existing = await app.repos.users.byEmail(body.email);
-    // An account that was invited but never activated may be invited again (the earlier links stop
-    // working); an activated one may not: this is no way to reset someone's password.
-    if (existing && existing.password_hash !== "") throw new ContractError("CONFLICT", "A user with this address already exists.");
-    const user: UserRow = existing
-      ? { ...existing, role: body.role }
-      : { id: randomUUID(), email: body.email, password_hash: "", role: body.role, mfa_enrolled_at: null, mfa_secret: null, display_name: body.display_name?.trim() || null };
-    // The account, its activation token and the email are one unit of work.
-    await app.repos.transaction(async (s) => {
-      if (!existing) await s.repos.users.insert(user);
-      else if (existing.role !== user.role) await s.repos.users.setRole(user.id, user.role);
-      const token = await s.repos.userInvites.create({ userId: user.id, createdBy: ctx!.sub, now: new Date(app.clock.now()) });
+    // The account, its activation token and the email are one unit of work. An existing account is
+    // re-read under a row lock (the activation takes the same lock), so the decision below cannot be
+    // overtaken by the invitee activating meanwhile.
+    const { user, reinvite } = await app.repos.transaction(async (s) => {
+      const now = new Date(app.clock.now());
+      const found = await s.repos.users.byEmail(body.email);
+      const existing = found ? await s.repos.users.lockForUpdate(found.id) : null;
+      let user: UserRow;
+      if (existing) {
+        // Only a pending invitation may be sent again: invited, and no password ever set. An activated
+        // account is never re-invited (that would be a password reset by email); a passwordless account
+        // that was never invited (a speaker or crew record) is not pending either.
+        if (existing.password_hash !== "" || !existing.invited_at) throw new ContractError("CONFLICT", "A user with this address already exists.");
+        // A new invitation never changes the role: that is PATCH /staff/:id (second factor, reason, audited).
+        if (existing.role !== body.role) {
+          throw new ContractError("CONFLICT", `This person was invited as ${existing.role}. Change the role with PATCH /staff/:id first, then send the invitation again.`);
+        }
+        user = existing;
+      } else {
+        user = {
+          id: randomUUID(), email: body.email, password_hash: "", role: body.role, mfa_enrolled_at: null, mfa_secret: null,
+          display_name: body.display_name?.trim() || null, invited_at: now,
+        };
+        await s.repos.users.insert(user);
+      }
+      const token = await s.repos.userInvites.create({ userId: user.id, createdBy: ctx!.sub, now });
       await app.mail.send({ to: body.email, tag: "staff.invite", ...inviteMail(app.config, user.role, token) }, s);
+      return { user, reinvite: !!existing };
     });
-    await audit(ctx!.sub, "staff.invite", `user:${user.id}`, {
-      role: user.role,
-      ...(existing ? { reinvite: true, ...(existing.role !== user.role ? { from_role: existing.role } : {}) } : {}),
-    });
+    await audit(ctx!.sub, "staff.invite", `user:${user.id}`, { role: user.role, ...(reinvite ? { reinvite: true } : {}) });
     return staffDto(user);
   });
 
-  // Public, behind the `auth` rate limit (per address, failures only, like sign-in). The token is the
-  // only input: neither call takes or answers an email address, so neither says whether an account exists.
+  // Public, behind the `auth` rate limit: one per-address bucket shared by check and activate (route.ts
+  // ipBucketKey), counting failures only, like sign-in. The token is the only input: neither call takes
+  // or answers an email address, so neither says whether an account exists.
   mount(x, app, endpoints.checkActivation, async ({ body, ip }) => {
     const r = await app.repos.userInvites.peek(body.token, new Date(app.clock.now()));
     if (r.status !== "valid") {
       // A link that cannot be used answers 200 with its state, but counts as a failed attempt, so the
-      // check is no unlimited oracle for guessed tokens (the same bucket the route checks before calling).
-      app.rateLimiter.hit(`ip:${ip}:${endpoints.checkActivation.path}`, app.config.rateLimits.authPerMin, 60_000);
-      return { state: r.status === "expired" ? ("expired" as const) : r.status === "already_used" ? ("used" as const) : ("invalid" as const) };
+      // check is no unlimited oracle for guessed tokens (the bucket the route checks before calling).
+      app.rateLimiter.hit(ipBucketKey(ip, endpoints.checkActivation.path), app.config.rateLimits.authPerMin, 60_000);
+      // A live link to an account that already has a password reads as used: it cannot set one.
+      const used = r.status === "already_used" || r.status === "account_active";
+      return { state: r.status === "expired" ? ("expired" as const) : used ? ("used" as const) : ("invalid" as const) };
     }
     const u = r.userId ? await app.repos.users.byId(r.userId) : null;
     if (!u || !r.expiresAt) return { state: "invalid" as const };
@@ -135,17 +150,15 @@ export function staffRoutes(x: Express, app: AppContext) {
   });
 
   mount(x, app, endpoints.activateStaff, async ({ body }) => {
-    // Refuse a dead link before the (deliberately slow) password hash, then spend the link and set the
-    // password in one unit of work: a failure leaves the link usable, and a link works exactly once.
+    // Refuse a dead link before the (deliberately slow) password hash. Then one step at the point of use
+    // (user_invite_activate): the password is set only on an account that has none, and the link is
+    // spent only then, so whatever the callers do, a link never replaces a password and works once.
     const peek = await app.repos.userInvites.peek(body.token, new Date(app.clock.now()));
     if (peek.status !== "valid") throw activationRefused(peek.status);
     const hash = await hashPassword(body.password);
-    const userId = await app.repos.transaction(async (s) => {
-      const r = await s.repos.userInvites.consume(body.token, new Date(app.clock.now()));
-      if (r.status !== "consumed" || !r.userId) throw activationRefused(r.status);
-      await s.repos.users.setPassword(r.userId, hash);
-      return r.userId;
-    });
+    const r = await app.repos.userInvites.activate(body.token, hash, new Date(app.clock.now()));
+    if (r.status !== "activated" || !r.userId) throw activationRefused(r.status);
+    const userId = r.userId;
     await app.audit.append({ actorId: userId, action: "staff.activate", target: `user:${userId}`, meta: {} });
     return { ok: true as const };
   });

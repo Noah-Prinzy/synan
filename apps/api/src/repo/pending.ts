@@ -39,12 +39,16 @@ export function inProcessDeskCodes(carrierByIdentifier: (h: string) => CarrierRo
   };
 }
 
-/** Mirrors @synan/db user_invite_create / user_invite_consume / peekUserInvite (only hashes are kept). */
-export function inProcessUserInvites(): UserInvitesRepo {
+/**
+ * Mirrors @synan/db user_invite_create / user_invite_consume / peekUserInvite / user_invite_activate
+ * (only hashes are kept). `users` reaches the account's password, as the SQL functions join `users`.
+ */
+export function inProcessUserInvites(users: { passwordOf(id: string): string | null; setPassword(id: string, hash: string): void }): UserInvitesRepo {
   const byHash = new Map<string, { userId: string; expiresAt: Date; used: boolean; revoked: boolean }>();
   const h = (t: string) => createHash("sha256").update(t).digest("base64url");
   const statusOf = (v: { expiresAt: Date; used: boolean; revoked: boolean } | undefined, now: Date) =>
     !v ? "invalid" : v.used ? "already_used" : v.revoked ? "revoked" : v.expiresAt.getTime() <= now.getTime() ? "expired" : "valid";
+  const accountActive = (userId: string) => (users.passwordOf(userId) ?? "") !== "";
   return {
     async create({ userId, now }) {
       // Older open invites for the user are revoked (kept, so their link reads as replaced, not unknown).
@@ -62,7 +66,19 @@ export function inProcessUserInvites(): UserInvitesRepo {
     },
     async peek(token, now) {
       const v = byHash.get(h(token));
-      return { status: statusOf(v, now), userId: v?.userId ?? null, expiresAt: v?.expiresAt ?? null };
+      const s = statusOf(v, now);
+      return { status: s === "valid" && accountActive(v!.userId) ? "account_active" : s, userId: v?.userId ?? null, expiresAt: v?.expiresAt ?? null };
+    },
+    // One synchronous step, as the SQL function is one statement: the password only where none is
+    // set, and the token spent only then.
+    async activate(token, passwordHash, now) {
+      const v = byHash.get(h(token));
+      const s = statusOf(v, now);
+      if (s !== "valid") return { status: s, userId: v?.userId ?? null };
+      if (accountActive(v!.userId)) return { status: "account_active", userId: v!.userId };
+      users.setPassword(v!.userId, passwordHash);
+      v!.used = true;
+      return { status: "activated", userId: v!.userId };
     },
   };
 }

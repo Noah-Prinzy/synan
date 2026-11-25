@@ -46,6 +46,8 @@ export interface UserRow {
   mfa_secret: string | null;
   /** users.display_name; null (or absent) when none was given. */
   display_name?: string | null;
+  /** First staff invitation (0037). Pending = invited and no password yet; null = never invited. */
+  invited_at?: Date | null;
 }
 
 export interface AttendeeRow {
@@ -419,6 +421,8 @@ export interface UsersRepo {
   list(opts: { after?: string; limit: number }): Promise<UserRow[]>;
   setPassword(id: string, passwordHash: string): Promise<void>;
   setRole(id: string, role: Role): Promise<void>;
+  /** The user, its row locked for the rest of the unit of work (SQL: SELECT … FOR UPDATE; call inside a transaction). */
+  lockForUpdate(id: string): Promise<UserRow | null>;
   /** Pending MFA enrolment, held encrypted on the user (SQL: @synan/db startMfaEnrolment and friends). */
   startMfaEnrolment(id: string, secret: string, now: Date): Promise<void>;
   readPendingMfaSecret(id: string, now: Date): Promise<string | null>;
@@ -778,10 +782,18 @@ export interface UserInvitesRepo {
    * unexpired; otherwise why not (SQL: @synan/db consumeUserInvite).
    */
   consume(token: string, now: Date): Promise<{ status: InviteStatus | "consumed"; userId: string | null }>;
-  /** The token's state without spending it (`valid` = consume would succeed now). SQL: peekUserInvite. */
+  /**
+   * The token's state without spending it (`valid` = activate would succeed now; `account_active`: a
+   * password is already set on the account). SQL: peekUserInvite.
+   */
   peek(token: string, now: Date): Promise<{ status: InviteStatus | "valid"; userId: string | null; expiresAt: Date | null }>;
+  /**
+   * Sets the password and spends the token, in one step, only on an account with no password; on any
+   * other status nothing is written (SQL: user_invite_activate, migration 0037).
+   */
+  activate(token: string, passwordHash: string, now: Date): Promise<{ status: InviteStatus | "activated"; userId: string | null }>;
 }
-export type InviteStatus = "invalid" | "expired" | "already_used" | "revoked";
+export type InviteStatus = "invalid" | "expired" | "already_used" | "revoked" | "account_active";
 
 export interface Repos {
   users: UsersRepo;

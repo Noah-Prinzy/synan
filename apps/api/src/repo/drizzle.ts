@@ -81,6 +81,7 @@ import {
   createUserInvite,
   consumeUserInvite,
   peekUserInvite,
+  activateUserInvite,
   startMfaEnrolment,
   readPendingMfaSecret,
   confirmMfaEnrolment,
@@ -384,6 +385,7 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
     mfa_enrolled_at: r.mfa_enrolled_at,
     mfa_secret: r.mfa_secret_enc == null ? null : cipher.decrypt(r.mfa_secret_enc, { table: "users", column: "mfa_secret_enc", rowId: r.id }),
     display_name: r.display_name ? r.display_name : null,
+    invited_at: r.invited_at ?? null,
   });
   /** A raw users row: decrypts the address once (legacy plaintext tolerated until enforcement). */
   const toUser = (raw: typeof users.$inferSelect): UserRow => fromDecrypted(decryptUserRow(cipher, raw));
@@ -417,6 +419,10 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       async peek(token, now) {
         const r = await peekUserInvite(db, token, now);
         return { status: r.status, userId: r.user_id, expiresAt: r.expires_at };
+      },
+      async activate(token, passwordHash, now) {
+        const r = await activateUserInvite(db, token, passwordHash, now);
+        return { status: r.status, userId: r.user_id };
       },
     },
     webhookDeliveries: {
@@ -631,7 +637,7 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       },
       async insert(r) {
         await insertUser(db, cipher, {
-          id: r.id, email: r.email, password_hash: r.password_hash, role: r.role, display_name: r.display_name ?? "",
+          id: r.id, email: r.email, password_hash: r.password_hash, role: r.role, display_name: r.display_name ?? "", invited_at: r.invited_at ?? null,
           mfa_enrolled_at: r.mfa_enrolled_at, mfa_secret_enc: r.mfa_secret ? encryptMfaSecret(cipher, r.id, r.mfa_secret) : null,
         });
       },
@@ -646,6 +652,9 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
       },
       async setRole(id, role) {
         await db.update(users).set({ role }).where(eq(users.id, id));
+      },
+      async lockForUpdate(id) {
+        return one((await db.select().from(users).where(eq(users.id, id)).limit(1).for("update")).map(toUser));
       },
       async startMfaEnrolment(id, secret, now) {
         await startMfaEnrolment(db, cipher, id, secret, { ttlMinutes: 10, now });

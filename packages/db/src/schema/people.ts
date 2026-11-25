@@ -24,6 +24,12 @@ export const users = pgTable(
     display_name: text("display_name").notNull().default(""),
     /** Null for staff without a console (speaker, crew) or not yet activated. */
     password_hash: text("password_hash"),
+    /**
+     * When the account was first invited to set a password (staff invitation, migration 0037). An
+     * invitation is pending exactly while this is set and no password is: a passwordless row that
+     * was never invited (a speaker or crew record, a fixture) is not pending and cannot be re-invited.
+     */
+    invited_at: tstz("invited_at"),
     role: userRole("role").notNull(),
     mfa_enrolled_at: tstz("mfa_enrolled_at"),
     /** Encrypted TOTP / WebAuthn material. Never plaintext. */

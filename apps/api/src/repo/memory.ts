@@ -296,7 +296,13 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
     exportedFiles: memoryExportedFiles(t, auditAppend),
     transaction: memoryTransaction(() => self, t.emails),
     deskCodes: inProcessDeskCodes((h) => [...t.carriers.values()].find((c) => c.kind === "nfc" && c.identifier === h && c.state !== "retired")),
-    userInvites: inProcessUserInvites(),
+    userInvites: inProcessUserInvites({
+      passwordOf: (id) => t.users.get(id)?.password_hash ?? null,
+      setPassword: (id, hash) => {
+        const u = t.users.get(id);
+        if (u) u.password_hash = hash;
+      },
+    }),
     webhookDeliveries: memoryWebhookDeliveries(t),
     devices: memoryDevices(t),
     reports: memoryReports(t, auditAppend),
@@ -374,6 +380,11 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       async setRole(id, role) {
         const u = t.users.get(id);
         if (u) u.role = role;
+      },
+      // One process, no interleaving inside a synchronous step: the read is the lock.
+      async lockForUpdate(id) {
+        const u = t.users.get(id);
+        return u ? clone(u) : null;
       },
       async startMfaEnrolment(id, secret, now) {
         t.mfaPending.set(id, { secret, expiresAt: new Date(now.getTime() + 10 * 60_000) });

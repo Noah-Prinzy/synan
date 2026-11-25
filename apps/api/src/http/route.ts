@@ -77,6 +77,20 @@ export async function authenticate(app: AppContext, req: Request, scanner?: { ch
   return ctx;
 }
 
+/**
+ * Paths that share one per-address bucket, so a limit holds across them rather than once per path: the
+ * two staff activation endpoints (checking a link and redeeming it) are one door for guessed tokens.
+ */
+const SHARED_IP_BUCKET: Readonly<Record<string, string>> = {
+  "/auth/activate": "staff-activation",
+  "/auth/activate/check": "staff-activation",
+};
+
+/** The per-address rate-limit key for a path (handlers that charge a failure themselves use it too). */
+export function ipBucketKey(ip: string, path: string): string {
+  return `ip:${ip}:${SHARED_IP_BUCKET[path] ?? path}`;
+}
+
 export function mount<E extends EndpointDef>(express: Express, app: AppContext, def: E, handler: Handler<E>) {
   const method = def.method.toLowerCase() as "get" | "post" | "put" | "patch" | "delete";
   const path = API_BASE_PATH + def.path;
@@ -84,7 +98,7 @@ export function mount<E extends EndpointDef>(express: Express, app: AppContext, 
   express[method](path, async (req: Request, res: Response, next: NextFunction) => {
     const ip = req.ip ?? req.socket.remoteAddress ?? "unknown";
     const limits = app.config.rateLimits;
-    const ipKey = def.rateLimit === "scan" ? `ip:${ip}:scan` : `ip:${ip}:${def.path}`;
+    const ipKey = def.rateLimit === "scan" ? `ip:${ip}:scan` : ipBucketKey(ip, def.path);
     const ipLimit = def.rateLimit === "scan" ? limits.scanPerMin * 2 : limits.authPerMin;
     let chargeIpOnFailure = false;
     try {

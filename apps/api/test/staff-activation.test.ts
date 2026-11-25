@@ -3,6 +3,7 @@
  * token in the fragment; the link can be checked without spending it; it sets a password once, for
  * 72 hours; and nothing in these public calls names an account or says whether one exists.
  */
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Role } from "@synan/contracts/enums";
 import type { ActivationCheck } from "@synan/contracts/rest";
@@ -103,19 +104,60 @@ describe("activation", () => {
     expect(errCode((await activate(token, "twelve chars and more")).body)).toBe("LINK_EXPIRED");
   });
 
-  it("an admin's new invitation replaces the earlier link (which then reads invalid), keeps one account, and may correct the role", async () => {
+  it("an admin's new invitation replaces the earlier link (which then reads invalid) and keeps one account", async () => {
     const first = await invite("security_staff");
     h.clock.advance(73 * H); // the first link has expired: the person asks for a new one
-    const again = await invite("supervisor", first.email);
+    const mark = h.mailer.outbox.length;
+    const again = await invite("security_staff", first.email);
     expect(again.id).toBe(first.id);
     expect(again.token).not.toBe(first.token);
-    expect(`${again.link.origin}${again.link.pathname}`).toBe(`${ADMIN_APP}/activate`); // the corrected role's app
+    expect(h.mailer.outbox.length).toBe(mark + 1);
     expect((await check(first.token)).body).toEqual({ state: "invalid" });
-    expect((await check(again.token)).body).toMatchObject({ state: "valid", role: "supervisor" });
+    expect((await check(again.token)).body).toMatchObject({ state: "valid", role: "security_staff" });
     const audit = (await h.app.ctx.repos.audit.all()).filter((a) => a.action === "staff.invite" && a.target === `user:${first.id}`);
-    expect(audit.map((a) => a.meta_jsonb)).toEqual([{ role: "security_staff" }, { role: "supervisor", reinvite: true, from_role: "security_staff" }]);
+    expect(audit.map((a) => a.meta_jsonb)).toEqual([{ role: "security_staff" }, { role: "security_staff", reinvite: true }]);
     expect(errCode((await activate(first.token, "twelve chars and more")).body)).toBe("LINK_INVALID");
     expect((await activate(again.token, "twelve chars and more")).status).toBe(200);
+  });
+
+  it("F2: a re-invite never changes the role; that is PATCH /staff/:id, with the second factor and a reason", async () => {
+    const first = await invite("security_staff");
+    const mark = h.mailer.outbox.length;
+    const r = await h.call<{ error: { code: string; message: string } }>("POST", "/staff", { token: await adminToken(), body: { email: first.email, role: "admin" } });
+    expect(r.body.error.code).toBe("CONFLICT");
+    expect(r.body.error.message).toContain("PATCH /staff/:id");
+    expect((await h.app.ctx.repos.users.byId(first.id))!.role).toBe("security_staff");
+    expect(h.mailer.outbox.length, "no new link was mailed").toBe(mark);
+    expect((await check(first.token)).body, "the earlier link still stands").toMatchObject({ state: "valid", role: "security_staff" });
+    expect((await h.app.ctx.repos.audit.all()).filter((a) => a.action === "staff.invite" && a.target === `user:${first.id}`)).toHaveLength(1);
+  });
+
+  it("F2: a passwordless account that was never invited (a crew record) is not pending: no invitation, no role change", async () => {
+    const email = devEmail(`activation.crew-record.${++n}`);
+    const id = randomUUID();
+    await h.app.ctx.repos.users.insert({ id, email, password_hash: "", role: "crew", mfa_enrolled_at: null, mfa_secret: null, display_name: null });
+    const mark = h.mailer.outbox.length;
+    for (const role of ["admin", "crew"] as const) {
+      expect(errCode((await h.call("POST", "/staff", { token: await adminToken(), body: { email, role } })).body), role).toBe("CONFLICT");
+    }
+    expect((await h.app.ctx.repos.users.byId(id))!.role).toBe("crew");
+    expect(h.mailer.outbox.length).toBe(mark);
+  });
+
+  it("F1: a live link to an account that already has a password cannot set one (the stale re-invite, made deterministic)", async () => {
+    const { id, email, token } = await invite("supervisor");
+    const password = "the first password set";
+    expect((await activate(token, password)).status).toBe(200);
+    // What an overlapping re-invite would leave behind: an invitation created after the activation.
+    const stale = await h.app.ctx.repos.userInvites.create({ userId: id, createdBy: null, now: new Date(h.clock.now()) });
+    expect((await check(stale)).body, "it reads as used, not valid").toEqual({ state: "used" });
+    expect(errCode((await activate(stale, "a password set by the link")).body)).toBe("LINK_INVALID");
+    // At the point of use too, bypassing the route's own check: nothing is written, nothing is spent.
+    expect((await h.app.ctx.repos.userInvites.activate(stale, "not-a-real-hash", new Date(h.clock.now()))).status).toBe("account_active");
+    expect((await h.app.ctx.repos.userInvites.peek(stale, new Date(h.clock.now()))).status).toBe("account_active");
+    expect((await h.call("POST", "/auth/login", { body: { email, password } })).status, "the password is unchanged").toBe(200);
+    expect(errCode((await h.call("POST", "/auth/login", { body: { email, password: "a password set by the link" } })).body)).toBe("INVALID_CREDENTIALS");
+    expect((await h.app.ctx.repos.audit.all()).filter((a) => a.action === "staff.activate" && a.target === `user:${id}`)).toHaveLength(1);
   });
 
   it("a made-up link is invalid and says nothing about any account", async () => {
@@ -135,16 +177,19 @@ describe("rate limit", () => {
   });
   afterAll(async () => limited.close());
 
-  it("a link that cannot be used counts as a failed attempt, per address, on check and on activate alike", async () => {
+  it("F3: check and activate share one per-address bucket; a link that cannot be used counts as a failure on either", async () => {
     const madeUp = ["not", "a", "real", "activation", "token"].join("-");
-    const checks: (string | number)[] = [];
-    for (let i = 0; i < 4; i++) {
+    const seen: string[] = [];
+    const checkOnce = async () => {
       const r = await limited.call<{ state?: string; error?: { code: string } }>("POST", "/auth/activate/check", { body: { token: madeUp } });
-      checks.push(r.body.state ?? r.body.error!.code);
-    }
-    expect(checks).toEqual(["invalid", "invalid", "invalid", "RATE_LIMITED"]);
-    const activations: string[] = [];
-    for (let i = 0; i < 4; i++) activations.push(errCode((await limited.call("POST", "/auth/activate", { body: { token: madeUp, password: "twelve chars and more" } })).body));
-    expect(activations).toEqual(["LINK_INVALID", "LINK_INVALID", "LINK_INVALID", "RATE_LIMITED"]);
+      seen.push(r.body.state ?? r.body.error!.code);
+    };
+    const activateOnce = async () => seen.push(errCode((await limited.call("POST", "/auth/activate", { body: { token: madeUp, password: "twelve chars and more" } })).body));
+    await checkOnce();
+    await activateOnce();
+    await checkOnce();
+    await activateOnce(); // the fourth attempt across the two paths: the shared quota of 3 is spent
+    await checkOnce();
+    expect(seen).toEqual(["invalid", "LINK_INVALID", "invalid", "RATE_LIMITED", "RATE_LIMITED"]);
   });
 });
