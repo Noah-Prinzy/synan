@@ -67,43 +67,49 @@ questions) and `docs/07-roadmap.md` (§1 where we are, §2 the way forward).
 
 ## Where we are and what is next
 
-Last updated: 2026-11-25, morning.
+Last updated: 2026-11-25, midday.
 
 **Branches on GitHub**
 
 | Branch | What it is |
 | --- | --- |
 | `build/synan-foundations` | The main line of work. Everything verified is here. Start from this branch. |
-| `integration/5.1` | Being built now: five finished work branches merged into one. Becomes part of the main line when its checks pass. |
-| `fix/e2e-defects` | Being built now: fixes for the faults the end-to-end tests found. |
-| `design/mockups` | Throwaway design mock-ups, including the "Chosen" design. Never merged; deleted once the design is confirmed and built into the real apps. |
+| `fix/e2e-defects` | Being built: fixes for the faults the end-to-end tests found. Merged into the main line when green. |
+| `design/rollout` | Being built: the confirmed design applied to the real apps, in six stages. Merged stage by stage once checked. |
+| `design/mockups` | The design mock-ups the owner chose from. Never merged; deleted when the rollout is finished. |
 | `main` | The default branch, far behind. Nothing is pushed to it without the owner saying so. |
 
-`ci/foundations`, `tests/frontend-units`, `fix/leftovers`, and `e2e/journeys` are finished work
-branches waiting inside `integration/5.1`; they are deleted from GitHub once it is merged.
+The work branches `ci/foundations`, `tests/frontend-units`, `fix/leftovers`, `e2e/journeys`, and
+`integration/5.1` were merged into the main line on 2026-11-25 and deleted.
 
-**In progress (roadmap step 5.1, "every change is checked automatically")**
+**Roadmap step 5.1, "every change is checked automatically": nearly done**
 
-1. Finish `integration/5.1`: all five branches merged, one set of scripts, every check passing
-   locally including on a real PostgreSQL 17. Then the owner reads the GitHub Actions run and says
-   green or red.
-2. Finish `fix/e2e-defects`, most serious first: invited staff cannot activate their account (the
-   emailed link points at a page no app has); a pass put under review at the gate does not update
-   live on the attendee's phone; a deleted export still shows a download link; an accessibility rule
-   ("label in name") fails on some admin and scanner controls. Merge it into the integration branch.
-3. When the checks are green: merge into `build/synan-foundations`, delete the merged work
-   branches, give the owner the GitHub setting that makes the checks compulsory (Settings → Rules →
-   Rulesets: block force pushes, require a pull request, require the check "All required checks"),
-   and bring `docs/07-roadmap.md` §1 up to date.
+- The automatic checks run on GitHub for every push to `main`, `build/**`, `ci/**`, and
+  `integration/**`, and for every pull request. "All required checks" was green on the merged work
+  at commit `1bfbaf2` (read by Axel, the owner's agent with GitHub access), including the suites on
+  a real PostgreSQL 17.
+- The end-to-end job is not a required check yet. On GitHub it was red on journey J6 (the offline
+  scanner reconciling exactly once), which passes locally. Find out why before making it required.
+- Left to do:
+  1. Finish `fix/e2e-defects`: invited staff cannot activate their account (the emailed link points
+     at a page no app has); a pass put under review at the gate does not update live on the
+     attendee's phone; a deleted export still shows a download link; an accessibility rule ("label
+     in name") fails on some admin and scanner controls. Merge it, drop the `test.fail` markers and
+     the `--grep-invert @a11y` flag, raise the end-to-end baseline, and make the job required.
+  2. Give the owner the GitHub setting that makes the checks compulsory (Settings → Rules →
+     Rulesets: block force pushes, require a pull request, require the check "All required checks").
+  3. Bring `docs/07-roadmap.md` §1 up to date with the real-PostgreSQL results and the checks.
 
-**Design (decision D-37)**
+**Design (decision D-37): confirmed, rollout in progress**
 
-The owner chose, from working mock-ups: the calm direction for the whole Attendee Portal, except
-the event page, which takes the richer showcase style; the instrument direction for the Admin
-Command; square corners everywhere; subtle motion on the attendee side and none in the admin. A
-"Chosen" mock-up combining these is being checked. The owner must confirm it before anything is
-applied to the real apps. Then: update `docs/05-design-system.md`, roll it out screen by screen
-(order in roadmap §2.3), delete the mock-ups.
+The owner confirmed the combined design on 2026-11-25 from a working mock-up: the calm direction
+for the whole Attendee Portal, except the event page, which takes the richer showcase style; the
+instrument direction for the Admin Command; square corners everywhere; subtle motion on the attendee
+side and none in the admin. It is being applied on `design/rollout` in six stages: shared pieces
+and the design document; attendee main screens; remaining attendee screens; admin frame and Command
+Center; remaining admin screens; clean-up and deletion of the mock-ups. Points to settle while
+building: a boundary for inputs that meets the accessibility standard without bringing lines back;
+a calm, cheap living background; staying inside the size budgets (pass screen 125 KB, admin 200 KB).
 
 **Next (roadmap step 5.2, "Many organisers")**
 
@@ -115,7 +121,6 @@ is destroyed; deleting a personal account stops sign-in at once and erases withi
 
 **Waiting on the owner**
 
-- Confirm the "Chosen" design.
 - The eleven many-organisers questions.
 - Confirm two small rules: the scanner works offline from an out-of-date pass list for 2 hours past
   the end of a shift, with a warning, then stops; and a 150 KB size ceiling for the scanner app.
@@ -129,5 +134,5 @@ is destroyed; deleting a personal account stops sign-in at once and erases withi
 
 These do not exist on a fresh clone: a PostgreSQL 17 server kept outside the repository
 (`corepack pnpm pg:start` and `pg:stop`), and extra working copies beside the main folder for
-agents (`synan-integration`, `synan-defects`). On another device, clone the repository, check out
+agents (`synan-defects`, `synan-design`). On another device, clone the repository, check out
 `build/synan-foundations`, run `corepack pnpm install`, and work from there.

@@ -79,7 +79,7 @@ function open(over: Partial<MeStreamOptions> = {}) {
     onSignedOut: vi.fn(),
   };
   const stream = openMeStream({
-    wsBase: "ws://api.test",
+    wsBase: "wss://api.test",
     ...options,
     WebSocketImpl: FakeSocket as unknown as typeof WebSocket,
     // Jitter at its lowest: the delay is exactly half the ceiling.
@@ -117,7 +117,7 @@ describe("the live link", () => {
     open();
     await settle();
     const socket = latest();
-    expect(socket.url).toBe("ws://api.test/stream/me");
+    expect(socket.url).toBe("wss://api.test/stream/me");
     expect(socket.protocols).toEqual(wsTicket().protocols);
     socket.open();
     expect(socket.sent).toEqual([{ type: "hello" }]);
