@@ -3,7 +3,7 @@
  * "Arrivals", the Attendee Portal's living background (D-37), by the background artist: an evening
  * festival ground drawn in monospace glyphs, people arriving and walking in lanes, lights across
  * the top. This file is the artist's drawing code (createArrivals, final version), lifted as is so a
- * new version can replace it whole; the one change is marked SYNAN (the frame timer). The app's
+ * new version can replace it whole; the one change is marked SYNAN (the frame timer and rate). The app's
  * wiring (theme colours, --bg-motion, calm behind text, pausing while typing or scrolling) is in
  * ./living.tsx.
  */
@@ -290,15 +290,17 @@ export function createArrivals(container,opts){
   /* ---------- lifecycle ---------- */
   let cost=0; // smoothed paint time; in auto mode a slow device steps down to 10 then 8 fps
   /* SYNAN: a timer asks for each frame, so nothing runs between frames (an idle requestAnimationFrame
-     loop made the browser prepare a frame on every screen refresh). The rest is the artist's code. */
+     loop made the browser prepare a frame on every screen refresh), and the automatic rate is 12
+     frames a second (10 on a phone), stepping down to 10 and 8 when painting is slow: measured on
+     the real pages, 15 cost a desktop about 14% of its main thread. The rest is the artist's code. */
   let tmr=0;
   function frame(now){
     raf=0;
-    const fps=opts.fps||Math.min(W<640?12:15,cost>28?8:cost>16?10:15);
+    const fps=opts.fps||Math.min(W<640?10:12,cost>28?8:cost>16?10:12);
     const real=last?Math.min(.15,(now-last)/1000):1/fps;last=now;last=now;
     dt=real*opts.motion;T+=dt;
     const p0=performance.now();paint();cost=cost*.9+(performance.now()-p0)*.1;
-    tmr=setTimeout(()=>{tmr=0;raf=requestAnimationFrame(frame);},1000/(opts.fps||Math.min(W<640?12:15,cost>28?8:cost>16?10:15)));
+    tmr=setTimeout(()=>{tmr=0;raf=requestAnimationFrame(frame);},1000/(opts.fps||Math.min(W<640?10:12,cost>28?8:cost>16?10:12)));
   }
   function loop(on){
     cancelAnimationFrame(raf);clearTimeout(tmr);raf=0;tmr=0;last=0;

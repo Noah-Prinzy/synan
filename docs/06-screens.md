@@ -15,7 +15,7 @@ public; everything else is authenticated. The theme switch (System · Light · D
 footer and on the account screen.
 
 The structure of this surface is D-37 ([05 §2.1](05-design-system.md)): one statement per screen,
-generous space, soft tonal panels and no ruled lines, over the slow Gathering field. The event page
+generous space, soft tonal panels and no ruled lines, over Arrivals, the living background (a festival ground drawn in glyphs). The event page
 alone is richer: its picture, the event's name set large, a glass card of key facts and a small
 "rooms now" panel. The hard rules in [05 §1](05-design-system.md) apply: square corners, tone
 instead of lines, and the brand colour never a large fill.
@@ -74,7 +74,7 @@ soon as the page moves; its action there is `Register` (`View your pass` once re
 picture: `All events`, a mono capital eyebrow (dates · venue), and the event's **name** set very
 large. At its foot a **glass card** of key facts (state, when, where, how busy it is right now) with
 the call to action, and on wide screens a small **Rooms now** panel (each room's word and bar). On a
-phone the rooms panel follows the picture. Below the picture, on the Gathering field: **About**, the
+phone the rooms panel follows the picture. Below the picture, on Arrivals: **About**, the
 **Programme** (today's sessions as a rhythm list; the session on now is lifted on a tonal step),
 **Venue** (a short list), and **Questions**. If the event is `closed`, the call to action becomes
 `View your pass`.
