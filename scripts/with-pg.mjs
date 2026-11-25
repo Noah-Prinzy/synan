@@ -7,8 +7,10 @@
  *   node scripts/with-pg.mjs pnpm --filter @synan/db migrate:check
  *   node scripts/with-pg.mjs node scripts/run-suite.mjs realpg-db realpg-api
  *
- * `pnpm` and `node` run without a shell (pnpm through scripts/lib/util.mjs, so it works where pnpm is
- * not on PATH); anything else runs through a shell on Windows, to find `.cmd` shims.
+ * Nothing runs through a shell, so no argument is ever re-read by cmd.exe or sh. `pnpm` goes through
+ * scripts/lib/util.mjs (so it works where pnpm is not on PATH), `node` is this Node, and anything else
+ * is started directly; on Windows that means a real `.exe`, not a `.cmd` shim — wrap such tools in
+ * `pnpm exec …` instead.
  */
 import { spawn } from "node:child_process";
 import { adminUrl, host, port } from "./pg-lib.mjs";
@@ -25,16 +27,17 @@ if (!url) {
   process.exit(2);
 }
 const env = { ...process.env, REAL_PG_ADMIN_URL: url };
-const quote = (a) => (/^[\w./:=@-]+$/.test(a) ? a : `"${a.replace(/"/g, '\\"')}"`);
 let child;
 if (cmd === "pnpm") {
   const p = pnpmCommand();
   child = spawn(p.cmd, [...p.pre, ...args], { stdio: "inherit", env });
 } else if (cmd === "node") {
   child = spawn(process.execPath, args, { stdio: "inherit", env });
-} else if (process.platform === "win32") {
-  child = spawn([cmd, ...args].map(quote).join(" "), { stdio: "inherit", shell: true, env });
 } else {
   child = spawn(cmd, args, { stdio: "inherit", env });
 }
+child.on("error", (err) => {
+  console.error(`with-pg: could not start "${cmd}": ${err.message}`);
+  process.exit(127);
+});
 child.on("exit", (code, signal) => process.exit(code ?? (signal ? 1 : 0)));

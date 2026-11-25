@@ -81,8 +81,8 @@ PostgreSQL job. The static analysis job is "Static analysis (semgrep)" in
 job when a finding of severity ERROR, HIGH or CRITICAL is not listed in
 `.github/semgrep-accepted.json` (one entry per rule and file, each with a written reason).
 
-**A guess was already pushed** after that run: two test files used `ws://api.test` and were
-changed to `wss://api.test` (`apps/admin/test/live-stream.test.ts`,
+**A guess was already pushed** after that run: two test files used the plain `ws` scheme for
+`api.test` and were changed to the secure `wss` scheme (`apps/admin/test/live-stream.test.ts`,
 `apps/attendee/test/stream.test.ts`), because the rule `detect-insecure-websocket` flags insecure
 WebSocket addresses. That may or may not have been the cause. Check the newest run first.
 
