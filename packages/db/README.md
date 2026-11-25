@@ -99,7 +99,9 @@ while its child is unused is re-issued, `reissued: true`, and the unused child i
 - **Jobs** (`src/jobs.ts`): pg-boss in schema `pgboss`. `runMigrations` installs it as the migrating role and hands
   it to `app_jobs`; `createJobs({ connectionString })` for API processes and workers (login in `app_api`), and one
   `createJobs({ …, mode: "maintenance" })` + `scheduleDefaultJobs` (login in `app_jobs` and `app_api`).
-  Queue names are `JOB_QUEUES`; `enqueueInTransaction` enqueues inside a Drizzle transaction. Report exports:
+  Queue names are `JOB_QUEUES`; `JOB_SCHEDULES` has a cron schedule for every queue (the export and email
+  sweeps included, so nothing depends on a kick alone). In the API, `src/worker.ts` (`worker` script, login
+  `DATABASE_JOBS_URL`) runs the maintenance instance; verified on PostgreSQL 17. `enqueueInTransaction` enqueues inside a Drizzle transaction. Report exports:
   `requestReport`, `claimReport`, `completeReport`, `failReport`, `listReports`.
 - **Operations** (`src/operations.ts`): `staffOnDuty`, `currentAssignments`, `shiftHandoverSummary`, `handOverShift`,
   devices (`registerDevice`, `authenticateDevice`, `rotateDeviceToken`, `rotateDeviceTokenVersioned`,
@@ -176,9 +178,34 @@ attendee sheet has no name or email columns.
 
 ## Testing
 
-`import { createMigratedPglite } from "@synan/db/testing"` gives a PGlite with every migration applied,
-loaded from an on-disk snapshot (≈0.3–0.5 s instead of ≈3 s per instance). `test/real-postgres.test.ts`
-holds the checks that need a real server; it runs only when `REAL_PG_ADMIN_URL` is set.
+Three backends; the same suites run on each.
+
+| Mode | db package | API | Backend |
+| --- | --- | --- | --- |
+| default | `test` | `test` (memory), `test:pg` | PGlite, in process (fast) |
+| real server | `test:realpg` | `test:realpg` | PostgreSQL at `REAL_PG_ADMIN_URL` |
+
+- `import { createMigratedPglite } from "@synan/db/testing"` gives a PGlite with every migration applied,
+  loaded from an on-disk snapshot (≈0.3–0.5 s instead of ≈3 s per instance).
+- `createRealPgDatabase()` (same subpath) gives a fresh database on a real server: a clone of a template
+  migrated once per migration set (`synan_tpl_<hash>`), with four shared logins that connect exactly as
+  production does: `synan_test_api` (app_api), `synan_test_vault` (app_vault), `synan_test_scan`
+  (app_scan), `synan_test_jobs` (app_jobs + app_api). Their password is derived from the admin URL.
+- In the real-server mode the db suite runs each test database over **one** connection as the admin (the
+  single session PGlite gives, so `set role` and session settings mean the same); the API suite connects
+  each app through the three role logins. `test/real-postgres.test.ts` holds what needs separate
+  connections and real logins (concurrency, grants and RLS per login, a non-superuser migrating role,
+  pg-boss); it runs whenever `REAL_PG_ADMIN_URL` is set, and must run (never skip) in `test:realpg`.
+- Decide on database errors by SQLSTATE (`pgErrorCode(e)`, through Drizzle's wrapper), never by message
+  text; log them with `describeError(e)`, never the object (Drizzle's message carries the query
+  parameters, and driver errors can carry connection settings). Every pool from `createDb` has an idle
+  `error` listener (`onIdleError`, default: one redacted log line), so a restarted server or an ended
+  session never crashes the process.
+
+From the repository root (`scripts/`): `corepack pnpm pg:start | pg:stop | pg:status` run a local
+PostgreSQL 17 from a binaries folder (no installer, no admin rights; paths and port from `SYNAN_PG_*`,
+see `scripts/pg-lib.mjs`); `corepack pnpm test:realpg` runs both real-server suites against it (or against
+`REAL_PG_ADMIN_URL` when set, as in CI).
 
 ## Roles
 
@@ -191,8 +218,14 @@ CREATE ROLE scan_login  LOGIN PASSWORD '…' IN ROLE app_scan;
 ```
 
 Call `assertRoleSeparation(dbs)` at startup in production. The migrating role owns all objects and
-needs `CREATEROLE` and the right to `CREATE EXTENSION btree_gist`; no login used by the application
-may be a superuser or have `BYPASSRLS`.
+needs `CREATEROLE` and the right to `CREATE EXTENSION btree_gist` (a trusted extension: owning the
+database is enough); no login used by the application may be a superuser or have `BYPASSRLS`.
+On PostgreSQL 16 and later, granting a role needs ADMIN OPTION on it even when the membership already
+exists. A migrating role that creates `app_api`, `app_scan`, `app_vault` and `app_jobs` itself gets that
+automatically; where they already exist (created by someone else, or shared with another database on
+the server), grant it first, or migration 0005 stops at `GRANT app_api TO app_scan` ("permission denied
+to grant role"): `GRANT app_api, app_scan, app_vault, app_jobs TO <migrator> WITH ADMIN OPTION`.
+Verified on PostgreSQL 17 (`test/real-postgres.test.ts`, "a non-superuser migrating role").
 
 ## Commands
 
@@ -206,9 +239,15 @@ Run from the repo root (`pnpm` is invoked through corepack):
 | `DATABASE_URL=… corepack pnpm --filter ./packages/db db:seed` | Seeds an empty, migrated database (development keys) |
 | `corepack pnpm --filter ./packages/db db:generate` | Generates a migration after a schema change in `src/schema` |
 | `corepack pnpm --filter ./packages/db db:generate:custom --name=x` | Creates an empty hand-written migration |
+| `corepack pnpm --filter ./packages/db test:realpg` | The whole suite on a real server (`REAL_PG_ADMIN_URL`; root `test:realpg` sets it from the local server) |
+| `corepack pnpm db:migrations:verify` (root) | Static: journal in order (no gaps, duplicates or out-of-order `when`), every `.sql` journalled, no recorded migration edited (`migrations/checksums.json`), `drizzle-kit generate` finds no difference from `src/schema`; with `--base <ref>`, no migration that existed at that ref has changed |
+| `corepack pnpm db:migrations:manifest` (root) | Records new migrations in `checksums.json` (deliberate; an edited one is refused unless named with `--accept-changed=<tag>`) |
+| `corepack pnpm db:migrate:check` (root) | Applies every migration to an empty database on the real server, applies again (a no-op), checks against the journal; with `--from <ref>`, also upgrades a database migrated at that ref; and confirms `drizzle-kit generate` writes nothing |
 
 Never use `drizzle-kit push`: partitioning, row-level security, roles, triggers and SQL functions
-live in hand-written migrations that `push` does not know about.
+live in hand-written migrations that `push` does not know about. Never edit a migration once it is in
+`checksums.json`: add one that corrects it. After `db:generate`, run `db:migrations:manifest` and commit
+the manifest with the migration.
 
 ## Migrations
 

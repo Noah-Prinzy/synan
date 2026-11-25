@@ -3,6 +3,7 @@ import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgDatabase, PgQueryResultHKT, PgTransaction } from "drizzle-orm/pg-core";
 import type { ExtractTablesWithRelations } from "drizzle-orm";
 import pg from "pg";
+import { describeError } from "./errors";
 import * as schema from "./schema/index";
 
 export type Schema = typeof schema;
@@ -19,7 +20,16 @@ export interface CreateDbOptions {
   max?: number;
   /** Log SQL to stdout. */
   logger?: boolean;
+  /**
+   * Called when an idle pooled connection fails (the server restarted, an administrator ended the
+   * session, the network dropped). The pool discards that connection and opens a new one when needed.
+   * Default: one redacted log line (describeError). Without a listener node-postgres would emit an
+   * unhandled 'error' and end the process.
+   */
+  onIdleError?: (e: Error) => void;
 }
+
+const logIdleError = (e: Error) => console.error(`[db] idle connection failed: ${describeError(e)}`);
 
 /**
  * Connects to PostgreSQL with node-postgres and returns a typed Drizzle instance.
@@ -30,6 +40,8 @@ export interface CreateDbOptions {
  */
 export function createDb(connectionString: string, options: CreateDbOptions = {}): Db {
   const pool = new pg.Pool({ connectionString, max: options.max ?? 10 });
+  // The listener gets only the error, never the client (whose settings include the password).
+  pool.on("error", (e) => (options.onIdleError ?? logIdleError)(e));
   return drizzle(pool, { schema, logger: options.logger ?? false }) as Db;
 }
 

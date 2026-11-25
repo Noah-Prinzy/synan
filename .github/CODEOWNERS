@@ -7,7 +7,7 @@
 
 # Database migrations: locks, reversibility, the claimed migration number.
 /packages/db/migrations/                @Noah-Prinzy
-/packages/db/migration-checksums.json   @Noah-Prinzy
+/packages/db/src/cli/migrations.ts     @Noah-Prinzy
 /packages/db/drizzle.config.ts          @Noah-Prinzy
 /packages/db/src/schema/                @Noah-Prinzy
 /packages/db/src/migrate.ts             @Noah-Prinzy

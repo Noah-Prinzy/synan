@@ -13,6 +13,7 @@
  *                      checkpoints, without the credential link. Attendees: refused.
  *   /stream/me         attendees: their own pass status and entitlements, so a revoked pass flips live.
  */
+import { describeError } from "@synan/db";
 import type { IncomingMessage, Server } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -309,7 +310,7 @@ function onChannel(app: AppContext, ws: WebSocket, channel: WsChannel, g: Channe
             await noteScanner(app.repos, shift, m.device_id);
             const event = await shiftEvent(app, shift, cp.venue_id);
             await app.gates.allowlistReported({ eventId: event?.id ?? null, checkpointId: cp.id, roomId: cp.room_id, issuedAt: m.allowlist_issued_at ? new Date(m.allowlist_issued_at) : null });
-          })().catch((e: unknown) => console.error(`[ws] heartbeat failed: ${e instanceof Error ? e.message.slice(0, 120) : "error"}`));
+          })().catch((e: unknown) => console.error(`[ws] heartbeat failed: ${describeError(e)}`));
         }
       : undefined,
   );

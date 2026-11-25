@@ -15,10 +15,14 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
+    "test:realpg": "vitest run --mode realpg",
     "db:generate": "drizzle-kit generate",
     "db:generate:custom": "drizzle-kit generate --custom",
     "db:migrate": "tsx src/cli/migrate.ts",
-    "db:seed": "tsx src/cli/seed.ts"
+    "db:seed": "tsx src/cli/seed.ts",
+    "migrations:verify": "tsx src/cli/migrations.ts verify",
+    "migrations:manifest": "tsx src/cli/migrations.ts manifest",
+    "migrate:check": "tsx src/cli/migrations.ts check"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",

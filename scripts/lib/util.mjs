@@ -15,7 +15,8 @@ export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..")
  */
 export function pnpmCommand() {
   const exec = process.env.npm_execpath;
-  if (exec && /pnpm(\.c?js)?$/i.test(exec)) return { cmd: process.execPath, pre: [exec] };
+  // Only a JavaScript entry file can be run by Node (a standalone pnpm binary cannot).
+  if (exec && /pnpm(\.[cm]?js)$/i.test(exec)) return { cmd: process.execPath, pre: [exec] };
   // Otherwise corepack's own script, shipped with Node 24, run by this Node: no shell needed.
   const corepack = join(dirname(process.execPath), process.platform === "win32" ? "" : "../lib", "node_modules/corepack/dist/corepack.js");
   if (existsSync(corepack)) return { cmd: process.execPath, pre: [corepack, "pnpm"] };

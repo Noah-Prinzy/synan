@@ -9,7 +9,7 @@
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { API_BASE_PATH } from "@synan/contracts/common";
-import type { Cipher } from "@synan/db";
+import { describeError, type Cipher } from "@synan/db";
 import type { AppContext } from "../app.js";
 import type { Config } from "../config.js";
 import type { Clock } from "../lib/clock.js";
@@ -150,7 +150,7 @@ export class ReportExporter {
           await this.storage.delete(f.object_key);
           done.push(f.id);
         } catch (e) {
-          console.error(`[exports] retention could not delete exported_file:${f.id}: ${e instanceof Error ? e.message.slice(0, 120) : "error"}`);
+          console.error(`[exports] retention could not delete exported_file:${f.id}: ${describeError(e)}`);
         }
       }
       n += await this.repos.exportedFiles.markDeleted(done, { actorId: null, now });

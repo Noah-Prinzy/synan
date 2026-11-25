@@ -7,6 +7,7 @@
  * first time it is seen. Counts that move with every scan (scans in the last minute) do not count as
  * a change. Routing: the event and the checkpoint, so gate staff receive only their own gates.
  */
+import { describeError } from "@synan/db";
 import type { GateHealth } from "@synan/contracts/rest";
 import type { AppContext } from "../app.js";
 import type { ChannelHub } from "./channel-hub.js";
@@ -38,7 +39,7 @@ export function startGateHealthFeed(app: AppContext, hub: ChannelHub<{ event_id:
       }
       for (const k of last.keys()) if (!seen.has(k)) last.delete(k); // the event is no longer live
     } catch (e) {
-      console.error(`[ws] gate health feed failed: ${e instanceof Error ? e.message.slice(0, 120) : "error"}`);
+      console.error(`[ws] gate health feed failed: ${describeError(e)}`);
     } finally {
       running = false;
     }

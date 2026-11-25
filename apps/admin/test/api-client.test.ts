@@ -241,11 +241,10 @@ describe("the operator's session", () => {
     expect(signedOut).not.toHaveBeenCalled();
   });
 
-  // DEFECT (left failing on purpose), as in the attendee client: the server re-issues a rotated
-  // refresh token only when the same token comes back within its 10 s reuse grace; the scanner
-  // retries once at once for that reason, this client does not (and waits up to 15 s). A lost answer
-  // is retried on the next call, usually too late: reuse is detected and the console signs out.
-  it.fails("retries a refresh whose answer was lost with the same refresh token, at once", async () => {
+  // As in the attendee client: the server re-issues a rotated refresh token only when the same token
+  // comes back within its 10 s reuse grace, so a refresh whose answer was lost is sent once more at
+  // once with the same token (as the scanner's refreshWithRetry), not on the next call, too late.
+  it("retries a refresh whose answer was lost with the same refresh token, at once", async () => {
     const stale = pair({ accessMs: 0 });
     let attempts = 0;
     const { client, requests } = setup({

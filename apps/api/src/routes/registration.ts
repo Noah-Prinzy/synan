@@ -12,6 +12,7 @@
  *   Public           POST /kiosk/registrations (staffed kiosk): an anonymous attendee, no personal data.
  * Every confirmed registration is issued its credential and sent its pass (emailed single-use QR).
  */
+import { describeError } from "@synan/db";
 import { randomUUID } from "node:crypto";
 import type { Express } from "express";
 import { ContractError } from "@synan/contracts/errors";
@@ -125,7 +126,7 @@ export async function completePendingRegistration(app: AppContext, linkTokenHash
     m.set(adoptKey(att.id, e.id), at.getTime() + app.config.emailLinkTtlS * 1000);
     return reg;
   } catch (e) {
-    console.error("[registration] completing a pending registration failed:", e instanceof Error ? e.message.slice(0, 160) : "error");
+    console.error("[registration] completing a pending registration failed:", describeError(e));
     return null;
   }
 }

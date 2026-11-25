@@ -57,6 +57,8 @@ export interface Config {
   databaseUrl: string | null;
   databaseVaultUrl: string | null;
   databaseScanUrl: string | null;
+  /** postgres: the job maintenance login (app_jobs and app_api), used only by the worker process (src/worker.ts). */
+  databaseJobsUrl: string | null;
   /** PGlite data directory; null = in-memory database (lost on exit). */
   pgliteDataDir: string | null;
   /** Dev fixtures. Opt-in: only `SEED=dev` or `--seed=dev` seeds. */
@@ -208,6 +210,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: readonly 
     databaseUrl: env.DATABASE_URL || null,
     databaseVaultUrl: env.DATABASE_VAULT_URL || null,
     databaseScanUrl: env.DATABASE_SCAN_URL || null,
+    databaseJobsUrl: env.DATABASE_JOBS_URL || null,
     pgliteDataDir: env.PGLITE_DATA_DIR || null,
     seed: env.SEED === "dev" || argv.includes("--seed=dev") ? "dev" : "none",
     trustProxy: parseTrustProxy(env.TRUST_PROXY),

@@ -147,26 +147,24 @@ describe("signed allowlist", () => {
     await rejects(async () => verifyAllowlistJws(await signJws(k, bad2), k.published.kid, keys, Date.now()), "payload.entries[].qr_email_hashes");
   });
 
-  // DEFECT (left failing on purpose): the list is "scoped to one event and shift" and a scanner works
-  // "only inside the shift window" (docs/03 §4), but verifyAllowlistJws never compares `nowMs` with
-  // the payload's window_start / window_end: a correctly signed list for a shift that has ended is
-  // trusted, on refresh and when re-verified from storage, indefinitely. Not fixed here: the runtime
-  // deliberately keeps a previous shift's list offline (runtime.ts signIn: "still trusted offline"),
-  // and rejecting it would leave an offline gate with no list, refusing everyone. Whether an expired
-  // window should fail closed, or fail open with a warning like a stale list (O-05), is a decision for
-  // the owner of the scanner's trust rules. The existing helper `payload()` also signs window_end =
-  // "now", so a fix will need it to issue a window that has not ended.
-  it.fails("refuses a list whose validity window has ended", async () => {
+  // The list is "scoped to one event and shift" and a scanner works "only inside the shift window"
+  // (docs/03 §4). The rule (lead, 2026-11-24): the signature still verifies (the list is authentic,
+  // and kept offline), but its signed window decides how far it is trusted: up to
+  // ALLOWLIST_END_GRACE_MS (2 hours) past window_end it still decides offline as a stale list; after
+  // that it is not trusted (runtime.ts offlineAllowlist; runtime.test.ts covers the gate's decisions).
+  it("trusts a list whose validity window has ended only as a stale list, for two hours, then not at all", async () => {
     const k = await makeKey("allowlist");
     const keys = await importKeys([k.published]);
     const now = Date.now();
-    const shift = payload([entry({ credential_hash: ref16(1) })], {
-      window_start: new Date(now - 8 * 3600_000).toISOString(),
-      window_end: new Date(now - 60_000).toISOString(),
-      shift_end: new Date(now - 60_000).toISOString(),
-      issued_at: new Date(now - 8 * 3600_000).toISOString(),
-    });
-    await rejects(async () => verifyAllowlistJws(await signJws(k, shift), k.published.kid, keys, now), "window");
+    const shiftEndedAgo = async (ms: number) => {
+      // An eight-hour shift that ended `ms` ago (shift_end = window_end, issued at the start).
+      const shift = payload([entry({ credential_hash: ref16(1) })], windowAround(now - ms - 4 * 3600_000, 4 * 3600_000, 4 * 3600_000));
+      return verifyAllowlistJws(await signJws(k, shift), k.published.kid, keys, now);
+    };
+    expect(allowlistWindow(await shiftEndedAgo(60_000), now)).toBe("grace");
+    expect(allowlistWindow(await shiftEndedAgo(ALLOWLIST_END_GRACE_MS - 60_000), now)).toBe("grace");
+    expect(allowlistWindow(await shiftEndedAgo(ALLOWLIST_END_GRACE_MS), now)).toBe("ended");
+    expect(allowlistWindow(await shiftEndedAgo(ALLOWLIST_END_GRACE_MS + 3600_000), now)).toBe("ended");
   });
 });
 

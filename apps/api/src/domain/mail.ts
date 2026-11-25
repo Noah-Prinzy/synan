@@ -14,7 +14,7 @@
  *   differently from an unknown one); `settle` waits for it, `drain` waits and then sends everything
  *   due — the deterministic step tests use instead of sleeping.
  */
-import { JOB_QUEUES } from "@synan/db";
+import { describeError, JOB_QUEUES } from "@synan/db";
 import type { Clock } from "../lib/clock.js";
 import type { Jobs } from "../lib/jobs.js";
 import type { MailMessage, Mailer } from "../lib/mailer.js";
@@ -25,7 +25,7 @@ export const EMAIL_MAX_ATTEMPTS = 5;
 
 /** Provider errors can echo the recipient: keep the gist, never an address. */
 export const scrubError = (e: unknown) =>
-  (e instanceof Error ? e.message : String(e)).replace(/[^\s<>"'@]+@[^\s<>"'@]+/g, "[address]").slice(0, 200) || "send failed";
+  describeError(e).replace(/[^\s<>"'@]+@[^\s<>"'@]+/g, "[address]").slice(0, 200) || "send failed";
 
 export class MailService {
   private readonly inflight = new Set<Promise<unknown>>();

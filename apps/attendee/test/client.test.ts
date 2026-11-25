@@ -5,7 +5,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { authEndpoints, eventEndpoints, meEndpoints, type TokenPair } from "@synan/contracts/rest";
-import { createApiClient } from "../src/data/api/client";
+import { createApiClient, REFRESH_RETRY_DELAY_MS, REFRESH_TIMEOUT_MS } from "../src/data/api/client";
 import type { SessionStore, StoredSession } from "../src/data/api/session";
 import { ApiFailure } from "../src/data/failure";
 import { apiError, fakeFetch, json, me, tokenPair, type Route } from "./fixtures";
@@ -161,14 +161,11 @@ describe("refreshing the session", () => {
     expect(onSignedOut).not.toHaveBeenCalled();
   });
 
-  // DEFECT (left failing on purpose): the server rotates the refresh token and re-issues it only if
-  // the SAME token comes back within its 10 s reuse grace (apps/api auth-service, REFRESH_REUSE_GRACE_S).
-  // The scanner retries once at once for that reason (scanner refreshWithRetry, REFRESH_TIMEOUT_MS 4 s);
-  // this client does not, and its timeout is 15 s. A refresh whose answer is lost (venue Wi-Fi) is
-  // retried only on the next call, usually after the grace: the server reads it as reuse, revokes the
-  // family, and the device forgets the pass and its codes. Needs the owner of sign-in to port the
-  // scanner's retry (short refresh timeout, one retry of the same token) — not changed here.
-  it.fails("retries a refresh whose answer was lost with the same refresh token, at once, inside the server's grace", async () => {
+  // The server rotates the refresh token and re-issues it only if the SAME token comes back within
+  // its 10 s reuse grace (apps/api auth-service, REFRESH_REUSE_GRACE_S). So, as the scanner's
+  // refreshWithRetry, a refresh whose answer is lost (venue Wi-Fi) is sent once more at once with the
+  // same token: REFRESH_TIMEOUT_MS + REFRESH_RETRY_DELAY_MS + REFRESH_TIMEOUT_MS fits inside the grace.
+  it("retries a refresh whose answer was lost with the same refresh token, at once, inside the server's grace", async () => {
     const stale = tokenPair(NOW, { accessMs: 0 });
     const next = tokenPair(NOW);
     let attempts = 0;
@@ -183,7 +180,9 @@ describe("refreshing the session", () => {
     await expect(client.call(meEndpoints.me)).resolves.toMatchObject({ full_name: "Ada Lovelace" });
     const sent = refreshes(requests);
     expect(sent).toHaveLength(2);
+    expect(sent[0]!.body).toEqual({ refresh_token: stale.refresh_token });
     expect(sent[1]!.body).toEqual({ refresh_token: stale.refresh_token });
+    expect(REFRESH_TIMEOUT_MS + REFRESH_RETRY_DELAY_MS + REFRESH_TIMEOUT_MS).toBeLessThan(10_000);
   });
 });
 

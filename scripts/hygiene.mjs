@@ -14,10 +14,10 @@ import { annotate, kb, mdTable, ROOT, summary, trackedFiles } from "./lib/util.m
 /** Top-level entries allowed in the repository. Add to this list in the same pull request as the file. */
 const ROOT_ALLOW = new Set([
   // directories
-  ".github", "apps", "docs", "packages", "scripts",
+  ".github", "apps", "docs", "e2e", "packages", "scripts",
   // files
   ".gitignore", ".gitattributes", ".editorconfig", ".markdownlint.json", ".npmrc", ".nvmrc", ".node-version",
-  "CONTRIBUTING.md", "README.md", "LICENSE",
+  "CLAUDE.md", "CONTRIBUTING.md", "README.md", "LICENSE",
   "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "tsconfig.base.json",
 ]);
 const MAX_BYTES = 1024 * 1024;

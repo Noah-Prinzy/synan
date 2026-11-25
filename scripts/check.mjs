@@ -1,33 +1,35 @@
 #!/usr/bin/env node
 /**
  * `corepack pnpm check` — the fast subset of CI, to run before pushing:
- * lockfile in sync, repository hygiene, Markdown links, applied migrations unchanged, typecheck of
- * all 8 packages, the unit suites (contracts, scanner, db and API on PGlite, API in memory), the
- * test-count guard for those suites, and the migration check on PGlite.
+ * lockfile in sync, repository hygiene, Markdown links, migrations (journal in order, no recorded
+ * migration edited, `drizzle-kit generate` finds no difference from the schema), typecheck of every
+ * package, the unit suites (contracts, scanner, attendee, admin, db and API on PGlite, API in
+ * memory), and the test-count guard for those suites.
  *
- *   corepack pnpm check            everything above (about 3–5 minutes)
- *   corepack pnpm check --quick    without the PGlite suites (db, api-pglite) and the migration check
+ *   corepack pnpm check            everything above (about 4–6 minutes)
+ *   corepack pnpm check --quick    without the PGlite suites (db, api-pglite)
  *
- * Not here (CI only, or run by hand): the real-PostgreSQL job, app builds and bundle budgets
- * (`corepack pnpm build:apps && corepack pnpm budget`), the dependency audit
- * (`corepack pnpm audit:deps`), secret scanning and static analysis.
+ * Not here (CI, or run by hand): the real-PostgreSQL suites and migration check
+ * (`corepack pnpm pg:start`, then `corepack pnpm test:realpg` and `corepack pnpm db:migrate:check`,
+ * then `corepack pnpm pg:stop`), app builds and bundle budgets
+ * (`corepack pnpm build:apps && corepack pnpm budget`), the end-to-end journeys (`corepack pnpm e2e`),
+ * the dependency audit (`corepack pnpm audit:deps`), secret scanning and static analysis.
  */
 import { spawnSync } from "node:child_process";
 import { ROOT, pnpm, textTable } from "./lib/util.mjs";
 
 const quick = process.argv.includes("--quick");
 const node = (script, ...args) => () => spawnSync(process.execPath, [script, ...args], { cwd: ROOT, stdio: "inherit" }).status ?? 1;
-const suites = quick ? ["contracts", "scanner", "api-memory"] : ["contracts", "scanner", "db", "api-memory", "api-pglite"];
+const suites = quick ? ["contracts", "scanner", "attendee", "admin", "api-memory"] : ["contracts", "scanner", "attendee", "admin", "db", "api-memory", "api-pglite"];
 
 const steps = [
   ["Lockfile in sync (pnpm install --frozen-lockfile)", () => pnpm(["install", "--frozen-lockfile", "--prefer-offline"])],
   ["Repository hygiene", node("scripts/hygiene.mjs")],
   ["Markdown links", node("scripts/check-links.mjs")],
-  ["Applied migrations unchanged", node("scripts/db/migrations-verify.mjs")],
+  ["Migrations: order, none edited, schema matches (db:migrations:verify)", () => pnpm(["--filter", "@synan/db", "migrations:verify"])],
   ["Typecheck, all packages", () => pnpm(["-r", "typecheck"])],
   [`Tests: ${suites.join(", ")}`, node("scripts/run-suite.mjs", ...suites)],
   ["Test counts", node("scripts/test-counts.mjs", "check", "--suites", suites.join(","))],
-  ...(quick ? [] : [["Migrations apply (PGlite) and match the schema", () => pnpm(["--filter", "@synan/db", "exec", "tsx", "../../scripts/db/migrate-check.mts"])]]),
 ];
 
 const results = [];

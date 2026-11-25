@@ -3,7 +3,7 @@
  * Test-count guard (roadmap §2.6): the number of passing tests per suite may not drop without a
  * marker that explains it. The baseline is scripts/test-counts.json, committed and reviewed.
  *
- *   node scripts/test-counts.mjs check  [--suites a,b] [--base <git ref>]
+ *   node scripts/test-counts.mjs check  [--suites a,b | --except a,b] [--base <git ref>]
  *   node scripts/test-counts.mjs update [--suites a,b] [--reason "why fewer tests"]
  *
  * check:  reads the vitest JSON reports written by scripts/run-suite.mjs and fails when a suite
@@ -29,7 +29,9 @@ const opt = (name) => {
 };
 const baseline = JSON.parse(readFileSync(join(ROOT, FILE), "utf8"));
 const only = opt("suites")?.split(",").filter(Boolean);
-const suites = only ?? Object.keys(baseline.suites);
+// --except: every baseline suite but these (CI checks the end-to-end suite in its own, non-required job).
+const except = new Set(opt("except")?.split(",").filter(Boolean) ?? []);
+const suites = (only ?? Object.keys(baseline.suites)).filter((s) => !except.has(s));
 const dir = resultsDir();
 
 if (cmd === "update") {
@@ -56,7 +58,7 @@ if (cmd === "update") {
 }
 
 if (cmd !== "check") {
-  console.error("usage: test-counts.mjs check|update [--suites a,b] [--base ref] [--reason text]");
+  console.error("usage: test-counts.mjs check|update [--suites a,b] [--except a,b] [--base ref] [--reason text]");
   process.exit(2);
 }
 

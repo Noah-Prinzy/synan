@@ -8,6 +8,7 @@
  * request is then made to the vetted address (pinned), so a DNS answer cannot change between the
  * check and the connection. Redirects are never followed.
  */
+import { describeError } from "@synan/db";
 import { createHmac, randomUUID } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { request } from "node:https";
@@ -150,5 +151,5 @@ export class WebhookService {
 }
 
 function logErr(e: unknown) {
-  console.error("[webhooks]", e instanceof Error ? e.message : String(e));
+  console.error("[webhooks]", describeError(e));
 }

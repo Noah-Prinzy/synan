@@ -1,9 +1,14 @@
 /**
  * Job runner smoke test on a real PostgreSQL server (roadmap 5.1: "the job runner processes one job
  * of each queue"; queue a job, run it, schedule one). pg-boss needs several connections at once, so
- * PGlite cannot run this; it is skipped unless REAL_PG_ADMIN_URL is set:
+ * PGlite cannot run this. It lives in test/realpg/, which only the realpg mode includes
+ * (vitest.config.ts), and there it must run: without REAL_PG_ADMIN_URL it fails, it never skips.
+ * Root `corepack pnpm test:realpg` (suite realpg-api) runs it with the rest of the API suite; alone:
  *
- *   REAL_PG_ADMIN_URL=postgres://postgres:pw@localhost:5432/postgres corepack pnpm --filter @synan/api exec vitest run test/jobs-realpg.test.ts
+ *   corepack pnpm --filter @synan/api exec vitest run --mode realpg test/realpg/jobs-realpg.test.ts
+ *
+ * Beside it, test/realpg/jobs-effects-realpg.test.ts checks each job's effect through the app's own
+ * wiring; this file is the runner's smoke test, with logins of its own.
  *
  * Like packages/db/test/real-postgres.test.ts, it creates a throwaway database and one LOGIN role per
  * pool (app_api, app_vault, app_scan, and app_jobs for the maintenance process), migrates as the
@@ -21,10 +26,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createDb, createJobs, enqueueInTransaction, JOB_QUEUES, JOB_SCHEDULES, runMigrations, scheduleDefaultJobs, type Db } from "@synan/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createApp, type RunningApp } from "../src/app.js";
-import { PgBossJobs } from "../src/lib/pgboss-jobs.js";
+import { createApp, type RunningApp } from "../../src/app.js";
+import { PgBossJobs } from "../../src/lib/pgboss-jobs.js";
 
 const ADMIN = process.env.REAL_PG_ADMIN_URL;
+// Included in the realpg mode only, where it must run: a missing server is a failure, not a skip.
+if (!ADMIN) throw new Error("realpg mode: REAL_PG_ADMIN_URL is not set");
 const suffix = randomBytes(4).toString("hex");
 const dbName = `jobs_${suffix}`;
 const logins = { api: `jobs_api_${suffix}`, vault: `jobs_vault_${suffix}`, scan: `jobs_scan_${suffix}`, jobs: `jobs_jobs_${suffix}` };
@@ -55,7 +62,7 @@ async function stopBoss(b: Boss | undefined) {
   await b?.stop({ graceful: false, wait: true } as never).catch(() => undefined);
 }
 
-describe.skipIf(!ADMIN)("job runner on real PostgreSQL (pg-boss)", () => {
+describe("job runner on real PostgreSQL (pg-boss)", () => {
   let admin: Db;
   let ownerUrl: string;
 

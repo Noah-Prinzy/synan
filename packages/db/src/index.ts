@@ -20,6 +20,7 @@ export type {
   TxOf,
   VaultScope,
 } from "./client";
+export { describeError, pgErrorCode } from "./errors";
 export * from "./functions";
 export * from "./auth";
 export * from "./secrets";

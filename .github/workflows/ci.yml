@@ -1,6 +1,10 @@
 # Synan CI (roadmap 5.1): every change is checked on GitHub's hosted Linux runners, including a
 # job on a real PostgreSQL 17 server. Branch protection should require the single job
-# "All required checks" (job id ci-ok), which fails when any job below fails or is cancelled.
+# "All required checks" (job id ci-ok), which fails when any job it lists fails or is cancelled.
+# The end-to-end job (e2e) is not one of them yet; see its comment.
+#
+# Every test suite runs through scripts/run-suite.mjs, which writes test-results/<suite>.json for the
+# test-count guard (scripts/test-counts.mjs, baseline scripts/test-counts.json).
 #
 # Action pinning: every action is pinned to a full commit SHA, with its version in a comment
 # (first-party actions/* included). Tools that are not actions (gitleaks, semgrep) are pinned by
@@ -17,6 +21,7 @@ on:
       - main
       - "build/**"
       - "ci/**"
+      - "integration/**"
 
 # One run per branch or pull request: a newer push cancels the older run (not on main).
 concurrency:
@@ -35,7 +40,7 @@ env:
 
 jobs:
   typecheck:
-    name: Typecheck (8 packages)
+    name: Typecheck (every package)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -55,8 +60,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Defined in scripts/run-suite.mjs. The attendee and admin apps have no tests yet.
-        suite: [contracts, db, api-memory, api-pglite, scanner]
+        # Defined in scripts/run-suite.mjs. The real-server suites run in the realpg job, e2e in its own.
+        suite: [contracts, db, api-memory, api-pglite, scanner, attendee, admin]
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -78,9 +83,9 @@ jobs:
           retention-days: 7
 
   realpg:
-    name: Real PostgreSQL 17 (migrations, 8 checks, job runner)
+    name: Real PostgreSQL 17 (migrations, db and API suites, job runner)
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:17
@@ -96,8 +101,18 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     env:
-      # A superuser on a throwaway server: it has CREATEDB and CREATEROLE, as the tests require.
-      # Each test file creates its own database and LOGIN roles and drops them afterwards.
+      # The service container's superuser, on a throwaway server: the real-server mode needs an admin
+      # login with CREATEDB and CREATEROLE (packages/db/README.md, "Testing"). With it the suites
+      # migrate a template database once per migration set (synan_tpl_<hash>), clone one database per
+      # test file, create the four shared test logins (synan_test_api/_vault/_scan/_jobs, each in
+      # exactly one app_* role, none a superuser or BYPASSRLS, as production requires), and drop what
+      # they made. The migration check and the smoke tests make their own throwaway databases.
+      #
+      # Migrating as a NON-superuser is proven by packages/db/test/real-postgres.test.ts ("a
+      # non-superuser migrating role"), which creates such a role itself: CREATEROLE, owner of its
+      # database (enough for the trusted extension btree_gist), and, because app_api/app_scan/
+      # app_vault/app_jobs already exist on this server, ADMIN OPTION on them (PostgreSQL 16+). To run
+      # every migration as such a role instead, set REAL_PG_MIGRATOR_URL to its login.
       REAL_PG_ADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres
     steps:
       - name: Check out (full history, for the upgrade check)
@@ -108,10 +123,18 @@ jobs:
       - name: Set up Node and pnpm
         id: setup
         uses: ./.github/actions/setup
-      - name: Show the server
+      - name: Configure the server as the local one (max_connections 400) and show it
+        # The API suite runs four files at once, each app with three role pools plus pg-boss: the
+        # image's default of 100 connections is too few. Same settings as scripts/pg-lib.mjs.
         env:
           PG_CONTAINER: ${{ job.services.postgres.id }}
         run: |
+          docker exec "$PG_CONTAINER" psql -U postgres -qc "alter system set max_connections = 400" -c "alter system set shared_buffers = '256MB'"
+          docker restart "$PG_CONTAINER"
+          for _ in $(seq 1 60); do
+            if docker exec "$PG_CONTAINER" pg_isready -U postgres -q; then break; fi
+            sleep 1
+          done
           docker exec "$PG_CONTAINER" psql -U postgres -tAc "select version()"
           docker exec "$PG_CONTAINER" psql -U postgres -tAc "show max_connections"
       - name: Find the comparison base
@@ -121,7 +144,8 @@ jobs:
         env:
           BASE: ${{ steps.base.outputs.ref }}
         run: pnpm db:migrate:check ${BASE:+--from "$BASE"}
-      - name: Real-PostgreSQL tests and the job-runner smoke test (test:realpg)
+      - name: The whole db and API suites on the server, with the job-runner tests (test:realpg)
+        # Suites realpg-db and realpg-api of scripts/run-suite.mjs (vitest --mode realpg).
         # Runs even when the migration check failed, so one run shows both results.
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: pnpm test:realpg
@@ -322,10 +346,62 @@ jobs:
       - name: Find the comparison base
         id: base
         run: bash .github/scripts/base-ref.sh
-      - name: Compare with scripts/test-counts.json
+      - name: Compare with scripts/test-counts.json (every suite but e2e, which the e2e job checks)
         env:
           BASE: ${{ steps.base.outputs.ref }}
-        run: node scripts/test-counts.mjs check ${BASE:+--base "$BASE"}
+        run: node scripts/test-counts.mjs check --except e2e ${BASE:+--base "$BASE"}
+
+  e2e:
+    # NOT a required check yet (not in ci-ok's needs): until branch fix/e2e-defects (in progress)
+    # lands, tests fail by design: three accessibility tests (tag @a11y, left out here with
+    # --grep-invert) and the defect tests, which assert the broken behaviour with test.fail (counted
+    # as passed while the defect is there; they turn red as soon as a fix lands without its marker
+    # removed). When that branch is in, drop --grep-invert, raise the e2e baseline, and add this job
+    # to ci-ok's needs.
+    name: End-to-end journeys (Playwright, not required yet)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI: "1"
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node and pnpm
+        uses: ./.github/actions/setup
+      - name: Playwright version (the browser cache key)
+        id: playwright
+        run: echo "version=$(node -p "require('./e2e/node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache the Playwright browsers
+        id: browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium
+      - name: Install Chromium and its system libraries
+        if: steps.browsers.outputs.cache-hit != 'true'
+        run: pnpm --filter @synan/e2e exec playwright install --with-deps chromium
+      - name: Install Chromium's system libraries (browser restored from the cache)
+        if: steps.browsers.outputs.cache-hit == 'true'
+        run: pnpm --filter @synan/e2e exec playwright install-deps chromium
+      - name: Run the journeys (CI=1 pnpm --filter @synan/e2e test --grep-invert @a11y)
+        run: node scripts/run-suite.mjs e2e -- --grep-invert @a11y
+      - name: Compare with scripts/test-counts.json (e2e)
+        if: ${{ !cancelled() }}
+        run: node scripts/test-counts.mjs check --suites e2e
+      - name: Keep the report, traces, screenshots and videos
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-results
+          path: |
+            e2e/.results/
+            test-results/e2e.json
+          # .results starts with a dot: upload-artifact leaves hidden files out unless told.
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
 
   ci-ok:
     name: All required checks
