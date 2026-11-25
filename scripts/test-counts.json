@@ -3,11 +3,11 @@
   "suites": {
     "contracts": 22,
     "db": 230,
-    "api-memory": 430,
-    "api-pglite": 430,
+    "api-memory": 437,
+    "api-pglite": 437,
     "scanner": 87,
     "realpg-db": 242,
-    "realpg-api": 425,
+    "realpg-api": 447,
     "attendee": 109,
     "admin": 131,
     "e2e": 33
