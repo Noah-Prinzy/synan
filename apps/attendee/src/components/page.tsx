@@ -34,7 +34,7 @@ function OfflineStrip() {
 }
 
 /**
- * The calm page (D-37): a minimal top bar, the page on the ground (the Gathering field shows
+ * The calm page (D-37): a minimal top bar, the page on the ground (the living background shows
  * through; nothing here paints an opaque ground), a quiet footer. `bleed` lets a screen draw its
  * own full-width parts; otherwise content sits in the calm column. `over` (the event page): the
  * top bar lies clear over the screen's picture; `action` is the bar's action once it turns solid.

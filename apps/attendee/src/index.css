@@ -24,7 +24,7 @@
 /* A phone on its side: little height, so the pass leads with the code. */
 @custom-variant short-landscape (@media (orientation: landscape) and (max-height: 520px));
 
-/* The ground is on <html> (packages/ui/src/styles/theme.css); the Gathering field sits just
+/* The ground is on <html> (packages/ui/src/styles/theme.css); the living background sits just
    above it, behind the page (components/ambient.tsx). */
 
 /* A showcase card's picture becomes the event page's picture, and back (View Transitions, where

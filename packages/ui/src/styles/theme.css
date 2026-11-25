@@ -87,9 +87,11 @@
   --seg-rule: 0;
   --reward-rule: 0;
 
-  /* The Gathering field (attendee only): "r g b" of its points, ink and Daybreak. */
+  /* The Attendee Portal's living background (D-37, packages/ui theme/living.tsx): its two
+     colours as "r g b", ink and Daybreak, and how fast it moves (1 = gentle, 0 = still). */
   --field-dot: 255 255 255;
   --field-tint: 138 180 255;
+  --bg-motion: 1;
 
   /* One accent, never a fill (D-01). */
   --brand: #8ab4ff; /* Daybreak blue (Option 1, chosen). 9.5:1 on the ground. */

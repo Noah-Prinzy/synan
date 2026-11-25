@@ -15,9 +15,6 @@
  *   <meta name="color-scheme">   the resolved theme
  */
 import { createElement, useEffect, useState, useSyncExternalStore, type ComponentType } from "react";
-import type { QuietZone } from "./gathering";
-
-export type { QuietZone };
 
 export type ThemeChoice = "system" | "light" | "dark";
 export type ResolvedTheme = "light" | "dark";
@@ -93,29 +90,26 @@ export const THEME_CHOICES: { value: ThemeChoice; label: string }[] = [
 ];
 
 /**
- * The living background behind every attendee page (D-37). Three kinds, while the owner chooses:
- * "points" (the Gathering field, ./gathering), "lines" (a few long fine lines drifting, ./lines)
- * and "gradient" (two soft fields of light drifting, ./gradient). It is never on the critical
- * path: nothing of it loads until the page has painted and the browser is idle, then its own
- * chunk arrives. Admin Command and the Gate Scanner do not use it.
+ * The slot for the Attendee Portal's living background (D-37). Until a scene is chosen it is
+ * empty and the page shows the plain ground. To fill it: write the scene with the engine in
+ * ./living.tsx (every guard is there: no frame loop, paused when hidden or off screen, a still
+ * frame under reduced motion, calmer behind text, speed from --bg-motion), make it that module's
+ * default export, and return `import("./living")` below. It is never on the critical path:
+ * nothing of it loads until the page has painted and the browser is idle, and it arrives in its
+ * own chunk. Admin Command and the Gate Scanner do not use it.
  */
-export type BackgroundKind = "points" | "lines" | "gradient";
+function loadScene(): Promise<{ default: ComponentType }> | null {
+  return null;
+}
 
-type BackgroundProps = { quiet?: QuietZone; strength?: number };
-const loaders: Record<BackgroundKind, () => Promise<{ default: ComponentType<BackgroundProps> }>> = {
-  points: () => import("./gathering"),
-  lines: () => import("./lines"),
-  gradient: () => import("./gradient"),
-};
-
-export function GatheringBackground({ kind = "points", ...props }: BackgroundProps & { kind?: BackgroundKind }) {
-  const [Field, setField] = useState<{ kind: BackgroundKind; C: ComponentType<BackgroundProps> } | null>(null);
+export function LivingBackground() {
+  const [Scene, setScene] = useState<ComponentType | null>(null);
   useEffect(() => {
     let cancelled = false;
     const load = () => {
-      void loaders[kind]().then(
+      loadScene()?.then(
         (m) => {
-          if (!cancelled) setField({ kind, C: m.default });
+          if (!cancelled) setScene(() => m.default);
         },
         () => {
           /* offline before the chunk was cached: the page simply has no background */
@@ -130,6 +124,6 @@ export function GatheringBackground({ kind = "points", ...props }: BackgroundPro
       cancelled = true;
       window.removeEventListener("load", later);
     };
-  }, [kind]);
-  return Field && Field.kind === kind ? createElement(Field.C, props) : null;
+  }, []);
+  return Scene ? createElement(Scene) : null;
 }
