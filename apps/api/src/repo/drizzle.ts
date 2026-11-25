@@ -1062,6 +1062,12 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
         if (!rows[0]) throw new Error(`credential ${id} not found`);
         return toCredential(rows[0]);
       },
+      // The state-machine trigger (0012) refuses a move the lifecycle does not allow.
+      async setState(id, patch) {
+        const rows = await db.update(credentials).set(patch).where(eq(credentials.id, id)).returning();
+        if (!rows[0]) throw new Error(`credential ${id} not found`);
+        return toCredential(rows[0]);
+      },
     },
 
     carriers: {

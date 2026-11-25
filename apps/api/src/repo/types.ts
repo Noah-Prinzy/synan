@@ -586,7 +586,10 @@ export interface CredentialsRepo {
   byTokenHash(hash: string): Promise<CredentialRow | null>;
   forRegistration(registrationId: string): Promise<CredentialRow | null>;
   insert(row: CredentialRow): Promise<void>;
-  update(id: string, patch: Partial<Pick<CredentialRow, "state" | "zone_state" | "revoked_at">>): Promise<CredentialRow>;
+  /** Everything but the state: a state change goes through domain/credential-state.ts, which tells the holder. */
+  update(id: string, patch: Partial<Pick<CredentialRow, "zone_state">>): Promise<CredentialRow>;
+  /** The state write itself. Called only by CredentialStates (domain/credential-state.ts; a test pins it). */
+  setState(id: string, patch: Pick<CredentialRow, "state"> & Partial<Pick<CredentialRow, "zone_state" | "revoked_at">>): Promise<CredentialRow>;
   /** Ordered by id, keyset on id. `registrationIds` scopes to those registrations (empty = nothing). */
   page(opts: { registrationIds?: readonly string[]; state?: CredentialState; after?: string; limit: number }): Promise<CredentialRow[]>;
   /** Every credential (any state) of these registrations. */

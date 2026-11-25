@@ -182,12 +182,12 @@ export function carrierRoutes(x: Express, app: AppContext) {
       reason: body.reason, old_carrier_id: r.old_carrier_id, new_carrier_id: r.new_carrier_id, new_credential_id: r.new_credential_id,
     });
     const fresh = (await app.repos.credentials.byId(r.new_credential_id!)) as CredentialRow;
-    app.credentials.notifyState(cred, "replaced");
+    // The store replaced the credential in its one step: tell the holder (open pass, "re-issued" notice).
+    await app.credentials.states.announce(cred, "replaced");
     // The old emailed code died with the old credential: send a new pass.
     if (fresh.registration_id) {
       await app.credentials.sendEmailedQr(fresh.id).catch((e: unknown) => console.error("[mail] pass delivery failed:", e instanceof Error ? e.message : String(e)));
     }
-    await app.notifications.forCredential(fresh.id, NOTE.passReissued);
     app.scans.forgetProjections();
     return carrierDto((await app.repos.carriers.forCredential(fresh.id)).find((c) => c.id === r.new_carrier_id)!);
   });

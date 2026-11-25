@@ -15,6 +15,7 @@ import { AlertService } from "./domain/alerts.js";
 import { AuditService } from "./domain/audit.js";
 import { AuthService } from "./domain/auth-service.js";
 import { CredentialService } from "./domain/credential-service.js";
+import { CredentialStates } from "./domain/credential-state.js";
 import { KeyService } from "./domain/keys.js";
 import { QrService } from "./domain/qr.js";
 import { ScanService } from "./domain/scan-service.js";
@@ -185,8 +186,10 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<RunningApp
   const alerts = new AlertService(repos.alerts, clock);
   const telemetry = new TelemetryHub(clock, { kAnon: config.kAnon });
   const notifications = new NotificationService({ repos, clock });
-  const credentials = new CredentialService(repos, qr, audit, mail, config, clock, notifications);
-  const scans = new ScanService(repos, qr, alerts, audit, telemetry, clock, { offlineSyncGraceMs: config.offlineSyncGraceS * 1000, checkpointScansPerMin: config.checkpointScansPerMin, offlineLateSyncMs: config.offlineLateSyncS * 1000, undoWindowMs: config.scanUndoWindowS * 1000 }, notifications);
+  // The one path that writes a credential's state and tells its holder (/stream/me, notifications).
+  const credentialStates = new CredentialStates(repos, clock, notifications);
+  const credentials = new CredentialService(repos, qr, audit, mail, config, clock, notifications, credentialStates);
+  const scans = new ScanService(repos, qr, alerts, audit, telemetry, clock, { offlineSyncGraceMs: config.offlineSyncGraceS * 1000, checkpointScansPerMin: config.checkpointScansPerMin, offlineLateSyncMs: config.offlineLateSyncS * 1000, undoWindowMs: config.scanUndoWindowS * 1000 }, notifications, credentialStates);
   const rateLimiter = new RateLimiter(() => clock.now());
   const webhooks = new WebhookService(repos, clock, opts.webhookTransport, opts.webhookResolver);
   webhooks.attach(alerts);

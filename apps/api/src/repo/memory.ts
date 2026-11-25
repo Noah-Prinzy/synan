@@ -251,6 +251,21 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
       for (const e of t.events.values()) if (e.state === "published" || e.state === "live") e.revocation_epoch += 1;
     }
   };
+  /** One credential write, guarded like the database's state-machine trigger (0012). */
+  const credentialWrite = (id: string, patch: Partial<Pick<CredentialRow, "state" | "zone_state" | "revoked_at">>) => {
+    const c = t.credentials.get(id);
+    if (!c) throw new Error(`credential ${id} not found`);
+    const from = c.state;
+    if (patch.state !== undefined && patch.state !== from && !CREDENTIAL_MOVES.has(`${from}>${patch.state}`)) {
+      throw new Error(`check_violation: credential ${id} cannot move from ${from} to ${patch.state}`);
+    }
+    Object.assign(c, patch);
+    const to = c.state;
+    if (from !== to && (to === "revoked" || to === "suspended_review" || to === "replaced" || (from === "suspended_review" && to === "active"))) {
+      bumpForCredential(c);
+    }
+    return clone(c);
+  };
   /**
    * Removes an event's rooms matching `drop` with their sessions and access rules, as the database's
    * ON DELETE CASCADE from event_rooms does (and its access_rules trigger bumps the revocation epoch).
@@ -781,18 +796,10 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
         return [...t.credentials.values()].filter((c) => c.registration_id !== null && scope.has(c.registration_id)).map(clone);
       },
       async update(id, patch) {
-        const c = t.credentials.get(id);
-        if (!c) throw new Error(`credential ${id} not found`);
-        const from = c.state;
-        if (patch.state !== undefined && patch.state !== from && !CREDENTIAL_MOVES.has(`${from}>${patch.state}`)) {
-          throw new Error(`check_violation: credential ${id} cannot move from ${from} to ${patch.state}`);
-        }
-        Object.assign(c, patch);
-        const to = c.state;
-        if (from !== to && (to === "revoked" || to === "suspended_review" || to === "replaced" || (from === "suspended_review" && to === "active"))) {
-          bumpForCredential(c);
-        }
-        return clone(c);
+        return credentialWrite(id, patch);
+      },
+      async setState(id, patch) {
+        return credentialWrite(id, patch);
       },
     },
     carriers: {
