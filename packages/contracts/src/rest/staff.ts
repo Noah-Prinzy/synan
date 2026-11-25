@@ -134,8 +134,15 @@ export const EventReportRow = z.object({
   created_at: IsoDateTime,
   /** What the export produces. */
   format: ExportFormat,
-  /** Signed short-lived link once state=ready. */
+  /** Signed short-lived link once state=ready; null before that, and once the file has expired (`expired_at`). */
   download_url: z.url().nullable(),
+  /**
+   * Additive: when the exported file stopped being available, from the register of exported files
+   * (03 §6): its retention ran out, or the retention job deleted it. `state` stays `ready` (the export
+   * did complete); `download_url` is then null, and a link made earlier answers 410 EXPORT_EXPIRED.
+   * Null or absent while the file can be downloaded (and for an export not ready yet).
+   */
+  expired_at: IsoDateTime.nullable().optional(),
 });
 /** Sections of each report kind, in order; the first is the default. */
 export const REPORT_SECTIONS = {

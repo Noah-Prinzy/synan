@@ -1154,7 +1154,8 @@ export interface ExportedFilesRepo {
   due(now: Date, limit: number): Promise<ExportedFileRow[]>;
   /** After their objects were removed. Returns how many were newly marked. */
   markDeleted(ids: readonly string[], i: { actorId: string | null; now: Date }): Promise<number>;
-  list(q: { reportId?: string; dataRequestId?: string }): Promise<ExportedFileRow[]>;
+  /** `reportIds`: the files of any of these reports (empty: none). */
+  list(q: { reportId?: string; reportIds?: readonly string[]; dataRequestId?: string }): Promise<ExportedFileRow[]>;
   /** Sent/failed email after 7 days, expired notifications, finished schedules after 30 days. */
   cleanupDelivery(now: Date): Promise<{ emails: number; notifications: number; schedules: number }>;
 }

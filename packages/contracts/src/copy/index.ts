@@ -57,6 +57,7 @@ export const ERROR_COPY = {
   IDEMPOTENCY_CONFLICT: { status: 409, title: "Duplicate request", message: "A different request was already sent with this key." },
   LINK_INVALID: { status: 400, title: "Link not valid", message: "This sign-in link is not valid. Request a new one." },
   LINK_EXPIRED: { status: 400, title: "Link expired", message: "This sign-in link has expired or was already used. Request a new one." },
+  EXPORT_EXPIRED: { status: 410, title: "Export deleted", message: "This export was deleted when its retention period ended. Prepare a new one." },
   TICKET_INVALID: { status: 401, title: "Live connection refused", message: "The live connection ticket was missing, used, or expired." },
   CHECKPOINT_NOT_ASSIGNED: { status: 403, title: "Not your gate", message: "You are not assigned to this checkpoint." },
   OUTSIDE_SHIFT: { status: 403, title: "Outside your shift", message: "Scanning is only possible during your assigned shift." },

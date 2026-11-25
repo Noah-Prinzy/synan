@@ -67,7 +67,7 @@ export function memoryExportedFiles(t: MemoryTables, audit: Audit): ExportedFile
     },
     async list(q) {
       return [...f.values()]
-        .filter((x) => (!q.reportId || x.report_id === q.reportId) && (!q.dataRequestId || x.data_request_id === q.dataRequestId))
+        .filter((x) => (!q.reportId || x.report_id === q.reportId) && (!q.reportIds || (x.report_id !== null && q.reportIds.includes(x.report_id))) && (!q.dataRequestId || x.data_request_id === q.dataRequestId))
         .sort((a, b) => b.created_at.getTime() - a.created_at.getTime())
         .map(clone);
     },

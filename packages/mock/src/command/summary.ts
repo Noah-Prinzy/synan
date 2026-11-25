@@ -127,6 +127,18 @@ function closedSummary(eventId: string, operatorId: string): PostEventSummary {
         format: "xlsx",
         download_url: null,
       },
+      // An export past its 7-day retention: the register says its file was deleted, so no link (03 §6).
+      {
+        id: idFor("report:founders:csv:attendance:0"),
+        event_id: eventId,
+        kind: "attendance",
+        state: "ready",
+        requested_by: operatorId,
+        created_at: "2026-11-10T09:05:00.000Z",
+        format: "csv",
+        download_url: null,
+        expired_at: "2026-11-17T09:05:00.000Z",
+      },
     ],
     purge: { purged_at: CLOSED_EVENT.purged_at, due_at: CLOSED_EVENT.purged_at },
   };
