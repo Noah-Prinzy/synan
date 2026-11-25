@@ -3,7 +3,8 @@
  * makes the page behind inert and puts the dialog in the top layer, so nothing can clip it
  * or sit above it. Escape and the scrim close it; focus returns to whatever opened it.
  *
- * Hairline frame, square, no shadow; the scrim is the one dark wash (--scrim). Sized to the
+ * Opaque, square, no outline (D-37): the solid ground with the pop depth; the scrim is the one
+ * dark wash (--scrim). Title, body and actions are separated by space, not rules. Sized to the
  * content up to `width`, never wider than the viewport, and scrolls inside its body when tall.
  */
 import { useEffect, useId, useRef, type ReactNode } from "react";
@@ -19,7 +20,7 @@ export interface DialogProps {
   /** The action row. Put the completing action last (right). */
   footer?: ReactNode;
   width?: "sm" | "md" | "lg";
-  /** A danger-zone dialog: a stop-coloured hairline under the title. */
+  /** A danger-zone dialog: the title is set in the stop colour. */
   tone?: "neutral" | "danger";
   /** Close when the scrim is clicked (default true). */
   dismissible?: boolean;
@@ -73,26 +74,26 @@ export function Dialog({
         if (dismissible && event.target === ref.current) onClose();
       }}
       className={cn(
-        "m-auto max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] border border-foreground/20 bg-popover p-0 text-13 text-foreground backdrop:bg-scrim",
+        "m-auto max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] border-0 bg-solid p-0 text-13 text-foreground shadow-pop backdrop:bg-scrim",
         widths[width],
         className,
       )}
     >
       {open ? (
         <div className="flex max-h-[calc(100dvh-2rem)] flex-col">
-          <header className={cn("shrink-0 border-b px-5 pt-4 pb-3", tone === "danger" ? "border-destructive/50" : "border-border")}>
-            <h2 id={titleId} className="font-display text-17 leading-snug">
+          <header className="shrink-0 px-6 pt-6 pb-2">
+            <h2 id={titleId} className={cn("font-display text-21 leading-snug", tone === "danger" && "text-destructive")}>
               {title}
             </h2>
             {description ? (
-              <p id={descriptionId} className="mt-1 text-12 text-muted-foreground">
+              <p id={descriptionId} className="mt-1 text-13 text-muted-foreground">
                 {description}
               </p>
             ) : null}
           </header>
-          {children ? <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div> : null}
+          {children ? <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">{children}</div> : null}
           {footer ? (
-            <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border px-5 py-3">{footer}</footer>
+            <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 px-6 pt-2 pb-6">{footer}</footer>
           ) : null}
         </div>
       ) : null}

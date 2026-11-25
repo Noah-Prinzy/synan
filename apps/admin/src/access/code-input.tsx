@@ -107,8 +107,8 @@ export const CodeInput = forwardRef<
           onKeyDown={onKeyDown(i)}
           onPaste={onPaste(i)}
           className={cn(
-            "h-11 w-10 border bg-transparent text-center font-mono text-21 text-foreground tabular-nums outline-none transition-[border-color] duration-120 ease-standard focus-visible:border-brand disabled:opacity-50 motion-reduce:transition-none",
-            invalid ? "border-destructive" : "border-border hover:border-foreground/30",
+            "h-11 w-10 bg-field text-center font-mono text-21 text-foreground tabular-nums outline-none transition-[background-color,box-shadow] duration-120 ease-standard hover:bg-field-hover focus-visible:shadow-[inset_0_0_0_2px_var(--brand)] disabled:opacity-50 motion-reduce:transition-none",
+            invalid ? "shadow-[inset_0_0_0_1px_var(--destructive),inset_0_-2px_0_var(--destructive)]" : "shadow-[inset_0_-2px_0_var(--field-edge)]",
           )}
         />
       ))}

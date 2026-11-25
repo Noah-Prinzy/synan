@@ -11,19 +11,20 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean;
 }
 
-// Labels are the UI sans in sentence case; mono is for data only. Both sizes meet the
-// 44px touch target. The primary fill is the `--action` token (neutral by rule).
+// Labels are the UI sans in sentence case; mono is for data only. Square, no outline (D-37):
+// the one filled action is ink (--action); everything else is a tonal block or quiet text.
+// Focus is the square brand ring from theme.css.
 const base =
-  "pressable relative inline-flex items-center justify-center gap-2 border font-sans font-medium transition-[color,background-color,border-color] duration-120 ease-standard focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed motion-reduce:transition-none";
+  "pressable relative inline-flex items-center justify-center gap-2 font-sans font-medium transition-[color,background-color,box-shadow] duration-120 ease-standard disabled:cursor-not-allowed motion-reduce:transition-none";
 
-// Disabled is quiet on every variant: the fill (or colour) drops away to a hairline and muted
-// text, so an action that is not available yet never reads as a heavy grey block.
+// Disabled drops every variant to a quiet tonal block with muted words: never a grey ink block,
+// never an outline. A disabled button does not react to the pointer.
 const variants: Record<ButtonVariant, string> = {
   primary:
-    "border-action bg-action text-action-foreground hover:bg-transparent hover:text-foreground disabled:border-border disabled:bg-transparent disabled:text-muted-foreground",
-  secondary: "border-border text-foreground hover:border-foreground disabled:text-muted-foreground disabled:hover:border-border",
-  quiet: "border-transparent text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:hover:text-muted-foreground",
-  danger: "border-destructive/60 text-destructive hover:border-destructive disabled:opacity-50 disabled:hover:border-destructive/60",
+    "bg-action text-action-foreground hover:shadow-[0_0_0_4px_color-mix(in_srgb,var(--brand)_18%,transparent)] disabled:bg-surface-2 disabled:text-muted-foreground disabled:shadow-none",
+  secondary: "bg-surface-2 text-foreground hover:bg-surface-3 disabled:bg-surface-2 disabled:text-muted-foreground",
+  quiet: "text-muted-foreground hover:bg-surface-2 hover:text-foreground disabled:bg-transparent disabled:opacity-50 disabled:hover:text-muted-foreground",
+  danger: "bg-surface-2 text-destructive hover:bg-surface-3 disabled:opacity-50 disabled:hover:bg-surface-2",
 };
 
 const sizes: Record<ButtonSize, string> = {
@@ -58,7 +59,7 @@ export function Button({
       className={cn(base, variants[variant], sizes[size], className)}
     >
       {loading ? (
-        <span aria-hidden="true" className="size-2 animate-spin border border-current motion-reduce:animate-none" />
+        <span aria-hidden="true" className="size-2 animate-spin bg-current motion-reduce:animate-none" />
       ) : null}
       {children}
     </button>

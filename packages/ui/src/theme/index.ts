@@ -14,7 +14,10 @@
  *   <meta name="theme-color">    browser chrome: the ground of the resolved theme
  *   <meta name="color-scheme">   the resolved theme
  */
-import { useEffect, useSyncExternalStore } from "react";
+import { createElement, useEffect, useState, useSyncExternalStore, type ComponentType } from "react";
+import type { QuietZone } from "./gathering";
+
+export type { QuietZone };
 
 export type ThemeChoice = "system" | "light" | "dark";
 export type ResolvedTheme = "light" | "dark";
@@ -90,18 +93,32 @@ export const THEME_CHOICES: { value: ThemeChoice; label: string }[] = [
 ];
 
 /**
- * The ambient field (D-22): one soft Daybreak luminance behind the content. It is painted as
- * the root background (styles/theme.css, :root[data-ambient-field]); this turns it on while
- * mounted and renders nothing. `still`: never drifts (Admin Command: no decorative motion
- * there, docs/05 §5).
+ * The Gathering field behind every attendee page (D-37; ./gathering). It is never on the critical
+ * path: nothing of it loads until the page has painted and the browser is idle, then its own
+ * chunk arrives and draws. Admin Command and the Gate Scanner do not use it.
  */
-export function AmbientField({ still = false }: { still?: boolean }): null {
+export function GatheringBackground(props: { quiet?: QuietZone; strength?: number }) {
+  const [Field, setField] = useState<ComponentType<{ quiet?: QuietZone; strength?: number }> | null>(null);
   useEffect(() => {
-    const root = document.documentElement;
-    root.dataset.ambientField = still ? "still" : "drift";
-    return () => {
-      delete root.dataset.ambientField;
+    let cancelled = false;
+    const load = () => {
+      void import("./gathering").then(
+        (m) => {
+          if (!cancelled) setField(() => m.default);
+        },
+        () => {
+          /* offline before the chunk was cached: the page simply has no field */
+        },
+      );
     };
-  }, [still]);
-  return null;
+    const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number };
+    const later = () => (w.requestIdleCallback ? w.requestIdleCallback(load, { timeout: 2000 }) : window.setTimeout(load, 200));
+    if (document.readyState === "complete") later();
+    else window.addEventListener("load", later, { once: true });
+    return () => {
+      cancelled = true;
+      window.removeEventListener("load", later);
+    };
+  }, []);
+  return Field ? createElement(Field, props) : null;
 }

@@ -35,10 +35,63 @@
   --muted-foreground: oklch(0.708 0 0); /* #A1A1A1 */
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
+  /* No ruled lines (D-37): nothing in the Attendee Portal or Admin Command draws a hairline.
+     These two stay transparent so a screen not yet rebuilt renders without lines; the Gate
+     Scanner, which keeps its ruled instrument look, restores them in scanner-lines.css. */
+  --border: transparent;
+  --input: transparent;
   --ring: var(--brand);
   --radius: 0;
+
+  /* Tone, not lines (D-37). Separation is space first, then a tonal step, then type weight.
+     --surface      a panel or card: white at 4.5 % on dark; white with soft depth on light
+     --surface-2    a tonal block: buttons, chips, segmented choices, the avatar
+     --surface-3    a tonal block under the pointer or pressed
+     --solid        opaque: menus, dialogs, sheets, the solid top bar
+     --depth        the soft depth under a panel (none on dark; tone does it there)
+     --depth-pop    the depth under a menu or dialog
+     --field        a text field, select or textarea; --field-hover under the pointer
+     --field-edge   the 2 px edge along a field's foot: the one mark that tells a field from
+                    the ground at 3:1 or more (WCAG 2.2 1.4.11). 4.4:1 on the ground, 3.9:1 on
+                    a field, 3.5:1 on a field inside a panel (dark); 4.3 / 3.9 / 4.3 (light)
+     --field-solid  the field's opaque colour (autofill paints over the tone with it)
+     --glass        frosted ground over an event picture; words on it use --glass-ink and
+                    --glass-ink-2, its own tones, so they keep 4.5:1 over any photograph */
+  --surface: rgb(255 255 255 / 0.045);
+  --surface-2: rgb(255 255 255 / 0.08);
+  --surface-3: rgb(255 255 255 / 0.12);
+  --solid: #161616;
+  --depth: none;
+  --depth-pop: 0 30px 80px -20px rgb(0 0 0 / 0.8), 0 0 0 1px rgb(255 255 255 / 0.06);
+  --field: rgb(255 255 255 / 0.06);
+  --field-hover: rgb(255 255 255 / 0.09);
+  --field-edge: #767676;
+  --field-solid: #191919;
+  --glass: rgb(12 12 14 / 0.8);
+  --glass-ink: #f6f5f2;
+  --glass-ink-2: #dddcd7;
+
+  /* Keyboard focus: a square ring, 2 px, offset clear of the control. */
+  --focus-width: 2px;
+  --focus-offset: 2px;
+
+  /* How the controls shared with the Gate Scanner draw themselves: tonal blocks here, rules
+     in scanner-lines.css. --ctl-* a tonal button; --seg-* a segmented choice (ThemeSwitch),
+     whose chosen cell is ink with ground-coloured words; --reward-rule 0 hides the old blue
+     rule under a completed result (the drawn tick stays). */
+  --ctl-fill: var(--surface-2);
+  --ctl-fill-hover: var(--surface-3);
+  --ctl-edge: transparent;
+  --ctl-edge-hover: transparent;
+  --seg-fill: var(--surface-2);
+  --seg-on: var(--foreground);
+  --seg-on-ink: var(--background);
+  --seg-rule: 0;
+  --reward-rule: 0;
+
+  /* The Gathering field (attendee only): "r g b" of its points, ink and Daybreak. */
+  --field-dot: 255 255 255;
+  --field-tint: 138 180 255;
 
   /* One accent, never a fill (D-01). */
   --brand: #8ab4ff; /* Daybreak blue (Option 1, chosen). 9.5:1 on the ground. */
@@ -71,12 +124,6 @@
      colour is never a fill unless an identity's approved rule change says so. */
   --action: var(--foreground);
   --action-foreground: var(--background);
-
-  /* Ambient background on the Attendee Portal (owner, 2026-11-23): 0 turns it off.
-     It is the opacity of one soft monochrome luminance field; keep it barely there.
-     --ambient-tint is its colour: the accent itself on dark. */
-  --ambient: 0.06;
-  --ambient-tint: var(--brand);
 
   /* Things drawn outside the utilities. The checkbox tick is drawn in the ground colour on
      the accent; the skeleton sheen is a faint highlight; the scrollbar thumb is a hairline. */
@@ -118,8 +165,21 @@
   --muted-foreground: #5e5a52; /* 6.3:1 on the ground, 6.9:1 on card, 5.6:1 on muted */
   --accent: #e9e6df;
   --accent-foreground: #121110;
-  --border: rgb(18 17 16 / 0.12);
-  --input: rgb(18 17 16 / 0.22);
+  --surface: #ffffff;
+  --surface-2: rgb(18 17 16 / 0.05);
+  --surface-3: rgb(18 17 16 / 0.08);
+  --solid: #ffffff;
+  --depth: 0 1px 2px rgb(18 17 16 / 0.05), 0 16px 40px -16px rgb(18 17 16 / 0.14);
+  --depth-pop: 0 1px 2px rgb(18 17 16 / 0.06), 0 30px 70px -20px rgb(18 17 16 / 0.28);
+  --field: rgb(18 17 16 / 0.05);
+  --field-hover: rgb(18 17 16 / 0.08);
+  --field-edge: #77736b;
+  --field-solid: #eceae5;
+  --glass: rgb(250 248 244 / 0.84);
+  --glass-ink: #121110;
+  --glass-ink-2: #45423c;
+  --field-dot: 18 17 16;
+  --field-tint: 47 98 217;
 
   --brand: #2f62d9; /* the identity's light accent: 5.0:1 on the ground, 5.4:1 on card */
 
@@ -132,10 +192,6 @@
 
   --scrim: rgb(18 17 16 / 0.32);
 
-  /* Daybreak itself as the light's atmosphere: a soft blue daylight behind the frame. */
-  --ambient: 0.1;
-  --ambient-tint: #8ab4ff;
-
   --check-tick: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Cpath d=%27M3.5 8.5 6.5 11.5 12.5 4.5%27 fill=%27none%27 stroke=%27%23f7f5f0%27 stroke-width=%272%27/%3E%3C/svg%3E");
   --sheen: rgba(255, 255, 255, 0.55);
   --scrollbar: #cfcbc2;
@@ -143,10 +199,6 @@
   color-scheme: light;
 }
 
-/* Ambient off, for comparison (?ambient=off in development) or by setting --ambient: 0. */
-:root[data-ambient="off"] {
-  --ambient: 0;
-}
 
 @theme inline {
   --color-background: var(--background);
@@ -222,17 +274,6 @@ html {
   color: var(--foreground);
 }
 
-/* Brand thread: the accent at the page edge, never a surface. */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0 0 auto 0;
-  height: 1px;
-  background: color-mix(in srgb, var(--brand) 55%, transparent);
-  pointer-events: none;
-  z-index: 60;
-}
-
 /* The stop cap: hard-edged ground-coloured hatching laid over a stop-coloured bar end.
    Hatching, not a gradient: every stop is a hard edge (docs/05 §1.5). */
 @layer utilities {
@@ -245,61 +286,29 @@ body::before {
   }
 }
 
-/* Keyboard focus: brand ring, 1px, offset so it never sits on a hairline. In the base
-   layer, so a component's own focus utilities (or outline-none on a scroll target)
-   can override it. */
+/* Keyboard focus: a square brand ring (--focus-width, 2 px), offset clear of the control so it
+   never sits on the control's own tone. In the base layer, so a component's own focus utilities
+   (or outline-none on a scroll target) can override it. */
 @layer base {
   :focus-visible {
-    outline: 1px solid var(--brand);
-    outline-offset: 2px;
+    outline: var(--focus-width) solid var(--brand);
+    outline-offset: var(--focus-offset);
   }
-}
-
-/*
- * The ground and the ambient field (D-22: "even in the background the UI should be accented
- * with the blue"). Both are the root background: the ground is the colour of <html> and the
- * field its background image, so the field lies under every piece of content in the same
- * layer. <body> stays transparent; anything with its own opaque ground (the sticky header,
- * sheets, map rooms) covers it. Earlier the ground sat on <body> over a separate field layer,
- * which was never visible; a separate layer under transparent content would also have cost
- * the page its sub-pixel text, so the field is painted, not composited.
- *
- * One soft Daybreak luminance behind the frame, top left: atmosphere, never a surface.
- * Strength is --ambient per theme (0 = off; :root[data-ambient="off"] in development);
- * colour is --ambient-tint. <AmbientField> (packages/ui/src/theme) turns it on per app:
- * "drift" (Attendee Portal) moves it 22 x 14 vmax over 90 s in one-second steps (one repaint
- * a second, no layout), "still" (Admin Command) never moves. Static under reduced motion;
- * paused while the tab is hidden. The Gate Scanner does not use it.
- */
-@layer base {
   html {
     background-color: var(--background);
   }
-  :root[data-ambient-field] {
-    /* Where the field sat as a fixed layer (inset -25vmax, a 70vmax disc at 18% 12%). */
-    --ambient-x: calc(0.18 * (100vw - 20vmax) - 25vmax);
-    --ambient-y: calc(0.12 * (100vh - 20vmax) - 25vmax);
-    background-image: radial-gradient(closest-side, color-mix(in oklch, var(--ambient-tint) calc(var(--ambient) * 100%), transparent), transparent);
-    background-size: 70vmax 70vmax;
-    background-repeat: no-repeat;
-    background-position: var(--ambient-x) var(--ambient-y);
-  }
-  :root[data-ambient-field="drift"] {
-    animation: ambientDrift 90s steps(90) infinite alternate;
-  }
-  :root[data-ambient-field][data-hidden] {
-    animation-play-state: paused;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    :root[data-ambient-field] {
-      animation: none;
-    }
-  }
 }
 
-@keyframes ambientDrift {
-  from { background-position: var(--ambient-x) var(--ambient-y); }
-  to { background-position: calc(var(--ambient-x) + 22vmax) calc(var(--ambient-y) + 14vmax); }
+/* Admin Command has no animation at all (D-37): state changes are instant, a check appears
+   already drawn. The admin sets data-motion="none" on <html> before first paint. */
+:root[data-motion="none"] *,
+:root[data-motion="none"] *::before,
+:root[data-motion="none"] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+:root[data-motion="none"] {
+  scroll-behavior: auto;
 }
 
 /* ---- Mobile (mobile agent) ---- */
@@ -331,3 +340,57 @@ body::before {
   }
 }
 /* ---- end Mobile ---- */
+
+/*
+ * Type roles (D-37, docs/05 §4). Emitted only where a screen uses them.
+ *   type-statement   the one statement of a screen: display 56 (40 on a phone), the second
+ *                    sentence in the muted tone
+ *   type-title       a screen or section title: display 40 (28 on a phone)
+ *   type-event-name  the event's name on its own page only: display 64 to 184, layered
+ *   eyebrow          the line above a statement: UI sans 13, muted
+ *   eyebrow-mono     the same in mono capitals: the event page and Admin Command
+ */
+@utility type-statement {
+  font-family: var(--type-display);
+  font-weight: 500;
+  font-size: 2.5rem;
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+  @media (min-width: 48rem) {
+    font-size: 3.5rem;
+  }
+}
+@utility type-title {
+  font-family: var(--type-display);
+  font-weight: 500;
+  font-size: 1.75rem;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+  @media (min-width: 48rem) {
+    font-size: 2.5rem;
+  }
+}
+@utility type-event-name {
+  font-family: var(--type-display);
+  font-weight: 600;
+  font-size: clamp(4rem, 11.5vw, 11.5rem);
+  line-height: 0.86;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
+}
+@utility eyebrow {
+  font-family: var(--type-ui);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+}
+@utility eyebrow-mono {
+  font-family: var(--type-data);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}

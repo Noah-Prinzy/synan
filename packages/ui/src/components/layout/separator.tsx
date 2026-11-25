@@ -12,8 +12,8 @@ export function Separator({
       role="separator"
       aria-orientation={orientation}
       className={cn(
-        "border-border bg-border",
-        orientation === "horizontal" ? "h-px w-full" : "h-full w-px",
+        // Separation is space (D-37): the separator is an empty band, never a rule.
+        orientation === "horizontal" ? "h-6 w-full" : "h-full w-6",
         className,
       )}
     />

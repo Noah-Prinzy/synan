@@ -1,9 +1,10 @@
 /**
- * ThemeSwitch: System · Light · Dark, as one row of ruled cells (square chips, docs/05 §2.1).
- * Native radios underneath, so Tab enters the group, the arrow keys move and choose, and
- * assistive tech hears a labelled radio group. The chosen cell carries the accent rule
- * (blue = where you acted, docs/05 §5); the label is never colour alone, the chosen word
- * also turns from muted to ink. 44px under a coarse pointer at either density.
+ * ThemeSwitch: System · Light · Dark, as one segmented choice. Native radios underneath, so Tab
+ * enters the group, the arrow keys move and choose, and assistive tech hears a labelled radio
+ * group. On the tonal surfaces (D-37) it is one tonal block whose chosen cell is ink with
+ * ground-coloured words; on the Gate Scanner it keeps its ruled cells with the accent rule under
+ * the chosen one (the --seg-* and --ctl-* tokens, theme.css and scanner-lines.css). The chosen
+ * word never relies on colour alone. 44px under a coarse pointer at either density.
  */
 import { useId, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
@@ -53,13 +54,13 @@ export function ThemeSwitch({
       >
         {label}
       </legend>
-      <div className={cn("max-w-full border border-border", fill ? "flex w-full" : "inline-flex")}>
+      <div className={cn("max-w-full border border-(--ctl-edge) bg-(--seg-fill)", fill ? "flex w-full" : "inline-flex")}>
         {THEME_CHOICES.map((option) => (
           <label
             key={option.value}
             className={cn(
-              "relative flex cursor-pointer items-center justify-center border-l border-border text-muted-foreground transition-colors duration-120 ease-standard first:border-l-0 hover:text-foreground motion-reduce:transition-none",
-              "has-checked:text-foreground has-focus-visible:outline-1 has-focus-visible:outline-offset-2 has-focus-visible:outline-brand has-focus-visible:outline-solid",
+              "relative flex cursor-pointer items-center justify-center border-l border-(--ctl-edge) text-muted-foreground transition-colors duration-120 ease-standard first:border-l-0 [&:not(:has(:checked))]:hover:text-foreground motion-reduce:transition-none",
+              "has-checked:bg-(--seg-on) has-checked:text-(--seg-on-ink) has-focus-visible:outline-(length:--focus-width) has-focus-visible:outline-offset-2 has-focus-visible:outline-brand has-focus-visible:outline-solid",
               cell[density],
               fill && "flex-1",
               cellClassName,
@@ -74,7 +75,7 @@ export function ThemeSwitch({
               className="peer sr-only"
             />
             {option.label}
-            <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-0.5 bg-brand opacity-0 peer-checked:opacity-100" />
+            <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-0.5 bg-brand opacity-0 peer-checked:opacity-(--seg-rule)" />
           </label>
         ))}
       </div>

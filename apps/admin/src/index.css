@@ -6,9 +6,8 @@
 @import "@fontsource-variable/instrument-sans";
 @import "@fontsource-variable/geist-mono";
 
-/* The palette lives in packages/ui/src/styles/theme.css. Admin is an instrument: no decoration
-   (docs/05 §2). Behind the frame sits the still ambient field (D-22): one soft Daybreak
-   luminance painted as the root background, never moving, on by AppShell (<AmbientField still>). */
+/* The palette lives in packages/ui/src/styles/theme.css. Admin is an instrument: no decoration,
+   no animation (D-37; index.html sets data-motion="none"), a plain ground. */
 
 /* Scrollbars as hairline furniture, not chrome. The document itself never scrolls: the shell's
    regions do (packages/ui shell), so focusing a field can never shift the whole frame. */

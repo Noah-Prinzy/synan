@@ -55,7 +55,7 @@ export function AnimatedBar({ value, tone = "neutral", label, className }: Anima
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(clamped)}
-      className={cn("h-px w-full overflow-hidden bg-border", className)}
+      className={cn("h-1 w-full overflow-hidden bg-surface-3", className)}
     >
       <div
         className={cn(

@@ -34,10 +34,10 @@ export const DeskInput = forwardRef<HTMLInputElement, DeskInputProps>(function D
         aria-describedby={props["aria-describedby"] ?? field?.describedBy}
         {...props}
         className={cn(
-          "h-12 w-full min-w-0 border bg-transparent px-3 text-15 text-foreground placeholder:text-muted-foreground",
-          "transition-[border-color] duration-120 ease-standard outline-none focus-visible:border-brand disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none",
+          "h-12 w-full min-w-0 bg-field px-3 text-15 text-foreground placeholder:text-muted-foreground hover:bg-field-hover",
+          "transition-[background-color,box-shadow] duration-120 ease-standard outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--brand)] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none",
           "[&::-webkit-search-cancel-button]:appearance-none",
-          bad ? "border-destructive" : "border-border hover:border-foreground/30",
+          bad ? "shadow-[inset_0_0_0_1px_var(--destructive),inset_0_-2px_0_var(--destructive)]" : "shadow-[inset_0_-2px_0_var(--field-edge)]",
           lead ? "pl-10" : undefined,
           trail ? "pr-12" : undefined,
           className,

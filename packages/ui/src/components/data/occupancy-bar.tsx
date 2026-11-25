@@ -31,7 +31,7 @@ export function OccupancyBar({ ratio, level, rootRef, fillRef, className }: Occu
       ref={rootRef}
       data-level={level}
       aria-hidden="true"
-      className={cn("group/bar relative block h-1 overflow-hidden bg-border", className)}
+      className={cn("group/bar relative block h-1 overflow-hidden bg-surface-3", className)}
     >
       <span
         ref={fillRef}

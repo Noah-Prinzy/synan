@@ -1,11 +1,11 @@
 /**
- * Shell pieces for an instrument surface (docs/05 §7 tier 2): the frame, a top bar of
- * ruled cells, a navigation rail, and a status bar. Structure only — what goes in the
+ * Shell pieces for an instrument surface (docs/05 §7 tier 2): the frame, the top bar and its
+ * parts (section links, the account avatar, the menu panel), a navigation rail, and a status
+ * bar. No rules anywhere (D-37): space and tone separate the regions. Structure only — what goes in the
  * cells belongs to the app. No router dependency: the app renders its own links.
  */
 import type { ReactNode } from "react";
 import { cn } from "../../lib/cn";
-import { AmbientField } from "../../theme";
 
 /* ---------------------------------------------------------------- AppShell */
 
@@ -26,14 +26,12 @@ export interface AppShellProps {
  * frame up when a field was focused.
  */
 export function AppShell({ top, strip, nav, status, children }: AppShellProps) {
-  // No ground of its own: <html> carries it (styles/theme.css), so the still ambient field
-  // (fixed, out of the grid flow) shows between the ground and the frame (D-22).
+  // No ground of its own: <html> carries it (styles/theme.css).
   return (
     <div className="relative grid h-dvh grid-cols-[auto_minmax(0,1fr)] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden text-13 text-foreground">
-      <AmbientField still />
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:border focus:border-border focus:bg-background focus:px-3 focus:py-2"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-solid focus:px-3 focus:py-2 focus:shadow-pop"
       >
         Skip to content
       </a>
@@ -50,11 +48,12 @@ export function AppShell({ top, strip, nav, status, children }: AppShellProps) {
 
 /* ------------------------------------------------------------------ TopBar */
 
+/** The full-width top bar: one solid band, no rule under it. */
 export function TopBar({ children, className }: { children: ReactNode; className?: string }) {
-  return <header className={cn("flex h-12 items-stretch border-b border-border", className)}>{children}</header>;
+  return <header className={cn("flex h-14 items-stretch bg-solid", className)}>{children}</header>;
 }
 
-/** One ruled cell in the top bar. */
+/** One region of the top bar, held apart from the next by space. */
 export function TopBarCell({
   children,
   className,
@@ -65,7 +64,7 @@ export function TopBarCell({
   grow?: boolean;
 }) {
   return (
-    <div className={cn("flex min-w-0 items-center gap-3 border-r border-border px-4 last:border-r-0", grow && "flex-1", className)}>
+    <div className={cn("flex min-w-0 items-center gap-3 px-4", grow && "flex-1", className)}>
       {children}
     </div>
   );
@@ -125,7 +124,7 @@ export function NavRail({ groups, expanded, onToggle, toggleIcons, renderLink, l
     <nav
       aria-label={label}
       className={cn(
-        "flex h-full flex-col overflow-x-hidden overflow-y-auto border-r border-border",
+        "flex h-full flex-col overflow-x-hidden overflow-y-auto",
         expanded ? RAIL_WIDTH.expanded : RAIL_WIDTH.collapsed,
       )}
     >
@@ -135,10 +134,7 @@ export function NavRail({ groups, expanded, onToggle, toggleIcons, renderLink, l
             key={group.label}
             className={cn(
               index > 0 &&
-                (expanded
-                  ? "mt-4"
-                  : // Collapsed, a group has no label: a short centred rule marks where the next begins.
-                    "relative mt-3 pt-3 before:absolute before:top-0 before:left-1/2 before:h-px before:w-5 before:-translate-x-1/2 before:bg-border"),
+                (expanded ? "mt-4" : /* collapsed: a group has no label, only more space */ "mt-6"),
             )}
           >
             {expanded ? (
@@ -165,7 +161,7 @@ export function NavRail({ groups, expanded, onToggle, toggleIcons, renderLink, l
         ))}
       </ul>
       {onToggle ? (
-        <div className="shrink-0 border-t border-border py-2">
+        <div className="shrink-0 py-2">
           <button
             type="button"
             onClick={onToggle}
@@ -193,7 +189,7 @@ export function NavRail({ groups, expanded, onToggle, toggleIcons, renderLink, l
 export function StatusBar({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <footer
-      className={cn("flex h-6 items-stretch overflow-hidden border-t border-border text-11 text-muted-foreground", className)}
+      className={cn("flex h-6 items-stretch overflow-hidden bg-solid text-11 text-muted-foreground", className)}
     >
       {children}
     </footer>
@@ -211,9 +207,48 @@ export function StatusItem({
   className?: string;
 }) {
   return (
-    <span className={cn("flex shrink-0 items-center gap-1.5 border-r border-border px-3", className)}>
+    <span className={cn("flex shrink-0 items-center gap-1.5 px-3", className)}>
       <span>{label}</span>
       <span className="font-mono text-foreground tabular-nums">{children}</span>
     </span>
   );
 }
+
+/* ------------------------------------------------------- top-bar parts (D-37) */
+
+/**
+ * A section link in a top bar (Admin: Live · Events · People · Setup). Words only; the current
+ * one is ink and carries a short accent mark under it, the rest are muted until the pointer is
+ * on them. 44px under a coarse pointer.
+ */
+export function topLinkClass(active: boolean, className?: string): string {
+  return cn(
+    "relative inline-flex h-10 items-center px-3 text-15 transition-colors duration-120 ease-standard motion-reduce:transition-none pointer-coarse:h-11",
+    "after:absolute after:bottom-1 after:left-1/2 after:h-0.5 after:w-4 after:-translate-x-1/2",
+    active ? "text-foreground after:bg-brand" : "text-muted-foreground after:bg-transparent hover:bg-surface-2 hover:text-foreground",
+    className,
+  );
+}
+
+/** A person's initials in a round tonal disc (round by nature: an avatar). */
+export function Avatar({ initials, className, size = "md" }: { initials: string; className?: string; size?: "sm" | "md" }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "inline-grid shrink-0 place-items-center rounded-full bg-surface-2 font-sans font-semibold tracking-[0.02em] text-foreground",
+        size === "sm" ? "size-8 text-11" : "size-10 text-13",
+        className,
+      )}
+    >
+      {initials}
+    </span>
+  );
+}
+
+/** The ground of a menu or popover opened from a top bar: opaque, square, the pop depth, no outline. */
+export const MENU_PANEL = "bg-solid text-foreground shadow-pop";
+
+/** One row in such a menu: a tonal step under the pointer, never a rule between rows. */
+export const MENU_ROW =
+  "flex min-h-10 w-full items-center gap-3 px-3 text-left text-13 text-foreground hover:bg-surface-2 aria-[current=page]:bg-surface-2 pointer-coarse:min-h-11";

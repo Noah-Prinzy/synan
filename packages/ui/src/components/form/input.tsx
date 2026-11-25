@@ -1,6 +1,6 @@
 import { useId } from "react";
 import type { InputHTMLAttributes } from "react";
-import { cn } from "../../lib/cn";
+import { controlClass } from "./field";
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -18,7 +18,7 @@ export function Input({ label, hint, error, id, className, ...props }: InputProp
       {label ? (
         <label
           htmlFor={inputId}
-          className="text-13 font-medium text-muted-foreground"
+          className="text-15 font-medium text-foreground"
         >
           {label}
         </label>
@@ -28,11 +28,7 @@ export function Input({ label, hint, error, id, className, ...props }: InputProp
         id={inputId}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
-        className={cn(
-          "w-full border border-border bg-transparent min-h-12 px-3 py-2.5 text-17 text-foreground placeholder:text-muted-foreground transition-[border-color] duration-120 ease-standard focus:border-brand focus-visible:outline-none motion-reduce:transition-none",
-          error && "border-destructive",
-          className,
-        )}
+        className={controlClass("comfortable", Boolean(error), className)}
       />
       {error ? (
         <p id={`${inputId}-error`} className="text-13 text-destructive">

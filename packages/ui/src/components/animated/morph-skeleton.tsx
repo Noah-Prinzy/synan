@@ -58,7 +58,7 @@ export function SkeletonText({
 
 export function SkeletonCard({ className }: { className?: string }) {
   return (
-    <div className={cn("border border-border p-5", className)}>
+    <div className={cn("bg-surface p-5", className)}>
       <SkeletonText lines={3} />
     </div>
   );

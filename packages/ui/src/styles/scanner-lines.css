@@ -1,0 +1,45 @@
+/*
+ * The Gate Scanner's ruled instrument look. D-37 (tone instead of lines) covers the Attendee
+ * Portal and Admin Command only; the scanner keeps its hairlines, its 1 px focus ring and the
+ * thread at the top edge. Imported by the scanner alone, after theme.css:
+ *
+ *   @import "@synan/ui/theme.css";
+ *   @import "@synan/ui/scanner-lines.css";
+ *
+ * The shared controls the scanner uses (ActionButton, ThemeSwitch, RewardRule) read the
+ * --ctl-* and --seg-* tokens below, so they draw rules here and tonal blocks elsewhere.
+ */
+
+:root,
+.dark {
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+}
+:root[data-theme="light"] {
+  --border: rgb(18 17 16 / 0.12);
+  --input: rgb(18 17 16 / 0.22);
+}
+
+:root {
+  --focus-width: 1px;
+  --ctl-fill: transparent;
+  --ctl-fill-hover: transparent;
+  --ctl-edge: var(--border);
+  --ctl-edge-hover: color-mix(in oklab, var(--foreground) 50%, transparent);
+  --seg-fill: transparent;
+  --seg-on: transparent;
+  --seg-on-ink: var(--foreground);
+  --seg-rule: 1;
+  --reward-rule: 1;
+}
+
+/* Brand thread: the accent at the page edge, never a surface. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: color-mix(in srgb, var(--brand) 55%, transparent);
+  pointer-events: none;
+  z-index: 60;
+}

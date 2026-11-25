@@ -11,8 +11,14 @@ These hold on every surface, without exception.
 
 1. **Neutral ground, dark or light (D-24).** Every app ships a dark and a light theme. Each device
    chooses System (the default, following the device), Light, or Dark. Both are the same brand.
-2. **Square corners.** Radius is 0 everywhere.
-3. **Hairlines, not shadows.** Structure is drawn with 1px rules. State never carries a shadow.
+2. **Square corners (D-37).** Radius is 0 on every frame, panel, card, picture, button, field,
+   chip, menu, dialog, bar and track. Only things round by nature are round: status dots,
+   avatars and radio buttons.
+3. **Tone, not lines (D-37).** Nothing is separated by a ruled line. Space separates first, then
+   a tonal step (a surface a little lighter or darker than the ground), then type weight. The
+   one line allowed is the thin red outline of a field in error; a field's foot also carries a
+   2px edge so it can be told from the ground (§5). State never carries a shadow; on the light
+   theme a panel may carry a soft depth instead of a tone.
 4. **Colour is reserved for meaning.** One brand accent and three signals. The brand colour is never
    a fill — not on a button, a card, a row, or a surface (D-01).
 5. **Legibility over decoration.** No gradients on data.
@@ -31,42 +37,38 @@ layout expression they are allowed.
 
 | | Attendee Portal | Admin Command | Gate Scanner |
 | --- | --- | --- | --- |
-| Character | A publication: editorial, generous, expressive | An instrument: dense, exact | An instrument: one decision at a time |
-| Layout | Hero sections, card grids, tabs, imagery | Tables, rails, hairline panels. No cards as decoration | Viewfinder and one verdict panel |
-| Body size | 17px | 13px | Verdict word at 96px |
-| Motion | Entrance, stagger, and hover transitions are welcome | State changes only. Live data interpolates; nothing decorates | State changes only |
-| Imagery | Allowed | None | None |
-| Target | Mobile-first 360–430, deliberate two-column at 1024+ | 1440–1920; the rail collapses below 1280; a phone layout below 640 | Venue-owned Android phone or tablet, one-handed |
+| Character | Calm: one statement per screen, generous space; the event page alone is rich | An instrument: dense, exact | An instrument: one decision at a time |
+| Layout | A minimal top bar, one centred column, soft tonal panels; the event page opens on its picture | A full-width top bar, the figures in one instrument strip, tonal panels and tables without rules. No cards as decoration | Viewfinder and one verdict panel, in ruled cells (not part of D-37) |
+| Body size | 17px | 13px (14px in the top bar) | Verdict word at 96px |
+| Motion | Subtle: the Gathering field, pictures fading in once, the reward tick. Text never moves | None at all: state changes are instant. Live data interpolates; nothing animates | State changes only |
+| Imagery | The event picture, or the designed no-photo cover | None | None |
+| Target | Mobile-first 360–430, deliberate two-column at 1024+ | 1440–1920; a phone layout below 640 | Venue-owned Android phone or tablet, one-handed |
 
 The Attendee Portal is where Synan is allowed to feel premium and less generic. Admin and Scanner
 are where it must be fast to read under pressure. Neither borrows the other's manner.
 
-### 2.1 Attendee Portal structure: Direction A (D-19)
+### 2.1 Attendee Portal structure (D-37)
 
-The Attendee Portal's structure is adapted from the owner's sample site
-(`archive/inspiration-clip.mp4`):
+The owner chose this structure from working mock-ups of three directions (D-37). It replaces the
+earlier ruled structure (D-19, Direction A), whose hairline frame and ruled cells made the
+screens read as confusing ("too many lines").
 
 | Element | Where it applies |
 | --- | --- |
-| A visible hairline frame around the page column | Every attendee screen |
-| Navigation as a strip of ruled cells | Site header |
-| Centred display headline, with a strip of fact cells beneath | A1 Discover hero |
-| Cards as ruled cells | A1 event grid |
-| A sticky side list that follows the scroll, replacing tabs | A2 Event detail |
-| A vertical list whose active item carries a 2px accent rule | A2 schedule by day |
-| Options as square chips | A3 registration choices |
-| Link columns in ruled cells | Shared footer |
+| One minimal top bar: the wordmark, two words (Events, My pass), one action (Sign in, or the holder's initials). On a phone: the wordmark, the action and a menu button that opens a full-height menu of large words | Every attendee screen |
+| One centred statement in display type, its second sentence in the muted tone, and the thing the person came for right under it | Every screen but the event page |
+| The Gathering field (§5) behind the page, quiet under text | Every screen; on the event page, below its picture |
+| Events as pictures with their name, place and date set under them on the ground; no card frame | The showcase (A1) |
+| The event picture full width (or the designed no-photo cover), the event's name very large between sky and building, a glass card of key facts with the Register action, a small "rooms now" panel, mono capital eyebrows. The top bar lies clear over the picture and turns solid as soon as the page moves | The event page (A2) only |
+| Lists as rhythm: rows held apart by space; the current row lifted on a tonal step | Programme, agenda, updates |
+| Choices as square tonal chips; the chosen one is ink | Registration choices, filters |
+| A quiet footer of two lines of muted words | Every attendee screen |
 
-Two things in the sample are **not** taken, because they break §1: saturated colour blocks and
-gradients (colour is reserved for meaning), and a continuously scrolling logo strip (no endless
-decorative motion). The sample's own identity is never copied (§6).
+Type roles on this surface: mono is for data only (dates, counts, identifiers) and for the event
+page's eyebrows. Labels, navigation and buttons use the UI sans in sentence case.
 
-Type roles on this surface: mono is for data only — dates, counts, identifiers. Labels, navigation,
-and buttons use the UI sans in sentence case. Small mono capitals on every label make nothing rank.
-
-**No rule was reopened.** The chosen identity (D-20) needs no change to §1: the ground stays
-neutral (near-black in the dark theme, warm off-white in the light one, D-24), and the accent is
-never a fill.
+The sample site's own identity is never copied (§6), and no endless decorative motion is taken
+from any reference beyond the one field.
 
 ---
 
@@ -78,8 +80,7 @@ also specifies Noto Sans + Geist Mono headings and Phosphor icons, which were no
 
 There are two themes (D-24). The dark theme is the preset's dark block plus our signals; the light
 theme is ours, built to keep the dark theme's hierarchy step for step: a raised surface is lighter
-than the ground, a muted one is a step away from it, and hairlines are ink at low opacity. The
-preset's own light block is not used.
+than the ground and a muted one is a step away from it. The preset's own light block is not used.
 
 ```text
 Token              Dark                              Light
@@ -88,8 +89,6 @@ Token              Dark                              Light
 --card, --popover  oklch(0.205 0 0)   #171717        #FFFFFF
 --muted            oklch(0.269 0 0)   #262626        #E9E6DF
 --muted-foreground oklch(0.708 0 0)   #A1A1A1        #5E5A52
---border           oklch(1 0 0 / 10%)                rgb(18 17 16 / 0.12)
---input            oklch(1 0 0 / 15%)                rgb(18 17 16 / 0.22)
 --ring             = --brand                         = --brand
 --brand            #8AB4FF  Daybreak                 #2F62D9  Daybreak, deepened
 --success          #43C07A                           #18753F
@@ -107,15 +106,16 @@ Contrast in the light theme, as measured in `theme.css`:
 | Accent `#2F62D9` on the ground / on a card | 5.0:1 / 5.4:1 |
 | Success, warning, stop as text on the ground | 5.3:1, 5.4:1, 5.4:1 |
 
-**Why the accent deepens in light.** Daybreak blue is too pale to carry text, a focus ring, or a
-1px rule on a light ground (1.9:1). The light theme uses the identity's light accent, `#2F62D9`, the
-same hue, and keeps Daybreak itself as the tint of the ambient field. Signals keep their meanings
+**Why the accent deepens in light.** Daybreak blue is too pale to carry text or a focus ring on a
+light ground (1.9:1). The light theme uses the identity's light accent, `#2F62D9`, the same hue,
+also for the blue points of the Gathering field. Signals keep their meanings
 and deepen until text in them passes AA on the ground and on their own tints.
 
 There is one brand hue, `--brand`: Daybreak blue `#8AB4FF` (9.5:1 on the dark ground; chosen under
 D-20), deepened to `#2F62D9` in the light theme. It is an accent, never a
-surface: a 1px thread at the top page edge, focus rings and text selection, the active rule on filter
-tabs and the registration stepper, and checked controls. It never fills buttons, cards or rows, never
+large fill: focus rings and text selection, the short mark under the current section of a top
+bar, the registration stepper's progress, checked boxes, the reward tick, and the blue points of
+the Gathering field. It never fills buttons, cards or rows, never
 sets body or link text at rest, and never carries a state — success, warning and stop keep that job. If
 the accent starts to read as decoration, remove it; the page should look monochrome at a glance and
 blue only where the interface is asking to be touched.
@@ -137,7 +137,15 @@ Further tokens, each with a dark and a light value:
 | `--destructive-on-tint` | `#FF7073` | `#911B21` | A stop word on its own faint tint: a full room, the critical alert cell |
 | `--qr-field`, `--qr-ink` | `#FFFFFF`, `#0A0A0A` | the same | The pass QR, black on white in both themes |
 | `--scrim` | black at 60% | ink at 32% | Behind dialogs and sheets |
-| `--ambient`, `--ambient-tint` | 0.06, `--brand` | 0.1, `#8AB4FF` | Strength and colour of the ambient field (§5); 0 turns it off |
+| `--surface` | white at 4.5% | `#FFFFFF` with soft depth | A panel or card |
+| `--surface-2`, `--surface-3` | white at 8%, 12% | ink at 5%, 8% | A tonal block (buttons, chips, segmented choices, the avatar), and the same under the pointer |
+| `--solid` | `#161616` | `#FFFFFF` | Opaque: menus, dialogs, sheets, the solid top bar |
+| `--depth`, `--depth-pop` | none; a deep shadow | soft shadows | The depth under a light panel; under a menu or dialog |
+| `--field`, `--field-hover` | white at 6%, 9% | ink at 5%, 8% | A text field, select or text area |
+| `--field-edge` | `#767676` | `#77736B` | The 2px edge along a field's foot and round a checkbox (§5) |
+| `--glass`, `--glass-ink`, `--glass-ink-2` | ground at 80%, `#F6F5F2`, `#DDDCD7` | ground at 84%, `#121110`, `#45423C` | Frosted ground over an event picture, and the words on it |
+| `--field-dot`, `--field-tint` | white, Daybreak | ink, `#2F62D9` | The two colours of the Gathering field's points |
+| `--focus-width` | 2px | 2px | The square focus ring |
 | `--hatch-step` | 3px | 3px | Pitch of the hatching on a room's stop cap |
 | `--sheen`, `--scrollbar`, `--check-tick` | | | A faint highlight, scrollbar colour, and the checkbox tick drawn in the ground colour |
 | `--tap-highlight` | accent at 12% | accent at 12% | The press flash on touch screens |
@@ -156,12 +164,12 @@ the wrong theme never flashes; it follows the device's setting and other open ta
 The browser's own chrome takes the ground colour of the resolved theme. Components never name a
 theme: they read tokens.
 
-**Map colour rules** (Admin Command, D1). Zones are faint outlines with a name and floor. A room's
-fill rises from its floor to show how full it is: neutral while it has space, a faint warning tint
-and border once it passes `warn_at_pct`, a faint stop tint and border once it passes
-`block_at_pct`. Tints stay faint (8–20%) so a full room is noticed without the map shouting, and
+**Map colour rules** (Admin Command, D1). The map lies on a still dot grid. Zones are tonal
+blocks with a name and floor. A room's fill rises from its floor to show how full it is: neutral
+while it has space, a faint warning tint once it passes `warn_at_pct`, a faint stop tint once it
+passes `block_at_pct`. Tints stay faint (8–20%) so a full room is noticed without the map shouting, and
 every level also carries a word ("Nearly full", "Full") or a shape where the room is too small for
-words. The map shows no figures: counts live in the rail and the room card. A selected room has a
+words. The map shows no figures: counts live in the rooms list and the room card. A selected room has a
 2px accent frame; a room with an open high or critical alert has a 2px stop frame until it is
 acknowledged. Gates are calm when online; colour appears only when a gate needs someone.
 
@@ -186,36 +194,57 @@ All three are self-hosted via Fontsource variable packages, exposed as theme tok
 
 The preset proposed Noto Sans with Geist Mono headings and Phosphor icons. Only its **colour and radius**
 were taken (`apply --only theme`). Mono headings would have made the admin read as a terminal and cost
-the attendee portal its editorial voice; icons stay Lucide at 1.5px to match the hairline rule weight.
+the attendee portal its editorial voice; icons stay Lucide at a 1.5px stroke.
 
-Scale: 11 / 12 / 13 / 15 / 17 / 21 / 28 / 40 / 56, plus 96 for the scanner's verdict word only.
+Scale: 11 / 12 / 13 / 15 / 17 / 21 / 28 / 40 / 56, plus 96 for the scanner's verdict word only,
+and the event's name on its own page, which runs from 64 to 184px with the width of the screen.
 Admin body is 13px. Attendee body is 17px, secondary text 15px. Nothing is set below 11px.
-Section eyebrows are set in the UI sans, not mono.
 
 The scale is fixed. The Attendee Portal uses the upper end more freely; it does not add sizes.
+
+| Role | Set as | Where |
+| --- | --- | --- |
+| Statement (`type-statement`) | Display 56, 40 on a phone; the second sentence muted | The one statement of an attendee screen; the Command Center's headline |
+| Title (`type-title`) | Display 40, 28 on a phone | Screen and section titles |
+| Event name (`type-event-name`) | Display 600, 64–184, tight | The event page only |
+| Eyebrow (`eyebrow`) | UI sans 13, muted | Above a statement on the attendee side |
+| Mono eyebrow (`eyebrow-mono`) | Geist Mono 12, capitals, 0.08em | The event page, and section labels in Admin Command |
 
 ---
 
 ## 5. Form and motion
 
-**Form.** Radius 0. 1px hairline rules instead of shadow. Spacing on an 8px scale. Grid is 12
-columns, with gutters of 24 (attendee) and 16 (admin).
+**Form.** Radius 0. Tone instead of lines: a panel is a tonal step from the ground (white at
+4.5% on dark, white with soft depth on light), a button or chip a stronger step, a menu or dialog
+opaque. Spacing on an 8px scale: 64–120px between sections on the attendee side, 24–32px inside a
+panel. Grid is 12 columns, with gutters of 24 (attendee) and 16 (admin).
+
+**Controls.** The one filled action on a screen is ink (`--action`); every other button is a
+tonal block or quiet words. A field is a tonal block with a 2px edge along its foot in
+`--field-edge`: tone alone (about 1.1–1.2:1) cannot tell a field from the ground, and the edge
+reaches 3:1 or more against the ground, the field and a panel in both themes (WCAG 2.2, 1.4.11),
+while the page as a whole keeps no lines. On focus the field takes a 2px blue frame inside its
+edge; in error a thin red outline and a red foot, with a sentence under it. A checkbox is a
+tonal square with the same 2px edge; checked, it fills with the accent and the tick is drawn in
+the ground colour. A button needs no edge: its words identify it. Focus everywhere is a square
+2px accent ring, offset 2px from the control. Every control is 44px tall under a coarse pointer.
 
 **Admin Command layout and density.** The admin's shared page and table parts hold these rules, so
-every screen follows them without restating them. The hairline and frame rules here are the current
-ones; they are under review (O-27) and will change with the owner's reference.
+every screen follows them without restating them.
 
 | Element | Rule |
 | --- | --- |
 | Spacing | 4px base, 8px rhythm. Page gutter 16px on a phone, 24px from 640px, 32px from 1536px |
+| Top bar | One full-width solid bar: the wordmark, the event switcher, the sections (the current one ink with a short accent mark), the live gate status in mono, and the account. There is no side rail |
 | Page header | One per screen: a 28px display title, one line of context, actions on the right. No screen codes on screen |
-| Section head | A 40px ruled band: a 13px title and a 12px note. Panel padding 16px in a rail, 20px in the main column |
-| Type floor | Body and table cells 13px; labels 12px; 11px only for unit suffixes and the status bar. Figures in mono |
+| Section head | A mono capital eyebrow and a 13px title, set apart by space. Panel padding 16px in a side column, 20–24px in the main column |
+| Figures | The four headline figures sit in one instrument strip: one tonal band, mono figures, a sans note under each |
+| Type floor | Body and table cells 13px; labels 12px; 11px only for unit suffixes and the status bar. Figures, times and ids in mono |
 | Measure | Prose stops at 68 characters; forms at 40rem |
 | Controls | 32px tall for a mouse, 44px under a coarse pointer (touch) |
 | Split pages | The side column is 20–26rem and drops below the main column under 1024px |
-| Tables | 13px rows, 40px tall (44px for touch); a 36px head in 12px; hairline row rules; numbers in mono, right-aligned; a sticky head. The table scrolls inside its own frame; the page never does. Row hover is a faint lift, never a fill colour |
-| Actions | At most one filled primary per screen. Row actions are quiet at rest, never a filled or bordered button in every row |
+| Tables | 13px rows, 40px tall (44px for touch); a 36px head in 12px muted words; no row rules: rows are held apart by their height, and the row under the pointer or selected is lifted on a tonal step; numbers in mono, right-aligned; a sticky head. The table scrolls inside its own region; the page never does |
+| Actions | At most one filled primary per screen. Row actions are quiet at rest, never a filled button in every row |
 
 **Motion.**
 
@@ -228,14 +257,20 @@ ones; they are under review (O-27) and will change with the owner's reference.
 - Live data interpolates on `requestAnimationFrame` and never animates through a CSS transition on
   the same property ([02 §9](02-architecture.md)).
 - Bars grow with `transform: scaleX`, never `width`.
-- No infinite decorative animation, with one exception: the Attendee Portal carries a single, barely
-  perceptible ambient background animation (D-22). The ambient field is one soft Daybreak luminance
-  behind the frame, top left, painted as the page's own background rather than as a separate layer,
-  so it lies under every piece of content and text keeps its sharpness. On the Attendee Portal it
-  drifts 22 × 14 viewport units over 90 seconds, in one-second steps (one repaint a second, no
-  layout). On Admin Command it is present but never moves. The Gate Scanner has none. It pauses when
-  the tab is hidden, is still under reduced motion, never reduces text contrast, and is tuned or
-  turned off from one theme token per theme (`--ambient`, §3).
+- No infinite decorative animation, with one exception: the Attendee Portal carries the
+  Gathering field (D-37). Points on a 24px pitch brighten where two slow crowds pass along an S
+  (the Fit mark's seam), one in ink, one in blue; about two minutes to cross the screen. It sits
+  behind the page, quiet under text, and below the picture on the event page. It is one canvas
+  that redraws 8 times a second, only while it is on screen and the tab is visible, and it shows
+  one still frame under reduced motion. It keeps one pixel per point, which the browser scales up
+  and cuts into points with a mask, and it waits on a timer between frames rather than running a
+  frame loop. Measured on a phone-sized screen with the processor slowed four times, it takes
+  about 1% of the page's main thread (an early version drawn point by point in a frame loop took
+  about 20%); 8 frames read as smooth at its slow speed, where 24 would only spend more.
+  It loads after the page has painted, so no screen waits for it and the pass screen's size
+  budget does not carry it.
+  Admin Command and the Gate Scanner have none. Admin Command has no animation at all: state
+  changes are instant and a check appears already drawn.
 - No animation while the tab is hidden.
 - **Motion is spent on feedback, not atmosphere (D-22).** The interface is still by default. Every
   press is acknowledged within one frame. A button that starts work shows progress in place, then
@@ -243,17 +278,16 @@ ones; they are under review (O-27) and will change with the owner's reference.
   never looping, with a light haptic tick on phones. Reduced motion gets the state change without
   the movement.
 - **Blue is the colour of interaction and reward (D-22).** Pressed and active states, progress
-  inside a working button, the success check, the rule that settles under a completed result,
-  active tabs and steps, focus, selection, and link hover all use the accent, the same way
-  everywhere, so blue comes to mean "I can act here" or "I just acted". It is still never a
-  surface fill and never a state colour.
-- **The background carries a touch of blue (D-22).** The ground stays neutral, with a soft,
-  low-opacity blue luminance behind the content, tied to the frame and grid. It is atmosphere, not a
-  coloured surface: never strong enough to affect text contrast, and tuned from the same theme
-  token as the ambient animation.
-- **A disabled button is a hairline with muted text**, never a grey filled block. The filled action
-  loses its fill and keeps a hairline; quiet and danger buttons fade to half strength. A disabled
-  button never reacts to hover.
+  inside a working button, the reward tick, the current section and step, focus, selection, and
+  link hover all use the accent, the same way
+  everywhere, so blue comes to mean "I can act here" or "I just acted". It is never a large
+  fill and never a state colour.
+- **The background carries a touch of blue (D-22).** On the Attendee Portal, one of the
+  Gathering field's two crowds is blue. It is atmosphere, not a coloured surface, and never
+  strong enough to affect text contrast. Admin Command's ground is plain.
+- **A disabled button is a quiet tonal block with muted words**, never a grey ink block and never
+  an outline. The filled action loses its ink; quiet and danger buttons fade to half strength. A
+  disabled button never reacts to the pointer.
 - **Haptics follow a tap.** A device vibrates only in response to something the person just did: a
   short tick (about 12 ms) by default. On the Gate Scanner, staff can turn vibration and sound off
   from the Help screen.
@@ -305,9 +339,10 @@ optional and changes no screen.
 
 - `ActionButton` is the button that starts work: it shows progress in place, then what happened,
   with the reward moment and haptic tick of §5.
-- `ThemeSwitch` is System · Light · Dark as one row of square ruled cells over native radio
+- `ThemeSwitch` is System · Light · Dark as one segmented tonal block over native radio
   buttons, so the keyboard and screen readers treat it as a labelled radio group. The chosen cell
-  carries the accent rule and its word turns from muted to ink. It is 44px tall under a coarse
+  is ink with words in the ground colour. On the Gate Scanner it keeps its ruled cells and the
+  accent rule under the chosen one. It is 44px tall under a coarse
   pointer. It appears in the attendee footer and account screen, the admin operator menu, and the
   scanner's Help screen.
 
@@ -318,8 +353,9 @@ optional and changes no screen.
 
 **Tier 2 — layout and structure**
 
-`AppShell`, `Sidebar` (built as `NavRail`), `TopBar` with `TopBarCell`, `PageHeader` (eyebrow + title + actions), `Section` (numbered
-editorial header), `Grid`, `Stack`, `Rail`, `StatusBar`, `Card` → `Panel` (hairline, no shadow),
+`AppShell`, `TopBar` with `TopBarCell`, its section links (`topLinkClass`), `Avatar` and menu
+ground (`MENU_PANEL`, `MENU_ROW`), `PageHeader` (eyebrow + title + actions), `Section`, `Grid`,
+`Stack`, `StatusBar`, `Card` → `Panel` (a tonal step; soft depth on light),
 `EmptyState`, `ErrorState`, `NotFound`, `ErrorBoundary`, `RouteFallback`, `OfflineBadge`,
 `VirtualList`, `VisuallyHidden`.
 
@@ -328,7 +364,7 @@ editorial header), `Grid`, `Stack`, `Rail`, `StatusBar`, `Card` → `Panel` (hai
 `Table` (dense / comfortable, sticky head, row selection), `TableToolbar`, `ColumnPicker`,
 `FilterChips`, `SearchField`, `Pagination`, `KpiCell`, `DeltaBadge`, `Sparkline`, `MiniBar`,
 `OccupancyBar`, `CapacityMeter`, `StatusDot`, `ResultChip`, `MonoNumber`, `UidText`, `Timestamp`,
-`Duration`, `Timeline`, `LogRow`, `DiffView`, `ChartFrame` (hairline grid, mono axes).
+`Duration`, `Timeline`, `LogRow`, `DiffView`, `ChartFrame` (a tonal ground, mono axes, no grid lines).
 
 **Tier 3 — domain**
 
@@ -377,11 +413,12 @@ value of its own.
 | `@synan/ui/styles` | The same tokens as CSS custom properties, plus CSS animation classes |
 | `@synan/ui/motion` | Motion primitives built on the `motion` library — cubic-bezier only |
 | `@synan/ui/components` | Shared components: animated, layout, form controls, the dialog, the shell, and the theme module |
-| `@synan/ui/shell` | The admin frame: `AppShell`, `TopBar`, `NavRail`, `StatusBar` |
+| `@synan/ui/shell` | The admin frame: `AppShell`, `TopBar` and its parts, `StatusBar` |
 | `@synan/ui/data` | Components that read contract copy, such as `ResultChip`, `KpiCell`, `OccupancyBar`, `CapacityMeter`, `LivePill`, `Sparkline` |
 | `@synan/ui/mobile` | Phone behaviour: install, offline, wake lock, keyboard inset, and the build-time plugin that makes the Attendee Portal and the Gate Scanner installable |
 | `@synan/ui/brand` | The name, wordmark, mark, and icons (§6) |
 | `@synan/ui/theme.css` | The one theme file (below) |
+| `@synan/ui/scanner-lines.css` | The Gate Scanner's ruled look: its hairlines, 1px focus ring and top-edge thread, and how the shared controls draw on it. Imported by the scanner only |
 
 **Shared controls.** `Select`, `Field`, `TextInput`, `TextArea`, `Checkbox`, `Dialog`, `Button`,
 and `ActionButton` are shared by all three apps, so a control looks and behaves the same
@@ -389,8 +426,8 @@ everywhere (§7).
 
 **The theme module** (`packages/ui/src/theme`) is what the apps read and write for the theme
 choice: the stored choice, the resolved theme, a `useTheme` hook, the `ThemeSwitch` control, and
-`AmbientField`, which turns the ambient field on for an app (drifting on the Attendee Portal, still
-on Admin Command). It keeps in step with the small first-paint script in each app's page (§3).
+`GatheringBackground`, which loads the Gathering field (§5) for the Attendee Portal after the
+page has painted. It keeps in step with the small first-paint script in each app's page (§3).
 
 **One theme file.** `packages/ui/src/styles/theme.css` is the only place a palette value is
 declared, for both themes: dark under `:root`, light under `:root[data-theme="light"]`. All three
@@ -402,7 +439,7 @@ one file.
 **Fonts** are self-hosted through Fontsource variable packages and imported once in each app's
 `index.css`. Nothing loads from a font CDN: a venue with poor connectivity must still render type.
 
-**Icons** are Lucide at 1.5px stroke, matching the hairline weight.
+**Icons** are Lucide at a 1.5px stroke.
 
 **Behaviour primitives** (dialog, select, tabs, tooltip) follow Radix's accessibility patterns,
 styled entirely with our tokens. The shared ones are written by hand; adopting Radix itself is
@@ -426,7 +463,7 @@ No paid kit is used. These installed skills cover the work:
 | Stakeholder deck | `Presentations:pptx` |
 | Verify the running build | `chrome-devtools-mcp:chrome-devtools` |
 
-We take **systems, not recipes**: grid and gutters, type scale, measure in `ch`, hairline rules,
+We take **systems, not recipes**: grid and gutters, type scale, measure in `ch`, tonal steps,
 contrast-checked tones, and the do/don't list.
 
 ### 9.2 Loop
@@ -464,7 +501,7 @@ Rules:
 - **Wordmark:** [Fonts In Use](https://fontsinuse.com), [Another Graphic](https://anothergraphic.org),
   [Typewolf](https://www.typewolf.com). A wordmark comes out of a typeface, not a logo generator.
 - **Colour validation:** [Realtime Colors](https://realtimecolors.com) — palette on a real layout.
-- **Icons:** [Lucide](https://lucide.dev) — 1.5px stroke, matches the hairline language.
+- **Icons:** [Lucide](https://lucide.dev) — 1.5px stroke, matches the type's weight.
 - **Type hosting:** [Fontsource](https://fontsource.org) / [Bunny Fonts](https://fonts.bunny.net) —
   self-host rather than depend on Google's CDN at a cold venue.
 - **Presentation:** [Shots](https://shots.so) for device mockups of the pass and command center.

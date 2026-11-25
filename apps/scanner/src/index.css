@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "@synan/ui/theme.css";
+@import "@synan/ui/scanner-lines.css";
 @import "@synan/ui/motion.css";
 @source "../../../packages/ui/src";
 @import "@fontsource-variable/bricolage-grotesque";

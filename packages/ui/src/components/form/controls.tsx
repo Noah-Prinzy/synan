@@ -76,8 +76,9 @@ export interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement
 }
 
 /**
- * A square checkbox with its label. The box is a hairline square; checked, it carries the
- * brand check (blue = "you acted here"). The native input stays in place for keyboard,
+ * A square checkbox with its label. The box is a tonal square with a 2 px edge (--field-edge,
+ * 3:1 or more); checked, it fills with the accent and the tick is drawn in the ground colour
+ * (blue = "you acted here"). The native input stays in place for keyboard,
  * form and assistive tech; only its paint is replaced.
  */
 export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Checkbox(
@@ -99,12 +100,12 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
           type="checkbox"
           disabled={disabled}
           {...props}
-          className="peer absolute inset-0 m-0 cursor-[inherit] appearance-none border border-foreground/40 bg-transparent transition-[border-color] duration-120 ease-standard checked:border-brand hover:border-foreground/70 focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-brand motion-reduce:transition-none"
+          className="peer absolute inset-0 m-0 cursor-[inherit] appearance-none bg-field shadow-[inset_0_0_0_2px_var(--field-edge)] transition-[background-color,box-shadow] duration-120 ease-standard hover:bg-field-hover checked:bg-brand checked:shadow-none motion-reduce:transition-none"
         />
         <svg
           viewBox="0 0 16 16"
           aria-hidden="true"
-          className="pointer-events-none relative size-3 text-brand opacity-0 peer-checked:opacity-100"
+          className="pointer-events-none relative size-3 text-background opacity-0 peer-checked:opacity-100"
         >
           <path d="M3 8.5 6.5 12 13 4.5" fill="none" stroke="currentColor" strokeWidth="1.75" />
         </svg>

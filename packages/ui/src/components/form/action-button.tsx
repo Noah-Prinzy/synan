@@ -40,9 +40,13 @@ export function DrawnCheck({ className }: { className?: string }) {
   );
 }
 
-/** A single blue hairline drawing under a completed result. Place inside a relative parent. */
+/**
+ * A single blue rule drawing under a completed result. Place inside a relative parent. Shown only
+ * where --reward-rule is 1 (the Gate Scanner); on the tonal surfaces (D-37) the drawn tick is
+ * the whole reward.
+ */
 export function RewardRule({ className }: { className?: string }) {
-  return <span aria-hidden="true" className={cn("rule-in pointer-events-none absolute inset-x-0 -bottom-px h-px bg-brand", className)} />;
+  return <span aria-hidden="true" className={cn("rule-in pointer-events-none absolute inset-x-0 -bottom-px h-px bg-brand opacity-(--reward-rule)", className)} />;
 }
 
 /**
@@ -83,11 +87,14 @@ export interface ActionButtonProps {
   "aria-label"?: string;
 }
 
-// Disabled matches Button: the primary fill drops to a hairline and muted text (never a grey block).
+// Disabled matches Button: the ink fill drops away and the words go muted (never a grey ink block).
+// The quiet variant is a tonal block on the tonal surfaces and a ruled cell on the Gate Scanner:
+// it reads the --ctl-* tokens (theme.css, scanner-lines.css).
 const variants = {
   primary:
-    "bg-action text-action-foreground border border-transparent hover:opacity-90 disabled:border-border disabled:bg-transparent disabled:text-muted-foreground disabled:hover:opacity-100",
-  quiet: "border border-border hover:border-foreground/50 disabled:text-muted-foreground disabled:hover:border-border",
+    "bg-action text-action-foreground border border-transparent hover:opacity-90 disabled:border-(--ctl-edge) disabled:bg-(--ctl-fill) disabled:text-muted-foreground disabled:hover:opacity-100",
+  quiet:
+    "border border-(--ctl-edge) bg-(--ctl-fill) hover:border-(--ctl-edge-hover) hover:bg-(--ctl-fill-hover) disabled:text-muted-foreground disabled:hover:border-(--ctl-edge) disabled:hover:bg-(--ctl-fill)",
   plain: "border border-transparent disabled:opacity-50",
 } as const;
 

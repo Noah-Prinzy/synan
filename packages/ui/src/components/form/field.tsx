@@ -4,10 +4,9 @@
  *
  * Two densities:
  *   compact      Admin Command (13px, 32px rows on a mouse; 44px under a coarse pointer)
- *   comfortable  Attendee Portal (17px, 48px rows)
+ *   comfortable  Attendee Portal (17px, 52px rows)
  *
- * Focus is the brand hairline on the control's own border (docs/05 §5: blue marks
- * interaction); an error is the destructive border plus a sentence under the field.
+ * Fields are tonal, never outlined (D-37); see controlClass.
  */
 import { createContext, useContext, useId, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
@@ -16,19 +15,24 @@ export type Density = "compact" | "comfortable";
 
 const heights: Record<Density, string> = {
   compact: "h-8 px-2.5 text-13 pointer-coarse:h-11",
-  comfortable: "min-h-12 px-3 py-2.5 text-17",
+  comfortable: "min-h-13 px-4 py-2.5 text-17",
 };
 
 /**
- * The class recipe for any boxed control: border, height, padding, focus and error.
- * Use it on inputs, the select trigger and anything that must line up with them.
+ * The class recipe for any field: a tonal block, square, with a 2 px edge along its foot
+ * (--field-edge, 3:1 or more against the ground and the field: WCAG 1.4.11). No outline.
+ * Focus turns the whole field's frame blue (2 px, inside the field); an error is a thin red
+ * outline with a red foot, plus a sentence under the field. Use it on inputs, the select
+ * trigger and anything that must line up with them.
  */
 export function controlClass(density: Density = "compact", invalid = false, className?: string): string {
   return cn(
-    "w-full min-w-0 border bg-transparent text-foreground placeholder:text-muted-foreground transition-[border-color] duration-120 ease-standard",
-    "outline-none focus-visible:border-brand focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none",
-    "aria-[expanded=true]:border-brand",
-    invalid ? "border-destructive" : "border-border hover:border-foreground/30",
+    "w-full min-w-0 bg-field text-foreground placeholder:text-muted-foreground transition-[background-color,box-shadow] duration-120 ease-standard hover:bg-field-hover",
+    "outline-none focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none",
+    invalid
+      ? "shadow-[inset_0_0_0_1px_var(--destructive),inset_0_-2px_0_var(--destructive)]"
+      : "shadow-[inset_0_-2px_0_var(--field-edge)]",
+    "focus-visible:shadow-[inset_0_0_0_2px_var(--brand)] aria-[expanded=true]:shadow-[inset_0_0_0_2px_var(--brand)]",
     heights[density],
     className,
   );
@@ -98,10 +102,10 @@ export function Field({
           <label
             id={ids.labelId}
             htmlFor={controlId}
-            className={cn("font-medium text-muted-foreground", density === "compact" ? "text-12" : "text-13")}
+            className={cn("font-medium", density === "compact" ? "text-12 text-muted-foreground" : "text-15 text-foreground")}
           >
             {label}
-            {optional ? <span className="font-normal text-muted-foreground/80"> · optional</span> : null}
+            {optional ? <span className="font-normal text-muted-foreground"> · optional</span> : null}
           </label>
           {aside ? <span className="text-11 text-muted-foreground">{aside}</span> : null}
         </div>

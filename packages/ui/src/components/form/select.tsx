@@ -338,7 +338,7 @@ export function Select<V extends string = string>({
             style={listStyle}
             onMouseDown={(event) => event.preventDefault() /* keep focus on the trigger */}
             className={cn(
-              "fixed z-50 m-0 overflow-y-auto overscroll-contain border border-foreground/20 bg-popover p-0 py-1 text-popover-foreground",
+              "fixed z-50 m-0 overflow-y-auto overscroll-contain border-0 bg-solid p-0 py-1 text-popover-foreground shadow-pop",
               "fade-in [scrollbar-width:thin]",
             )}
           >
@@ -363,9 +363,7 @@ export function Select<V extends string = string>({
                   className={cn(
                     "relative flex cursor-pointer items-center gap-3 px-3 select-none",
                     rows,
-                    "before:absolute before:inset-y-1.5 before:left-0 before:w-0.5",
-                    isSelected ? "before:bg-brand" : "before:bg-transparent",
-                    isActive && "bg-muted/70",
+                    isActive && "bg-surface-2",
                     option.disabled && "cursor-not-allowed opacity-40",
                   )}
                 >

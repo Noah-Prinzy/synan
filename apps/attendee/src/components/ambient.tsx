@@ -1,23 +1,14 @@
-import { useEffect } from "react";
-import { AmbientField } from "@synan/ui/components";
+import { useLocation } from "react-router-dom";
+import { GatheringBackground } from "@synan/ui/components";
 
 /**
- * The ambient field behind every attendee page (packages/ui theme.css), drifting. Pauses with the tab.
+ * The Gathering field behind every attendee page (D-37, packages/ui theme/gathering). It loads
+ * after the page has painted and the browser is idle, so no screen waits for it.
  * Development: ?ambient=off renders the page without it, for comparison.
  */
 export function Ambient() {
-  useEffect(() => {
-    const root = document.documentElement;
-    if (import.meta.env.DEV && new URLSearchParams(window.location.search).get("ambient") === "off") {
-      root.dataset.ambient = "off";
-    }
-    const sync = () => {
-      if (document.hidden) root.dataset.hidden = "";
-      else delete root.dataset.hidden;
-    };
-    sync();
-    document.addEventListener("visibilitychange", sync);
-    return () => document.removeEventListener("visibilitychange", sync);
-  }, []);
-  return <AmbientField />;
+  const { pathname, search } = useLocation();
+  if (import.meta.env.DEV && new URLSearchParams(search).get("ambient") === "off") return null;
+  if (pathname.startsWith("/dev/directions")) return null;
+  return <GatheringBackground />;
 }
