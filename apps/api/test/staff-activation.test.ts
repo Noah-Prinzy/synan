@@ -160,6 +160,25 @@ describe("activation", () => {
     expect((await h.app.ctx.repos.audit.all()).filter((a) => a.action === "staff.activate" && a.target === `user:${id}`)).toHaveLength(1);
   });
 
+  it("ten activations of one link at once: exactly one sets the password; a re-invite racing them never resets it", async () => {
+    const { id, email, token } = await invite("organiser");
+    const tries = Array.from({ length: 10 }, (_, i) => `concurrent password number ${i}`);
+    const results = await Promise.all(tries.map((p) => activate(token, p)));
+    const won = results.flatMap((r, i) => (r.status === 200 ? [tries[i]!] : []));
+    expect(won, JSON.stringify(results.map((r) => r.status))).toHaveLength(1);
+    expect(results.filter((r) => r.status !== 200).every((r) => errCode(r.body) === "LINK_INVALID")).toBe(true);
+    expect((await h.call("POST", "/auth/login", { body: { email, password: won[0]! } })).status).toBe(200);
+    // A re-invite and an activation with a link made meanwhile, at once: the account keeps its password.
+    const stale = await h.app.ctx.repos.userInvites.create({ userId: id, createdBy: null, now: new Date(h.clock.now()) });
+    const [again, reset] = await Promise.all([
+      h.call("POST", "/staff", { token: await adminToken(), body: { email, role: "organiser" } }),
+      activate(stale, "a password set by a stale link"),
+    ]);
+    expect(errCode(again.body)).toBe("CONFLICT");
+    expect(errCode(reset.body)).toBe("LINK_INVALID");
+    expect((await h.call("POST", "/auth/login", { body: { email, password: won[0]! } })).status).toBe(200);
+  });
+
   it("a made-up link is invalid and says nothing about any account", async () => {
     const madeUp = ["not", "a", "real", "activation", "token"].join("-");
     expect((await check(madeUp)).body).toEqual({ state: "invalid" });
