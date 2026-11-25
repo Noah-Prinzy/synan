@@ -123,13 +123,16 @@ function Shell({ children }: { children: ReactNode }) {
         {gate ? (
           <Link
             to="/pair"
-            aria-label={`Gate: ${gate.label}. Change gate`}
             className="flex min-h-14 min-w-0 flex-1 flex-col justify-center border-l border-border px-4 py-1.5 landscape:min-h-12 landscape:py-1 [[data-text-large]_&]:border-l-0"
           >
+            {/* Named from what it shows (WCAG 2.5.3): the gate and its link state, with "Gate:" and
+                "Change gate" for screen readers only: "Gate: Lounge Door Online. Change gate". */}
+            <span className="sr-only">Gate: </span>
             <span className="truncate text-15 font-medium leading-tight">{gate.label}</span>
             <span className="mt-0.5 text-13 leading-tight text-muted-foreground" aria-live="polite">
               <LinkState />
             </span>
+            <span className="sr-only">. Change gate</span>
           </Link>
         ) : (
           <span className="flex min-h-14 flex-1 items-center border-l border-border px-4 text-15 text-muted-foreground">

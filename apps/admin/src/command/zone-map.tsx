@@ -339,11 +339,33 @@ function neighbour(rooms: PlacedRoom[], from: PlacedRoom, key: string): PlacedRo
   return best;
 }
 
-export function roomAriaLabel(room: Room, zone: Zone | undefined, live: RoomLive | undefined, alerting: boolean): string {
+/**
+ * A room block's accessible name. It starts with exactly what the block shows, in the order it shows
+ * it (WCAG 2.5.3, so a speech-input user can say the words they see): the label on the block (the
+ * full name, or a short form such as "GL" when the block is small), then the words of its status
+ * line when it has them ("Alert", "Nearly full", "Full"). A short form is followed by the full name,
+ * so a screen-reader user always hears which room it is: "GL: Green Lounge, Ground floor: 4 of 20…".
+ * `shown` is what the block renders; without it (a caller with no placement) the full name leads.
+ */
+export function roomAriaLabel(
+  room: Room,
+  zone: Zone | undefined,
+  live: RoomLive | undefined,
+  alerting: boolean,
+  shown?: Pick<PlacedRoom, "label" | "statusWords" | "fit">,
+): string {
   const where = zone ? `, ${zone.floor ?? ""} ${zone.name}` : "";
-  if (!live) return `${room.name}${where}`;
+  const label = shown ? shown.label : room.name;
+  const status = [
+    shown?.statusWords && alerting && shown.fit === "lg" ? "Alert" : "",
+    shown?.statusWords && live?.level === "warn" ? "Nearly full" : "",
+    shown?.statusWords && live?.level === "block" ? "Full" : "",
+  ].filter(Boolean);
+  const head = [label, ...status].filter(Boolean).join(", ");
+  const lead = label === room.name ? `${head}${where}` : head ? `${head}: ${room.name}${where}` : `${room.name}${where}`;
+  if (!live) return lead;
   const ratio = room.capacity > 0 ? live.occupancy / room.capacity : 0;
-  return `${room.name}${where}: ${formatNumber(live.occupancy)} of ${formatNumber(room.capacity)}, ${formatPercent(ratio)}. ${levelWords(
+  return `${lead}: ${formatNumber(live.occupancy)} of ${formatNumber(room.capacity)}, ${formatPercent(ratio)}. ${levelWords(
     live.level,
     room.warn_at_pct,
     room.block_at_pct,
@@ -465,7 +487,7 @@ export const ZoneMap = memo(function ZoneMap({
         const live = rooms.get(p.room.id);
         if (!n?.button || !live) continue;
         if (n.button.dataset.level !== live.level) n.button.dataset.level = live.level;
-        const label = roomAriaLabel(p.room, p.zone, live, alerting.has(p.room.id));
+        const label = roomAriaLabel(p.room, p.zone, live, alerting.has(p.room.id), p);
         if (n.button.getAttribute("aria-label") !== label) n.button.setAttribute("aria-label", label);
       }
     };

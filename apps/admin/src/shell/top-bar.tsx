@@ -109,17 +109,20 @@ function EventSelector() {
           // The organisation's live totals are for roles that watch the floor.
           if (can("live.view")) api.dashboard().then(setOrg, () => setOrg(null));
         }}
-        buttonLabel={event ? `Event: ${event.title}. Change event` : "Choose an event"}
+        // Named from what it shows (WCAG 2.5.3): "Event:" and "Change event" are added for screen
+        // readers only, around the visible title, venue and state, so a speech user can say what they see.
         buttonClassName={cn(BAR_TRIGGER, "w-full min-w-0 gap-3 px-3 text-left sm:px-4")}
         button={
           event ? (
             <>
               <span className="min-w-0 flex-1">
+                <span className="sr-only">Event: </span>
                 <span className="block truncate text-13 leading-5 font-medium">{event.title}</span>
                 <span className="block truncate text-12 leading-4 text-muted-foreground">
                   {event.venue_name}
                   {event.state !== "live" ? <span className="hidden sm:inline"> · {stateView[event.state].text}</span> : null}
                 </span>
+                <span className="sr-only">. Change event</span>
               </span>
               <ChevronDown aria-hidden="true" size={16} strokeWidth={1.5} className="shrink-0 text-muted-foreground" />
             </>
@@ -297,7 +300,9 @@ function OperatorMenu() {
     <div className="flex items-stretch sm:border-l sm:border-border">
       <Menu
         align="end"
-        buttonLabel={operator ? `${operator.name}, ${roleLabel}. Account menu` : "Account menu"}
+        // The name holds what the button shows, in its order (WCAG 2.5.3): the name and role (from
+        // 1536px) and the initials, so "click" plus the initials works for a speech user at any width.
+        buttonLabel={operator ? `${[operator.name, roleLabel, initials].filter(Boolean).join(", ")}. Account menu` : "Account menu"}
         buttonClassName={cn(BAR_TRIGGER, "gap-3 px-3 sm:px-4")}
         button={
           <>

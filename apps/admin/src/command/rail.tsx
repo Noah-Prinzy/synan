@@ -284,11 +284,9 @@ const RoomRow = memo(function RoomRow({
       <button
         type="button"
         aria-current={selected || undefined}
-        aria-label={`${room.name}, ${zoneName}: ${live ? formatNumber(live.occupancy) : "—"} of ${formatNumber(room.capacity)}. ${levelWords(
-          level,
-          room.warn_at_pct,
-          room.block_at_pct,
-        )}.`}
+        // Named from what it shows (WCAG 2.5.3): the name and the count as displayed, with the
+        // capacity, zone and level added for screen readers only. A nearly full or full room's
+        // level is said first, by its status shape.
         onClick={() => onSelect(room.id)}
         onPointerEnter={() => highlight.set(room.id)}
         onFocus={() => highlight.set(room.id)}
@@ -301,9 +299,13 @@ const RoomRow = memo(function RoomRow({
         <span className="line-clamp-2 text-13 leading-tight">{room.name}</span>
         <OccupancyBar ratio={0} level={level} fillRef={fill} className="h-1" />
         <span className="text-right font-mono text-13 tabular-nums">
+          <span className="sr-only">: </span>
           <span ref={count} className={tone} />
-          <span className="hidden text-12 text-muted-foreground group-hover/row:inline group-focus-visible/row:inline group-aria-current/row:inline">
+          <span aria-hidden="true" className="hidden text-12 text-muted-foreground group-hover/row:inline group-focus-visible/row:inline group-aria-current/row:inline">
             /{formatNumber(room.capacity)}
+          </span>
+          <span className="sr-only">
+            {` of ${formatNumber(room.capacity)}, ${zoneName}.${level === "ok" ? ` ${levelWords(level, room.warn_at_pct, room.block_at_pct)}.` : ""}`}
           </span>
         </span>
       </button>
