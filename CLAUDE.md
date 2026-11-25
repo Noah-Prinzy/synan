@@ -144,9 +144,11 @@ then delete this section and mark O-56 settled in `docs/00-index.md`.
    sibling `synan` folder, leaving out every `node_modules` (on Windows:
    `robocopy <old> <new> /E /XD node_modules /XJ`), and delete the old folder at the end.
 3. In the new folder: `git remote set-url origin https://github.com/Noah-Prinzy/synan.git`.
-4. The agents' working copies beside it (`synan-defects`, `synan-design`) are git worktrees that
+4. The agents' working copies beside it (today only `synan-design`; `git worktree list` shows
+   them all) are git worktrees that
    point at the main folder by its full path. From the new main folder, run
-   `git worktree repair ../synan-defects ../synan-design`, then `git worktree list` to check.
+   `git worktree repair ../synan-design` (one path per working copy), then `git worktree list` to
+   check.
 5. Run `corepack pnpm install` in the main folder and in each worktree: pnpm's links on Windows
    hold full paths and break when the folder moves. Then `corepack pnpm -r typecheck`.
 6. The PostgreSQL 17 server is unaffected: it lives in `~/.synan-tools`, outside the project.
@@ -159,5 +161,5 @@ then delete this section and mark O-56 settled in `docs/00-index.md`.
 
 These do not exist on a fresh clone: a PostgreSQL 17 server kept outside the repository
 (`corepack pnpm pg:start` and `pg:stop`), and extra working copies beside the main folder for
-agents (`synan-defects`, `synan-design`). On another device, clone the repository, check out
+agents (`synan-design`). On another device, clone the repository, check out
 `build/synan-foundations`, run `corepack pnpm install`, and work from there.
