@@ -4,7 +4,8 @@ import { getNotifications, loadNotifications, markAllRead, type Notification } f
 import { useDataVersion } from "../data/live";
 import { useResource } from "../data/resource";
 import { usePass } from "../data/pass";
-import { PageHeader, PageShell } from "../components/page";
+import { PANEL, PageHeader, PageShell } from "../components/page";
+import { buttonClass } from "@synan/ui/components";
 import { ErrorState, OfflineState, SkeletonCells, StateBlock } from "../components/states";
 
 /** In the event's own time zone, like every time on the portal. */
@@ -32,13 +33,12 @@ function NotificationRow({ notification, index, timeZone }: { notification: Noti
   const kind = kindLabel[notification.kind];
   return (
     <li
-      className={`enter relative grid gap-2 border-b border-border px-4 py-5 sm:px-6 md:grid-cols-[14rem_minmax(0,1fr)] md:gap-0 md:px-0 md:py-0 ${
-        unread ? "before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-foreground" : ""
-      }`}
+      className={`enter grid gap-2 px-5 py-5 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-6 ${unread ? PANEL : ""}`}
       style={{ ["--i" as string]: index }}
     >
-      <div className="md:border-r md:border-border md:px-10 md:py-6">
-        <p className="text-13 font-medium text-muted-foreground">
+      <div>
+        <p className="flex items-center text-13 font-medium text-muted-foreground">
+          {unread ? <span aria-hidden="true" className="mr-2 size-2 rounded-full bg-foreground" /> : null}
           <span aria-hidden="true" className="mr-2 font-mono">
             {kind.glyph}
           </span>
@@ -48,7 +48,7 @@ function NotificationRow({ notification, index, timeZone }: { notification: Noti
           <time dateTime={notification.at}>{formatDate(notification.at, timeZone)}</time>
         </p>
       </div>
-      <div className="min-w-0 md:px-10 md:py-6">
+      <div className="min-w-0">
         <p className="text-17 font-medium leading-snug">
           {unread ? <span className="sr-only">Unread: </span> : null}
           {notification.title}
@@ -75,23 +75,24 @@ export default function Notifications() {
   const timeZone = pass.status === "ready" ? pass.data.event.timezone : Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   return (
-    <PageShell bleed>
+    <PageShell>
       <PageHeader
         label="From the organisers"
-        title="Updates"
+        title="Updates."
+        more="We only message you when it matters."
         aside={
           unread > 0 ? (
             <button
               type="button"
               onClick={() => void markAllRead()}
-              className="inline-flex min-h-11 items-center text-15 text-muted-foreground underline-offset-4 transition-colors duration-120 ease-standard hover:text-foreground hover:underline motion-reduce:transition-none"
+              className={buttonClass("secondary", "md")}
             >
               Mark all <span className="mx-1 font-mono">{unread}</span> read
             </button>
           ) : undefined
         }
       >
-        Changes to your pass, your sessions and the venue. We only message you when it matters.
+        Changes to your pass, your sessions and the venue.
       </PageHeader>
 
       {notifications.status === "loading" ? (
@@ -105,7 +106,7 @@ export default function Notifications() {
           We'll only message you when it matters.
         </StateBlock>
       ) : (
-        <ul>
+        <ul className="mx-auto mt-14 flex max-w-3xl flex-col gap-1">
           {list.map((notification, index) => (
             <NotificationRow key={notification.id} notification={notification} index={index} timeZone={timeZone} />
           ))}

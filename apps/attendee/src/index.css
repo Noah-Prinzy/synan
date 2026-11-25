@@ -2,6 +2,22 @@
 @import "@synan/ui/theme.css";
 @import "@synan/ui/motion.css";
 @source "../../../packages/ui/src";
+/* Not scanned: parts this app never renders (the admin frame and data parts, the design
+   mock-ups, which draw with their own dx- classes). Every class they name would otherwise
+   land in the one CSS file the pass screen loads (size budget, docs/02 §9). */
+@source not "../../../packages/ui/src/mockups";
+@source not "../../../packages/ui/src/components/shell";
+@source not "../../../packages/ui/src/components/data";
+@source not "../../../packages/ui/src/components/overlay";
+@source not "../../../packages/ui/src/components/form/select.tsx";
+@source not "../../../packages/ui/src/components/form/input.tsx";
+@source not "../../../packages/ui/src/components/form/controls.tsx";
+@source not "../../../packages/ui/src/components/form/field.tsx";
+@source not "../../../packages/ui/src/components/animated/animated-counter.tsx";
+@source not "../../../packages/ui/src/components/animated/animated-underline.tsx";
+@source not "../../../packages/ui/src/components/layout/card.tsx";
+@source not "../../../packages/ui/src/components/layout/separator.tsx";
+@source not "./mockups";
 @import "@fontsource-variable/bricolage-grotesque";
 @import "@fontsource-variable/instrument-sans";
 @import "@fontsource-variable/geist-mono";
@@ -13,6 +29,16 @@
 
 /* The ground is on <html> (packages/ui/src/styles/theme.css); the Gathering field sits just
    above it, behind the page (components/ambient.tsx). */
+
+/* A showcase card's picture becomes the event page's picture, and back (View Transitions, where
+   the browser has them). Still under reduced motion: the page simply changes. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
 
 /*
  * Things the browser draws itself (owner, 2026-11-23: the white select list). Each is

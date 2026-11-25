@@ -14,7 +14,7 @@ import { RewardMoment, buttonClass } from "@synan/ui/components";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { fieldClass } from "../components/form-styles";
-import { PageHeader, PageShell, Panel } from "../components/page";
+import { PANEL, PageHeader, PageShell } from "../components/page";
 import { ConsentRow, describedBy, Field, ProfileFieldList } from "../components/registration-fields";
 import { ErrorState, OfflineState, SkeletonCells } from "../components/states";
 import { signOut, useSession, type Session } from "../data/auth";
@@ -83,7 +83,7 @@ function Inviter({ contact }: { contact: InvitationPreview["contact"] | undefine
 /** The busy rule inside a working button (the same as registration's Send my pass). */
 function BusyRule() {
   return (
-    <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-px overflow-hidden">
+    <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 overflow-hidden">
       <span className="busy-rule absolute inset-y-0 left-0 w-1/3 bg-brand" />
     </span>
   );
@@ -102,12 +102,12 @@ function InviteAside({ preview, done = false }: { preview: InvitationPreview | n
   return (
     <aside
       aria-label="About this invitation"
-      className="border-t border-border px-4 py-10 sm:px-6 lg:border-t-0 lg:border-l lg:px-10 lg:py-12"
+      className="mx-auto mt-14 max-w-160 text-15"
     >
       {preview ? (
         <>
           <p className="text-13 font-medium text-muted-foreground">{done ? "You're going to" : "You're invited to"}</p>
-          <p className="mt-2 font-display text-21 leading-tight">{preview.event.title}</p>
+          <p className="mt-2 font-display text-21 leading-tight font-medium">{preview.event.title}</p>
           <p className="mt-2 text-15 text-muted-foreground">
             {preview.event.startsAt ? (
               <>
@@ -122,7 +122,7 @@ function InviteAside({ preview, done = false }: { preview: InvitationPreview | n
           </p>
         </>
       ) : null}
-      <h2 className={`text-15 font-medium ${preview ? "mt-8 border-t border-border pt-6" : ""}`}>What happens next</h2>
+      <h2 className={`text-15 font-medium ${preview ? "mt-10" : ""}`}>What happens next</h2>
       <ol className="mt-4 flex flex-col gap-4 text-15 text-muted-foreground">
         {(done ? steps.slice(1) : steps).map((line, index) => (
           <li key={line} className="grid grid-cols-[1.75rem_minmax(0,1fr)]">
@@ -132,7 +132,7 @@ function InviteAside({ preview, done = false }: { preview: InvitationPreview | n
         ))}
       </ol>
       {done ? null : (
-        <p className="mt-8 border-t border-border pt-6 text-13 leading-relaxed text-muted-foreground">
+        <p className="mt-8 text-13 leading-relaxed text-muted-foreground">
           This event is by invitation and isn&apos;t listed publicly. Your link works once, and only with the address
           it was sent to, so there&apos;s no need to forward it.
         </p>
@@ -159,11 +159,10 @@ function Outcome({
   reward?: ReactNode;
 }) {
   return (
-    <PageShell bleed>
-      <PageHeader label={label} title={title}>
+    <PageShell>
+      <PageHeader label={label} title={title} aside={actions}>
         {reward ? <p className="mb-4 text-15 font-medium text-success">{reward}</p> : null}
-        <div className="max-w-[52ch] leading-relaxed">{children}</div>
-        <div className="mt-8 flex flex-wrap gap-3">{actions}</div>
+        <div className="leading-relaxed">{children}</div>
       </PageHeader>
     </PageShell>
   );
@@ -481,15 +480,15 @@ function Reply({ token, session }: { token: string; session: Session | null }) {
   if (finished === "accepted") {
     const signedInAsThem = sameAddress(session?.email, sentTo);
     return (
-      <PageShell bleed>
+      <PageShell>
         <PageHeader label={labelFor("Accepted", preview)} title="You're in.">
           <p className="text-15 font-medium text-success">
             <RewardMoment>Invitation accepted{preview ? ` · ${preview.event.title}` : ""}</RewardMoment>
           </p>
         </PageHeader>
-        <div className="grid lg:grid-cols-[minmax(0,1fr)_24rem]">
-          <section className="px-4 py-10 sm:px-6 md:px-10 lg:py-12" aria-labelledby="accepted-title">
-            <h2 id="accepted-title" className="font-display text-28 leading-tight">
+        <div>
+          <section className={`${PANEL} mx-auto mt-10 max-w-160 p-6 sm:p-10`} aria-labelledby="accepted-title">
+            <h2 id="accepted-title" className="font-display text-28 leading-tight font-medium">
               {signedInAsThem ? "Your pass is ready." : "Your pass is on its way."}
             </h2>
             <p className="mt-3 max-w-[52ch] text-17 leading-relaxed text-muted-foreground">
@@ -591,7 +590,7 @@ function Reply({ token, session }: { token: string; session: Session | null }) {
   ) : null;
 
   return (
-    <PageShell bleed>
+    <PageShell>
       <PageHeader label={labelFor("Private invitation", preview)} title={preview ? preview.event.title : "You're invited."}>
         {preview ? (
           <>
@@ -603,15 +602,15 @@ function Reply({ token, session }: { token: string; session: Session | null }) {
         )}
       </PageHeader>
 
-      <div className="grid lg:grid-cols-[minmax(0,1fr)_24rem]">
+      <div>
         <div className="min-w-0">
-          <div className="max-w-2xl px-4 pt-8 pb-14 sm:px-6 md:px-10 lg:pt-12">
+          <div className={`${PANEL} mx-auto mt-10 max-w-160 px-5 py-8 sm:p-10`}>
             {stage === "reply" ? (
               <>
                 <p className="text-13 font-medium text-muted-foreground">
                   Step <span className="font-mono">1</span> of <span className="font-mono">2</span>
                 </p>
-                <h2 ref={heading} tabIndex={-1} className="mt-1 font-display text-28 leading-tight outline-none">
+                <h2 ref={heading} tabIndex={-1} className="mt-1 font-display text-28 leading-tight font-medium outline-none">
                   Will you join us?
                 </h2>
                 <p className="mt-2 max-w-[52ch] text-15 text-muted-foreground">
@@ -638,7 +637,7 @@ function Reply({ token, session }: { token: string; session: Session | null }) {
                   </Field>
 
                   {invitedHint ? (
-                    <Panel className="p-4">
+                    <div className="bg-surface-2 p-4">
                       <p className="text-13 font-medium text-muted-foreground">Mock build · the invited address</p>
                       <p className="mt-1 text-15">
                         <button
@@ -649,12 +648,12 @@ function Reply({ token, session }: { token: string; session: Session | null }) {
                           {invitedHint}
                         </button>
                       </p>
-                    </Panel>
+                    </div>
                   ) : null}
 
                   {failureBlock}
 
-                  <div className="mt-2 flex flex-row-reverse flex-wrap items-center justify-between gap-3 border-t border-border pt-6">
+                  <div className="mt-2 flex flex-row-reverse flex-wrap items-center justify-between gap-3 pt-2">
                     <button type="submit" className={primaryButton}>
                       Accept
                     </button>
@@ -675,7 +674,7 @@ function Reply({ token, session }: { token: string; session: Session | null }) {
                 <p className="text-13 font-medium text-muted-foreground">
                   Step <span className="font-mono">2</span> of <span className="font-mono">2</span>
                 </p>
-                <h2 ref={heading} tabIndex={-1} className="mt-1 font-display text-28 leading-tight outline-none">
+                <h2 ref={heading} tabIndex={-1} className="mt-1 font-display text-28 leading-tight font-medium outline-none">
                   Your details
                 </h2>
                 <form noValidate onSubmit={submitDetails} className="mt-6 flex flex-col gap-6">
@@ -715,7 +714,7 @@ function Reply({ token, session }: { token: string; session: Session | null }) {
 
                   {failureBlock}
 
-                  <div className="flex flex-row-reverse flex-wrap items-center justify-between gap-4 border-t border-border pt-6">
+                  <div className="flex flex-row-reverse flex-wrap items-center justify-between gap-4 pt-2">
                     <button type="submit" aria-busy={sending || undefined} className={`${primaryButton} ${sending ? "pointer-events-none" : ""}`}>
                       {sending ? "Accepting…" : "Accept and send my pass"}
                       {sending ? <BusyRule /> : null}
@@ -732,7 +731,7 @@ function Reply({ token, session }: { token: string; session: Session | null }) {
                   id="decline-title"
                   ref={heading}
                   tabIndex={-1}
-                  className="font-display text-28 leading-tight outline-none"
+                  className="font-display text-28 leading-tight font-medium outline-none"
                 >
                   Decline this invitation?
                 </h2>
@@ -741,7 +740,7 @@ function Reply({ token, session }: { token: string; session: Session | null }) {
                   be used to accept.
                 </p>
                 {failureBlock ? <div className="mt-6">{failureBlock}</div> : null}
-                <div className="mt-6 flex flex-row-reverse flex-wrap items-center justify-between gap-4 border-t border-border pt-6">
+                <div className="mt-6 flex flex-row-reverse flex-wrap items-center justify-between gap-4 pt-2">
                   <button
                     type="button"
                     aria-busy={sending || undefined}
@@ -783,8 +782,8 @@ function FailureNote({
 }) {
   if (failure === "invalid") {
     return (
-      <div role="alert" className="border border-destructive/60 p-4">
-        <p className="text-15 font-medium text-destructive">
+      <div role="alert" className="bg-destructive/12 p-4">
+        <p className="text-15 font-medium text-destructive-on-tint">
           <span aria-hidden="true" className="mr-2 font-mono">✕</span>
           This invitation doesn&apos;t open with {email}.
         </p>
@@ -809,8 +808,8 @@ function FailureNote({
   };
   const entry = failure === "expired" || failure === "registered" ? copy.error : copy[failure];
   return (
-    <div role="alert" className="border border-destructive/60 p-4">
-      <p className="text-15 font-medium text-destructive">
+    <div role="alert" className="bg-destructive/12 p-4">
+      <p className="text-15 font-medium text-destructive-on-tint">
         <span aria-hidden="true" className="mr-2 font-mono">✕</span>
         {entry.title}
       </p>

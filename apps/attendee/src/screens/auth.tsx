@@ -1,10 +1,10 @@
-import { BRAND, pageTitle } from "@synan/ui/brand";
+import { pageTitle } from "@synan/ui/brand";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { emailedLinkFor, getSession, requestSignInLink, signOut, useSession, verifyToken } from "../data/auth";
 import type { VerifyOutcome } from "../data/backend";
 import { failureCopy } from "../data/failure-copy";
-import { PageShell, Eyebrow, Panel } from "../components/page";
+import { PageHeader, PageShell, Panel } from "../components/page";
 import { ActionButton, buttonClass } from "@synan/ui/components";
 import { fieldClass } from "../components/form-styles";
 import { ERROR_COPY } from "@synan/contracts/copy";
@@ -15,26 +15,19 @@ function safeNext(value: string | null): string {
 }
 
 /**
- * Direction A sign-in: a brand cell (the logotype and one line) beside the form
- * cell; on phones the form stands alone with the logotype above it.
+ * The calm sign-in (D-37): one statement, then a narrow centred column with the one field and
+ * the one action. `head` is the screen's statement (PageHeader).
  */
-function AuthLayout({ children }: { children: ReactNode }) {
+function AuthLayout({ head, children }: { head: ReactNode; children?: ReactNode }) {
   return (
-    <PageShell bleed>
-      <div className="grid md:min-h-160 md:grid-cols-2">
-        {/* The header already carries the logo; this cell carries the promise, level with the form. */}
-        <div className="relative hidden flex-col justify-center overflow-hidden border-r border-border p-10 md:flex">
-          <p className="relative max-w-sm font-display text-28 leading-tight">
-            Your pass, your agenda and the venue&apos;s updates — for every event you attend.
-          </p>
-        </div>
-        <div className="flex flex-col justify-center px-4 py-12 sm:px-6 md:px-16">
-          <div className="enter mx-auto w-full max-w-md">{children}</div>
-        </div>
-      </div>
+    <PageShell>
+      {head}
+      {children ? <div className="enter mx-auto mt-10 w-full max-w-110 md:mt-12">{children}</div> : null}
     </PageShell>
   );
 }
+
+const quietLink = "text-foreground underline underline-offset-4 hover:text-brand";
 
 type SignInState = "idle" | "submitting" | "sent";
 
@@ -90,15 +83,16 @@ function SignInScreen() {
 
   if (state === "sent") {
     return (
-      <AuthLayout>
+      <AuthLayout
+        head={
+          <PageHeader label="Sign in" title="Check your email." more={`We sent a sign-in link to ${email.trim()}.`}>
+            It should arrive within a minute. Open it on this device to go straight to your pass.
+          </PageHeader>
+        }
+      >
         <div>
-          <Eyebrow>Sign in</Eyebrow>
-          <h1 className="mt-2 font-display text-40 leading-tight">Check your email</h1>
-          <p className="mt-4 text-17 leading-relaxed text-muted-foreground">
-            We sent a sign-in link to {email.trim()}. It should arrive within a minute. Open it on this device to go straight to your pass.
-          </p>
           {emailedLink ? (
-          <Panel className="mt-8">
+          <Panel className="mb-8">
             <p className="text-13 font-medium text-muted-foreground">
               Mock build · the link in the email
             </p>
@@ -112,7 +106,7 @@ function SignInScreen() {
             </p>
           </Panel>
           ) : null}
-          <div className="mt-8 flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center justify-center gap-3">
             <ActionButton
               doneLabel="Sent again"
               action={() => requestSignInLink(email, next)}
@@ -128,22 +122,17 @@ function SignInScreen() {
               Use a different email
             </button>
           </div>
-          <p className="mt-6 text-15 text-muted-foreground">Not there after a minute? Check your spam folder. Each link works once.</p>
+          <p className="mt-6 text-center text-15 text-muted-foreground">Not there after a minute? Check your spam folder. Each link works once.</p>
         </div>
       </AuthLayout>
     );
   }
 
   return (
-    <AuthLayout>
+    <AuthLayout head={<PageHeader title="Welcome back." more="Sign in with your email and we'll send you a link." />}>
       <div>
-        <Eyebrow>Sign in</Eyebrow>
-        <h1 className="mt-2 font-display text-40 leading-tight">Sign in to {BRAND.name}</h1>
-        <p className="mt-4 text-17 leading-relaxed text-muted-foreground">
-          Enter your email address and we&apos;ll send you a secure link to sign in.
-        </p>
-        <form onSubmit={handleSubmit} className="mt-8">
-          <label htmlFor="email" className="text-13 font-medium text-muted-foreground">
+        <form onSubmit={handleSubmit}>
+          <label htmlFor="email" className="text-15 font-medium">
             Email
           </label>
           <input
@@ -161,26 +150,36 @@ function SignInScreen() {
               setError(null);
             }}
             aria-invalid={error ? true : undefined}
-            aria-describedby={error ? "email-error" : undefined}
+            aria-describedby={error ? "email-error" : "email-hint"}
             className={`mt-2 ${fieldClass}`}
             placeholder="you@example.com"
             readOnly={state === "submitting"}
             autoFocus
           />
-          {error && (
+          {error ? (
             <p id="email-error" className="mt-2 text-15 text-destructive">
               <span aria-hidden="true" className="mr-1.5 font-mono">✕</span>
               {error}
             </p>
+          ) : (
+            <p id="email-hint" className="mt-2 text-13 text-muted-foreground">
+              No password needed. The link signs you in here.
+            </p>
           )}
           <button
             type="submit"
-            className={buttonClass("primary", "md", "mt-6 w-full")}
+            className={buttonClass("primary", "md", "mt-6 min-h-14 w-full text-17")}
             disabled={state === "submitting"}
           >
             {state === "submitting" ? "Sending your link…" : "Email me a link"}
           </button>
         </form>
+        <p className="mt-6 text-center text-15 text-muted-foreground">
+          First time here?{" "}
+          <Link to="/" className={quietLink}>
+            Register for an event
+          </Link>
+        </p>
       </div>
     </AuthLayout>
   );
@@ -245,23 +244,25 @@ function VerifyScreen() {
 
   if (state === "validating") {
     return (
-      <AuthLayout>
-        <p role="status" className="text-13 font-medium text-muted-foreground">
-          Checking your link…
-        </p>
-      </AuthLayout>
+      <AuthLayout
+        head={
+          <p role="status" className="pt-24 text-center text-15 text-muted-foreground">
+            Checking your link…
+          </p>
+        }
+      />
     );
   }
 
   if (state === "success") {
     return (
-      <AuthLayout>
-        <div role="status">
-          <Eyebrow>Signed in</Eyebrow>
-          <h1 className="mt-2 font-display text-40 leading-tight">You&apos;re in</h1>
-          <p className="mt-2 text-15 text-muted-foreground">Taking you to {next === "/pass" ? "your pass" : next}…</p>
-        </div>
-      </AuthLayout>
+      <AuthLayout
+        head={
+          <div role="status">
+            <PageHeader label="Signed in" title="You're in." more={`Taking you to ${next === "/pass" ? "your pass" : next}…`} />
+          </div>
+        }
+      />
     );
   }
 
@@ -269,20 +270,21 @@ function VerifyScreen() {
   const copy = !token ? { title: "This link is incomplete", message: "The sign-in link is missing its code. Request a new one." } : ERROR_COPY[problem === "expired" ? "LINK_EXPIRED" : problem === "unreachable" ? "INTERNAL" : "LINK_INVALID"];
 
   return (
-    <AuthLayout>
-      <div>
-        <Eyebrow>Sign in</Eyebrow>
-        <h1 className="mt-2 font-display text-40 leading-tight">{copy.title}</h1>
-        <p role="alert" className="mt-4 text-17 leading-relaxed text-muted-foreground">
-          {copy.message}
-        </p>
-        <div className="mt-8">
-          <Link to="/sign-in" className={buttonClass("primary", "md")}>
-            Email me a new link
-          </Link>
-        </div>
-      </div>
-    </AuthLayout>
+    <AuthLayout
+      head={
+        <PageHeader
+          label="Sign in"
+          title={copy.title}
+          aside={
+            <Link to="/sign-in" className={buttonClass("primary", "md")}>
+              Email me a new link
+            </Link>
+          }
+        >
+          <p role="alert">{copy.message}</p>
+        </PageHeader>
+      }
+    />
   );
 }
 
@@ -298,16 +300,12 @@ function AlreadySignedInScreen() {
   }
 
   return (
-    <AuthLayout>
-      <div>
-        <Eyebrow>Signed in</Eyebrow>
-        <h1 className="mt-2 font-display text-40 leading-tight">
-          Signed in as {session.name}
-        </h1>
-        <p className="mt-4 text-17 leading-relaxed text-muted-foreground">
-          You are currently signed in. If you&apos;d like to switch accounts, sign out first.
-        </p>
-        <div className="mt-8">
+    <AuthLayout
+      head={
+        <PageHeader
+          label="Signed in"
+          title={`Signed in as ${session.name}.`}
+          aside={
           <button
             onClick={() => {
               signOut();
@@ -317,9 +315,12 @@ function AlreadySignedInScreen() {
           >
             Sign out
           </button>
-        </div>
-      </div>
-    </AuthLayout>
+          }
+        >
+          You are currently signed in. If you&apos;d like to switch accounts, sign out first.
+        </PageHeader>
+      }
+    />
   );
 }
 

@@ -26,6 +26,13 @@ export const optionClass = "bg-background text-foreground";
 export const checkboxClass =
   "mt-0.5 size-5 shrink-0 appearance-none bg-field bg-center bg-no-repeat shadow-[inset_0_0_0_2px_var(--field-edge)] transition-colors duration-120 ease-standard checked:bg-brand checked:shadow-none checked:bg-[image:var(--check-tick)] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none";
 
+/**
+ * A choice as a square tonal chip; the chosen one is ink (D-37). For a button with aria-pressed,
+ * or a label around a visually hidden checkbox (its focus ring is drawn on the chip).
+ */
+export const chipClass =
+  "inline-flex min-h-10 cursor-pointer items-center gap-2 bg-surface-2 px-3.5 text-15 transition-colors duration-120 ease-standard select-none pointer-coarse:min-h-11 not-aria-pressed:not-has-checked:hover:bg-surface-3 aria-pressed:bg-action aria-pressed:text-action-foreground has-checked:bg-action has-checked:text-action-foreground has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-brand motion-reduce:transition-none";
+
 export const labelClass = "text-15 font-medium text-foreground";
 export const hintClass = "text-13 leading-relaxed text-muted-foreground";
 export const errorClass = "text-15 text-destructive";

@@ -5,7 +5,7 @@
  */
 import type { ReactNode } from "react";
 import type { ProfileField } from "../data/registration";
-import { checkboxClass, fieldClass, optionClass, selectClass } from "./form-styles";
+import { checkboxClass, chipClass, fieldClass, optionClass, selectClass } from "./form-styles";
 
 export function Field({
   id,
@@ -79,15 +79,19 @@ export function ProfileFieldList({
                 {field.label}
                 {!field.required ? <span className="font-normal text-muted-foreground"> (optional)</span> : null}
               </legend>
-              <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
+              {/* Choices as square tonal chips; the chosen ones are ink, with a tick (D-37). */}
+              <div className="flex flex-wrap gap-2">
                 {field.options.map((option) => (
-                  <label key={option} className="flex min-h-11 cursor-pointer items-center gap-3 text-15">
+                  <label key={option} className={chipClass}>
                     <input
                       type="checkbox"
                       checked={selected.includes(option)}
                       onChange={() => onToggle(field.id, option)}
-                      className={`${checkboxClass} mt-0`}
+                      className="peer sr-only"
                     />
+                    <span aria-hidden="true" className="hidden peer-checked:inline">
+                      ✓
+                    </span>
                     {option}
                   </label>
                 ))}
@@ -171,7 +175,7 @@ export function ProfileFieldList({
 /** Zone-presence consent: its own row, unticked by default, with what is stored (03 §5, P-12). */
 export function ConsentRow({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) {
   return (
-    <div className="border-t border-border pt-6">
+    <div className="pt-2">
       <label className="flex cursor-pointer items-start gap-3">
         <input
           type="checkbox"

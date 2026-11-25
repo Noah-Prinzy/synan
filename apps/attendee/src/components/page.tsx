@@ -6,11 +6,16 @@ import PassBar, { usePassBarVisible } from "./pass-bar";
 import { ErrorBoundary } from "./error-boundary";
 import { useOnline } from "./use-online";
 
+/** The calm column (D-37): one centred column, 1200 wide at most, 20px gutters on a phone, 32 from md. */
+export const COLUMN = "mx-auto w-full max-w-300 px-5 md:px-8";
+/** A panel: a tonal step from the ground (soft depth on light). */
+export const PANEL = "bg-surface shadow-depth";
+
 export function SkipLink() {
   return (
     <a
       href="#content"
-      className="absolute top-0 left-[-9999px] z-50 border border-brand bg-background px-3 py-2 text-15 focus:left-4 focus:top-4"
+      className="absolute top-0 left-[-9999px] z-50 bg-solid px-3 py-2 text-15 shadow-pop focus:top-4 focus:left-4"
     >
       Skip to content
     </a>
@@ -21,92 +26,98 @@ function OfflineStrip() {
   const online = useOnline();
   if (online) return null;
   return (
-    <p role="status" className="flex items-center gap-2 border-b border-border px-4 py-3 text-15 sm:px-6 md:px-8">
-      <span aria-hidden="true" className="size-1.5 bg-warning" />
+    <p role="status" className={`${COLUMN} flex items-center gap-2 py-3 text-15`}>
+      <span aria-hidden="true" className="size-1.5 rounded-full bg-warning" />
       You're offline. Your pass still works; other pages show what was last loaded.
     </p>
   );
 }
 
 /**
- * The Direction A frame: the page sits inside visible hairline edges (md and up),
- * the header is a row of ruled cells, sections are separated by full-width rules,
- * and the footer is ruled cells. `bleed` lets a screen draw its own full-width
- * sections; otherwise content gets the standard gutters.
+ * The calm page (D-37): a minimal top bar, the page on the ground (the Gathering field shows
+ * through; nothing here paints an opaque ground), a quiet footer. `bleed` lets a screen draw its
+ * own full-width parts; otherwise content sits in the calm column. `over` (the event page): the
+ * top bar lies clear over the screen's picture; `action` is the bar's action once it turns solid.
  */
-export function PageShell({ children, bleed = false }: { children: ReactNode; bleed?: boolean }) {
+export function PageShell({
+  children,
+  bleed = false,
+  over = false,
+  onPhoto = false,
+  action,
+}: {
+  children: ReactNode;
+  bleed?: boolean;
+  over?: boolean;
+  onPhoto?: boolean;
+  action?: ReactNode;
+}) {
   const { pathname } = useLocation();
   const passBar = usePassBarVisible();
   return (
-    <div className="min-h-dvh text-17 text-foreground">
+    <div className="flex min-h-dvh flex-col text-17 text-foreground">
       <SkipLink />
-      <div className="mx-auto flex min-h-dvh w-full max-w-360 flex-col md:border-x md:border-border">
-        <SiteHeader />
-        <OfflineStrip />
-        <main id="content" key={pathname} className="fade-in flex-1">
-          <ErrorBoundary resetKey={pathname}>
-            {bleed ? children : <div className="px-4 py-10 sm:px-6 md:px-10 md:py-14">{children}</div>}
-          </ErrorBoundary>
-        </main>
-        <SiteFooter />
-        {passBar ? <div aria-hidden="true" className="h-14 md:hidden" /> : null}
-      </div>
+      <SiteHeader over={over} onPhoto={onPhoto} action={action} />
+      <OfflineStrip />
+      <main id="content" key={pathname} className="fade-in flex-1">
+        <ErrorBoundary resetKey={pathname}>{bleed ? children : <div className={COLUMN}>{children}</div>}</ErrorBoundary>
+      </main>
+      <SiteFooter />
+      {passBar ? <div aria-hidden="true" className="h-16 md:hidden" /> : null}
       <PassBar />
     </div>
   );
 }
 
 /**
- * Direction A page opening: a full-width ruled band with the label, the display title
- * and an optional line, plus optional cells on the right (status, actions).
+ * The one statement of a calm screen (D-37): an optional eyebrow, the statement in display
+ * type with its second sentence (`more`) muted, then an optional line and actions, centred.
  */
 export function PageHeader({
   label,
   title,
+  more,
   children,
   aside,
+  hero = false,
 }: {
-  label: string;
+  label?: ReactNode;
   title: ReactNode;
+  more?: ReactNode;
   children?: ReactNode;
   aside?: ReactNode;
+  /** The showcase: the statement is the page's opening, so it sits lower. */
+  hero?: boolean;
 }) {
   return (
-    <section className="grid border-b border-border md:grid-cols-[minmax(0,1fr)_auto]">
-      <div className="enter px-4 py-10 sm:px-6 md:px-10 md:py-14">
-        <p className="text-13 font-medium text-muted-foreground">{label}</p>
-        <h1 className="mt-2 font-display text-40 leading-[1.05] md:text-56">{title}</h1>
-        {children ? <div className="mt-4 max-w-2xl text-17 text-muted-foreground">{children}</div> : null}
-      </div>
-      {aside ? <div className="flex items-end border-t border-border px-4 py-6 sm:px-6 md:border-t-0 md:border-l md:px-10">{aside}</div> : null}
+    <div className={`mx-auto flex max-w-220 flex-col items-center text-center ${hero ? "pt-12 md:pt-36" : "pt-8 md:pt-12"}`}>
+      {label ? <p className="eyebrow mb-5 text-balance">{label}</p> : null}
+      <h1 className="type-statement max-w-[11em] wrap-anywhere">
+        {title}
+        {more ? <span className="text-muted-foreground"> {more}</span> : null}
+      </h1>
+      {children ? <div className="mt-5 max-w-[52ch] text-17 text-muted-foreground">{children}</div> : null}
+      {aside ? <div className="mt-8 flex flex-wrap items-center justify-center gap-3">{aside}</div> : null}
+    </div>
+  );
+}
+
+/**
+ * A section of a calm screen: its title, then its content on a tonal panel, held apart from the
+ * next by space (no rules).
+ */
+export function Section({ label, children, id }: { label: ReactNode; children: ReactNode; id?: string }) {
+  return (
+    <section id={id} aria-labelledby={id ? `${id}-title` : undefined} className="mt-12 scroll-mt-24 md:mt-16">
+      <h2 id={id ? `${id}-title` : undefined} className="mb-4 font-display text-21 font-medium">
+        {label}
+      </h2>
+      <div className={`${PANEL} p-6 md:p-8`}>{children}</div>
     </section>
   );
 }
 
-/** A labelled row of the page: the label in a left rail cell, content to the right. */
-export function RuledRow({ label, children, id }: { label: ReactNode; children: ReactNode; id?: string }) {
-  return (
-    <section id={id} className="grid scroll-mt-24 border-b border-border md:grid-cols-[14rem_minmax(0,1fr)]">
-      <h2 className="px-4 pt-8 font-display text-21 sm:px-6 md:border-r md:border-border md:px-10 md:py-8">{label}</h2>
-      <div className="min-w-0 px-4 pt-4 pb-8 sm:px-6 md:px-10 md:py-8">{children}</div>
-    </section>
-  );
-}
-
-/** Section label: the UI sans, sentence case, muted. An optional numeral is data, so mono. */
-export function Eyebrow({ children, index }: { children: ReactNode; index?: number }) {
-  return (
-    <p className="text-13 font-medium text-muted-foreground">
-      {index !== undefined ? <span className="mr-2 font-mono">{String(index).padStart(2, "0")}</span> : null}
-      {children}
-    </p>
-  );
-}
-
+/** A panel: a tonal step, padded. */
 export function Panel({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <section className={`border border-border p-6 ${className}`}>{children}</section>;
-}
-
-export function Hairline() {
-  return <div className="border-t border-border" />;
+  return <section className={`${PANEL} p-6 md:p-8 ${className}`}>{children}</section>;
 }

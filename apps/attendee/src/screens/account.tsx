@@ -7,7 +7,7 @@ import { loadProfile, requestDataExport, requestErasure, updateProfile, type Pro
 import { failureCopy } from "../data/failure-copy";
 import { isPhone } from "../data/registration";
 import { primeResource, useResource } from "../data/resource";
-import { PageHeader, PageShell, RuledRow } from "../components/page";
+import { PageHeader, PageShell, Section } from "../components/page";
 import { ErrorState, OfflineState, SkeletonCells } from "../components/states";
 import { ActionButton, Badge, ThemeSwitch, buttonClass } from "@synan/ui/components";
 import { fieldClass } from "../components/form-styles";
@@ -53,11 +53,11 @@ function ConfirmDialog({
       onClose={() => {
         if (!dialogRef.current?.open) onClose();
       }}
-      className="m-auto max-w-md border border-border bg-background p-6 text-foreground backdrop:bg-scrim"
+      className="m-auto max-w-md bg-solid p-6 text-foreground shadow-pop backdrop:bg-scrim sm:p-8"
     >
-      <h2 id="confirm-title" className="font-display text-28">{title}</h2>
+      <h2 id="confirm-title" className="font-display text-28 font-medium">{title}</h2>
       <div className="mt-3 text-15 leading-relaxed text-muted-foreground">{children}</div>
-      <div className="mt-6 flex gap-2 border-t border-border pt-4">
+      <div className="mt-8 flex gap-2">
         <button type="button" onClick={onClose} className={buttonClass("quiet", "md", "flex-1")} autoFocus>
           Cancel
         </button>
@@ -96,10 +96,16 @@ export default function Account() {
   if (!session) return null;
 
   return (
-    <PageShell bleed>
-      <PageHeader label="Your details" title="Account">
-        Signed in as <span className="text-foreground">{session.email}</span>.
-      </PageHeader>
+    <PageShell>
+      <PageHeader
+        label="Your details"
+        title="Account."
+        more={
+          <>
+            Signed in as <span className="text-foreground">{session.email}</span>.
+          </>
+        }
+      />
 
       {account.status === "loading" ? (
         <SkeletonCells count={2} />
@@ -186,13 +192,13 @@ function AccountRows({
   // Several passes: say which one this block is about (the one the pass screen shows).
   const several = passChoices().length > 1;
   return (
-    <>
-      <RuledRow label="Profile">
+    <div className="mx-auto max-w-3xl">
+      <Section label="Profile" id="profile">
         <ProfileBlock profile={profile} email={email} />
-      </RuledRow>
+      </Section>
 
       {pass ? (
-      <RuledRow label="Pass and wristband">
+      <Section label="Pass and wristband" id="pass">
         {several ? <p className="mb-5 text-15 text-muted-foreground">For {pass.event.title}</p> : null}
         <dl className="grid gap-5 sm:grid-cols-3">
           <div>
@@ -212,14 +218,14 @@ function AccountRows({
             <dd className="mt-1 text-17">
               {pass.band ? (
                 <span className="flex items-center gap-2">
-                  <span className="size-1.5 bg-success" aria-hidden />
+                  <span className="size-2 rounded-full bg-success" aria-hidden />
                   Bound <span className="font-mono text-15 text-muted-foreground">{pass.band.hint}</span>
                 </span>
               ) : (
                 <>
                   {pass.bandLost ? (
                     <span className="flex items-center gap-2">
-                      <span className="size-1.5 bg-warning" aria-hidden />
+                      <span className="size-2 rounded-full bg-warning" aria-hidden />
                       Reported lost
                     </span>
                   ) : null}
@@ -232,11 +238,11 @@ function AccountRows({
           </div>
         </dl>
         <div className="mt-6 flex flex-wrap gap-3">
-          <Link to="/pass" className={buttonClass("secondary", "sm")}>
+          <Link to="/pass" className={buttonClass("secondary", "md")}>
             Open my pass
           </Link>
           {pass.band && lost?.status !== "sending" ? (
-            <button type="button" onClick={onLost} className={buttonClass("danger", "sm")}>
+            <button type="button" onClick={onLost} className={buttonClass("danger", "md")}>
               Report lost band
             </button>
           ) : null}
@@ -259,10 +265,10 @@ function AccountRows({
             </>
           ) : null}
         </div>
-      </RuledRow>
+      </Section>
       ) : null}
 
-      <RuledRow label="Privacy and your data" id="privacy">
+      <Section label="Privacy and your data" id="privacy">
         <p className="max-w-[62ch] text-17 leading-relaxed text-muted-foreground">
           We store your name, email and registration. If you allowed zone presence, we record which zones your pass
           entered — never where you stood. Movement records are deleted when the event closes and its grace period
@@ -277,30 +283,30 @@ function AccountRows({
               await requestDataExport();
               onExport();
             }}
-            className="min-h-11 px-4 text-13"
+            className="min-h-12 px-5 text-15"
           >
             Export my data
           </ActionButton>
-          <button type="button" onClick={onErase} className={buttonClass("danger", "sm")}>
+          <button type="button" onClick={onErase} className={buttonClass("danger", "md")}>
             Delete my data
           </button>
         </div>
         <p role="status" className="mt-3 min-h-5 text-15 text-muted-foreground">
           {requested}
         </p>
-      </RuledRow>
+      </Section>
 
-      <RuledRow label="Appearance" id="appearance">
+      <Section label="Appearance" id="appearance">
         <ThemeSwitch label="Appearance" hideLabel hint />
-      </RuledRow>
+      </Section>
 
-      <RuledRow label="Sign out">
+      <Section label="Sign out" id="sign-out">
         <p className="text-15 text-muted-foreground">Your pass stays on this device until you sign out.</p>
         <button type="button" onClick={onSignOut} className={buttonClass("secondary", "md", "mt-4")}>
           Sign out
         </button>
-      </RuledRow>
-    </>
+      </Section>
+    </div>
   );
 }
 
@@ -421,7 +427,7 @@ function ProfileBlock({ profile: initial, email }: { profile: Profile; email: st
                 window.setTimeout(() => setEditing(false), 700);
               }}
               failedLabel={invalid ? "Check the details" : "Couldn't save. Try again"}
-              className="min-h-11 px-4 text-13"
+              className="min-h-12 px-5 text-15"
             >
               Save details
             </ActionButton>
@@ -431,7 +437,7 @@ function ProfileBlock({ profile: initial, email }: { profile: Profile; email: st
                 setEditing(false);
                 setErrors({});
               }}
-              className={buttonClass("quiet", "sm")}
+              className={buttonClass("quiet", "md")}
             >
               Cancel
             </button>
@@ -445,7 +451,7 @@ function ProfileBlock({ profile: initial, email }: { profile: Profile; email: st
               setSaved(false);
               setEditing(true);
             }}
-            className={buttonClass("secondary", "sm")}
+            className={buttonClass("secondary", "md")}
           >
             Edit details
           </button>

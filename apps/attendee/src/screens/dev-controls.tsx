@@ -6,9 +6,29 @@
  */
 import { useState } from "react";
 import { ActionButton, Badge, RewardMoment, buttonClass } from "@synan/ui/components";
-import { PageHeader, PageShell, RuledRow } from "../components/page";
+import { PageHeader, PageShell, Section } from "../components/page";
 import { StateBlock } from "../components/states";
-import { checkboxClass, errorClass, fieldClass, hintClass, labelClass, optionClass, selectClass } from "../components/form-styles";
+import { EventPicture } from "../components/event-picture";
+import { checkboxClass, chipClass, errorClass, fieldClass, hintClass, labelClass, optionClass, selectClass } from "../components/form-styles";
+import type { EventSummary } from "../data/events";
+
+/** A sample event without a photograph: the designed cover. */
+const sampleEvent: EventSummary = {
+  id: "sample",
+  slug: "sample",
+  title: "Sample Event",
+  startsAt: "2026-11-22T06:00:00Z",
+  endsAt: "2026-11-22T14:00:00Z",
+  timezone: "Africa/Kampala",
+  venue: "Nexus Hall",
+  city: "Kampala",
+  state: "live",
+  admitted: 864,
+  admittedShown: true,
+  capacity: 1200,
+  image: null,
+  sessionCount: 6,
+};
 
 function Sample({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -23,12 +43,13 @@ export default function DevControls() {
   const [choice, setChoice] = useState("");
   const [moment, setMoment] = useState(0);
   return (
-    <PageShell bleed>
-      <PageHeader label="Development" title="Controls">
-        Every attendee control in every state. Tab through the page to see focus.
+    <PageShell>
+      <PageHeader label="Development" title="Controls." more="Every attendee control in every state.">
+        Tab through the page to see focus.
       </PageHeader>
+      <div className="mx-auto max-w-4xl">
 
-      <RuledRow label="Text fields">
+      <Section label="Text fields">
         <div className="grid gap-6 md:grid-cols-2">
           <Sample label="default + placeholder">
             <label className={labelClass} htmlFor="s1">Full name</label>
@@ -65,9 +86,9 @@ export default function DevControls() {
             />
           </Sample>
         </div>
-      </RuledRow>
+      </Section>
 
-      <RuledRow label="Selects">
+      <Section label="Selects">
         <div className="grid gap-6 md:grid-cols-2">
           <Sample label="empty: prompt is not a choice">
             <select
@@ -95,9 +116,31 @@ export default function DevControls() {
             </select>
           </Sample>
         </div>
-      </RuledRow>
+      </Section>
 
-      <RuledRow label="Choices">
+      <Section label="Choices">
+        <p className="mb-3 font-mono text-12 text-muted-foreground">chips: buttons with aria-pressed (filters)</p>
+        <div role="group" aria-label="Chip sample" className="mb-6 flex flex-wrap gap-2">
+          {["All", "Live", "Upcoming"].map((label, index) => (
+            <button key={label} type="button" aria-pressed={index === 0} className={chipClass}>
+              {label}
+              <span className="font-mono text-13 opacity-70">{index + 2}</span>
+            </button>
+          ))}
+        </div>
+        <p className="mb-3 font-mono text-12 text-muted-foreground">chips: checkboxes (multi-select questions)</p>
+        <div className="mb-6 flex flex-wrap gap-2">
+          {["Infrastructure", "Policy", "Product"].map((label, index) => (
+            <label key={label} className={chipClass}>
+              <input type="checkbox" defaultChecked={index !== 1} className="peer sr-only" />
+              <span aria-hidden="true" className="hidden peer-checked:inline">
+                ✓
+              </span>
+              {label}
+            </label>
+          ))}
+        </div>
+        <p className="mb-3 font-mono text-12 text-muted-foreground">checkboxes (consent)</p>
         <div className="flex flex-col gap-2">
           {[
             { label: "Unchecked", props: {} },
@@ -111,9 +154,9 @@ export default function DevControls() {
             </label>
           ))}
         </div>
-      </RuledRow>
+      </Section>
 
-      <RuledRow label="Buttons">
+      <Section label="Buttons">
         <div className="flex flex-wrap items-center gap-3">
           <button type="button" className={buttonClass("primary", "md")}>Primary</button>
           <button type="button" className={buttonClass("secondary", "md")}>Secondary</button>
@@ -121,6 +164,7 @@ export default function DevControls() {
           <button type="button" className={buttonClass("danger", "md")}>Danger</button>
           <button type="button" disabled className={buttonClass("primary", "md")}>Disabled</button>
           <button type="button" className={buttonClass("secondary", "sm")}>Small</button>
+          <span className="grid size-10 place-items-center rounded-full bg-surface-2 text-13 font-semibold">AO</span>
         </div>
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <ActionButton doneLabel="Sent" action={() => new Promise((resolve) => setTimeout(resolve, 900))} className="min-h-12 px-5 text-15">
@@ -138,9 +182,9 @@ export default function DevControls() {
             Key moment
           </ActionButton>
         </div>
-      </RuledRow>
+      </Section>
 
-      <RuledRow label="States">
+      <Section label="States">
         <div className="flex flex-wrap items-center gap-3">
           <Badge tone="success" dot>READY</Badge>
           <Badge tone="neutral" dot>NOT YET BOUND</Badge>
@@ -159,10 +203,28 @@ export default function DevControls() {
             </p>
           ) : null}
         </div>
-        <div className="mt-6 border border-border">
+        <div className="mt-6">
           <StateBlock glyph="·" title="Nothing on your agenda yet.">Sessions appear here once you&apos;re registered.</StateBlock>
         </div>
-      </RuledRow>
+      </Section>
+
+      <Section label="On a picture (the event page)">
+        <div className="relative h-96">
+          <EventPicture event={sampleEvent} big />
+          <div className="absolute inset-x-4 bottom-4 flex flex-col items-start gap-4 bg-glass p-5 text-glass-ink backdrop-blur-xl sm:w-90">
+            <Badge tone="success" dot>
+              Live now
+            </Badge>
+            <p className="text-17">
+              <span className="mr-3 font-mono text-12 tracking-[0.08em] text-glass-ink-2 uppercase">When</span>22 November
+            </p>
+            <a href="#content" className={buttonClass("primary", "md", "w-full")}>
+              Register
+            </a>
+          </div>
+        </div>
+      </Section>
+      </div>
     </PageShell>
   );
 }

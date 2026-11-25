@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { useSession } from "../data/auth";
 import { bindBand, bindTappedBand, boundBand, devCodeHint, type BindResult } from "../data/pair";
 import { useDataVersion } from "../data/live";
-import { PageHeader, PageShell, Panel } from "../components/page";
+import { PANEL, PageHeader, PageShell, Panel } from "../components/page";
 import { buttonClass, RewardMoment } from "@synan/ui/components";
 import { fieldClass } from "../components/form-styles";
 
@@ -15,10 +15,10 @@ type NdefReader = {
 
 const nfcSupported = typeof window !== "undefined" && "NDEFReader" in window;
 
-/** Active tab: foreground text and the accent rule beneath (blue is the rule, never the text). */
+/** The two ways to bind as one segmented tonal block; the chosen one is ink (D-37). */
 const tabClass = (active: boolean) =>
-  `relative flex min-h-11 items-center text-15 font-medium transition-colors duration-120 ease-standard motion-reduce:transition-none ${
-    active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+  `flex min-h-11 flex-1 items-center justify-center px-4 text-15 font-medium transition-colors duration-120 ease-standard motion-reduce:transition-none ${
+    active ? "bg-action text-action-foreground" : "text-muted-foreground hover:bg-surface-3 hover:text-foreground"
   }`;
 
 export default function PassPair() {
@@ -83,13 +83,15 @@ export default function PassPair() {
 
   if (state === "success" && result?.ok) {
     return (
-      <PageShell bleed>
-        <PageHeader label="Bind band" title="Band bound">This band is now you. Tap it at every door inside the venue.</PageHeader>
-        <div className="enter px-4 py-10 sm:px-6 md:px-10">
+      <PageShell>
+        <PageHeader label="Bind band" title="Band bound." more="This band is now you.">
+          Tap it at every door inside the venue.
+        </PageHeader>
+        <div className="enter mx-auto mt-10 flex max-w-110 flex-col items-center text-center">
           <p className="mb-6 text-15 font-medium">
             <RewardMoment>Bound to your pass</RewardMoment>
           </p>
-          <Panel className="max-w-md">
+          <Panel className="w-full">
             <p className="text-13 font-medium text-muted-foreground">Band UID</p>
             <p className="mt-2 font-mono text-17 tracking-wider uppercase">{result.band.uid}</p>
           </Panel>
@@ -104,30 +106,30 @@ export default function PassPair() {
   }
 
   return (
-    <PageShell bleed>
-      <PageHeader label="My pass" title="Bind your band">
-        Link a wristband to your pass. From then on, the band is your key inside the venue.
+    <PageShell>
+      <PageHeader label="My pass" title="Bind your band." more="Link a wristband to your pass.">
+        From then on, the band is your key inside the venue.
       </PageHeader>
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_24rem]">
-      <div className="enter px-4 py-10 sm:px-6 md:px-10 lg:py-12">
-      <div className="max-w-md">
-        {!bound ? <h2 className="font-display text-28 leading-tight">{activeTab === "tap" ? "Tap your band" : "Enter the desk code"}</h2> : null}
+      <div>
+      <div className="enter mx-auto mt-10 max-w-110">
+      <div className={`${PANEL} p-6 sm:p-8`}>
+        {!bound ? <h2 className="font-display text-21 leading-tight font-medium">{activeTab === "tap" ? "Tap your band" : "Enter the desk code"}</h2> : null}
 
         {bound ? (
-          <Panel className="mt-6">
+          <div>
             <p className="text-13 font-medium text-muted-foreground">Already bound</p>
             <p className="mt-2 text-15 text-muted-foreground">
               Band {bound.hint} is bound to your pass. If it is lost, report it in Account first.
             </p>
-            <Link to="/pass" className={buttonClass("secondary", "sm", "mt-4")}>
+            <Link to="/pass" className={buttonClass("secondary", "md", "mt-4")}>
               Back to my pass
             </Link>
-          </Panel>
+          </div>
         ) : (
           <>
             {nfcSupported ? (
-            <div className="mt-6 border-b border-border">
-              <div role="tablist" aria-label="Binding method" className="flex gap-6">
+            <div className="mt-6">
+              <div role="tablist" aria-label="Binding method" className="flex bg-surface-2">
                 <button
                   type="button"
                   role="tab"
@@ -137,7 +139,6 @@ export default function PassPair() {
                   className={tabClass(activeTab === "tap")}
                 >
                   Tap
-                  {activeTab === "tap" ? <span aria-hidden="true" className="absolute inset-x-0 -bottom-px h-px bg-brand" /> : null}
                 </button>
                 <button
                   type="button"
@@ -147,7 +148,6 @@ export default function PassPair() {
                   className={tabClass(activeTab === "code")}
                 >
                   Desk code
-                  {activeTab === "code" ? <span aria-hidden="true" className="absolute inset-x-0 -bottom-px h-px bg-brand" /> : null}
                 </button>
               </div>
             </div>
@@ -156,7 +156,7 @@ export default function PassPair() {
 
             {activeTab === "tap" ? (
               <div className="mt-6 flex flex-col items-center justify-center gap-6 py-10">
-                <div className="flex aspect-square w-full max-w-60 items-center justify-center border border-border">
+                <div className="flex aspect-square w-full max-w-60 items-center justify-center bg-surface-2 p-6 text-center">
                   <span className="text-13 font-medium tracking-wider text-muted-foreground">
                     {state === "listening" ? "Hold the band to the back of the phone" : "Tap band here"}
                   </span>
@@ -194,8 +194,8 @@ export default function PassPair() {
                   </p>
                 ) : null}
 
-                <form noValidate onSubmit={handleSubmit} className="mt-6 max-w-sm">
-                  <label htmlFor="code" className="text-13 font-medium text-muted-foreground">
+                <form noValidate onSubmit={handleSubmit} className="mt-6">
+                  <label htmlFor="code" className="text-15 font-medium">
                     Desk code
                   </label>
                   <input
@@ -257,8 +257,8 @@ export default function PassPair() {
         )}
       </div>
       </div>
-      <aside aria-label="How binding works" className="border-t border-border px-4 py-10 sm:px-6 md:px-10 lg:border-t-0 lg:border-l lg:py-12">
-        <h2 className="font-display text-21">How it works</h2>
+      <aside aria-label="How binding works" className="mx-auto mt-14 max-w-110">
+        <h2 className="text-15 font-medium">How it works</h2>
         <ol className="mt-4 space-y-4 text-15 text-muted-foreground">
           <li>
             <span className="mr-2 font-mono text-foreground">01</span>

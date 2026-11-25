@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Mark, pageTitle } from "@synan/ui/brand";
 import { buttonClass } from "@synan/ui/components";
-import { PageShell } from "../components/page";
+import { PageHeader, PageShell } from "../components/page";
 
 export default function NotFound() {
   useEffect(() => {
@@ -11,15 +11,19 @@ export default function NotFound() {
 
   return (
     <PageShell>
-      <div className="flex flex-col items-start gap-4 py-10">
-        <Mark size={56} title="" className="mb-4" />
-        <p className="font-mono text-15 text-muted-foreground">404</p>
-        <h1 className="font-display text-40">This page doesn&apos;t exist.</h1>
-        <p className="text-17 text-muted-foreground">The link may be old, or mistyped.</p>
-        <Link to="/" className={buttonClass("secondary", "md", "mt-4")}>
-          Back to events
-        </Link>
+      <div className="flex justify-center pt-12 md:pt-20">
+        <Mark size={56} title="" />
       </div>
+      <PageHeader
+        label={<span className="font-mono">404</span>}
+        title="This page doesn't exist."
+        more="The link may be old, or mistyped."
+        aside={
+          <Link to="/" className={buttonClass("secondary", "md")}>
+            Back to events
+          </Link>
+        }
+      />
     </PageShell>
   );
 }

@@ -20,9 +20,9 @@ const DevControls = import.meta.env.DEV ? lazy(() => import("./screens/dev-contr
 /** Development only: design-direction mock-ups for the owner (delete with src/mockups once chosen). */
 const DevDirections = import.meta.env.DEV ? lazy(() => import("./mockups")) : null;
 
-/** RouteFallback: a quiet ground while a route's chunk loads; no spinner for short waits. */
+/** RouteFallback: the bare ground while a route's chunk loads (the field shows through); no spinner for short waits. */
 function RouteFallback() {
-  return <div className="min-h-dvh bg-background" aria-busy="true" />;
+  return <div className="min-h-dvh" aria-busy="true" />;
 }
 
 function Gate({ children }: { children: ReactNode }) {

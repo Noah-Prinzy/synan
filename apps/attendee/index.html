@@ -30,13 +30,7 @@
     <!-- First paint before any script: the page frame and header, drawn exactly as the app
          draws them (components/site-header.tsx). main.tsx removes it the moment the app's
          own header is on screen, in the same frame, so nothing jumps. -->
-    <div id="boot" aria-hidden="true" class="mx-auto w-full max-w-360 text-foreground md:border-x md:border-border">
-      <div class="border-b border-border bg-background">
-        <div class="flex h-14 items-stretch md:h-16">
-          <span class="flex items-center px-4 text-21 sm:px-6 md:px-8 md:text-28"><!--brand-wordmark--></span>
-        </div>
-      </div>
-    </div>
+    <div id="boot" aria-hidden="true" class="flex h-16 items-center pl-5 text-21 text-foreground md:h-18 md:px-8"><!--brand-wordmark--></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

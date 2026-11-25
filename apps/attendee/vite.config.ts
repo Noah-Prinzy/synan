@@ -31,4 +31,15 @@ export default defineConfig({
     alias: { "@": path.resolve(import.meta.dirname, "src") },
   },
   server: { port: 5173 },
+  build: {
+    rollupOptions: {
+      // The shared UI package's modules only declare components; nothing in them runs for its
+      // own sake on import. Saying so lets the bundler leave out the ones this app never uses
+      // (TextInput, Checkbox, Field: their forwardRef calls would otherwise be kept), which
+      // keeps them off the pass screen's size budget (docs/02 §9). Stylesheets keep their effect.
+      treeshake: {
+        moduleSideEffects: (id) => !/[\\/]packages[\\/]ui[\\/]src[\\/].*\.tsx?$/.test(id),
+      },
+    },
+  },
 });

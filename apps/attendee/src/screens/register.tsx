@@ -2,7 +2,7 @@ import { pageTitle } from "@synan/ui/brand";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { buttonClass, RewardMoment } from "@synan/ui/components";
-import { PageHeader, PageShell } from "../components/page";
+import { PANEL, PageHeader, PageShell } from "../components/page";
 import { ErrorState, OfflineState, SkeletonCells, StateBlock } from "../components/states";
 import { useSession } from "../data/auth";
 import { formatLongDay, formatTime, zoneLabel } from "../data/format";
@@ -38,77 +38,76 @@ const steps: { id: Step; label: string }[] = [
 const primaryButton = buttonClass("primary", "md");
 const secondaryButton = buttonClass("secondary", "md");
 const backLink =
-  "inline-flex min-h-11 items-center text-15 text-muted-foreground transition-colors duration-120 ease-standard hover:text-foreground motion-reduce:transition-none";
+  "inline-flex min-h-11 items-center gap-2 text-15 text-muted-foreground transition-colors duration-120 ease-standard hover:text-foreground motion-reduce:transition-none";
 
 function formatAnswer(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value.length > 0 ? value.join(", ") : "Not answered";
   return value && value.trim() !== "" ? value : "Not answered";
 }
 
+/** The statement of each step: what the person does there, then why, muted (D-37). */
+const statements: Record<Step, string> = {
+  identity: "Your pass arrives by email.",
+  profile: "So the day fits you.",
+  confirm: "Then your pass is on its way.",
+};
+
 /**
- * The step strip. On phones three named cells do not fit, and the step heading already
- * says "Step 2 of 3", so the strip becomes a thin three-part progress rule.
+ * The steps, named, over one soft track that fills to the current step (the accent marks
+ * progress). A finished step is a link back to it.
  */
 function Stepper({ slug, activeIndex }: { slug: string; activeIndex: number }) {
   return (
-    <>
-    <div aria-hidden="true" className="grid grid-cols-3 gap-1 px-4 pt-6 sm:hidden">
-      {steps.map((item, index) => (
-        <span key={item.id} className={`h-0.5 ${index < activeIndex ? "bg-foreground" : index === activeIndex ? "bg-brand" : "bg-border"}`} />
-      ))}
+    <div className="mx-auto mt-10 w-full max-w-115">
+      <ol aria-label="Registration steps" className="grid grid-cols-3 gap-2">
+        {steps.map((item, index) => {
+          const state = index < activeIndex ? "done" : index === activeIndex ? "current" : "todo";
+          const body = (
+            <>
+              <span aria-hidden="true" className={state === "done" ? "text-brand" : state === "current" ? "size-1.5 rounded-full bg-brand" : "hidden"}>
+                {state === "done" ? "✓" : null}
+              </span>
+              {item.label}
+              {state === "done" ? <span className="sr-only">(done, select to change)</span> : null}
+            </>
+          );
+          const look = `flex min-h-11 items-center justify-center gap-2 text-13 sm:text-15 ${state === "current" ? "font-medium" : "text-muted-foreground"}`;
+          return (
+            <li key={item.id} aria-current={state === "current" ? "step" : undefined} className="min-w-0">
+              {state === "done" ? (
+                <Link to={`/events/${slug}/register/${item.id}`} className={`${look} hover:text-foreground`}>
+                  {body}
+                </Link>
+              ) : (
+                <span className={look}>{body}</span>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+      <span aria-hidden="true" className="mt-2 block h-0.5 bg-surface-3">
+        <span className="block h-full origin-left bg-brand transition-transform duration-240 ease-standard motion-reduce:transition-none" style={{ transform: `scaleX(${(activeIndex + 0.5) / 3})` }} />
+      </span>
     </div>
-    <ol aria-label="Registration steps" className="hidden grid-cols-3 border-b border-border sm:grid">
-      {steps.map((item, index) => {
-        const state = index < activeIndex ? "done" : index === activeIndex ? "current" : "todo";
-        const body = (
-          <span className={`flex min-h-12 items-center gap-2 py-3 text-15 ${state === "todo" ? "text-muted-foreground" : "text-foreground"}`}>
-            <span className="font-mono text-13 text-muted-foreground">{String(index + 1).padStart(2, "0")}</span>
-            <span>{item.label}</span>
-            {state === "done" ? <span className="sr-only">(done, select to change)</span> : null}
-          </span>
-        );
-        return (
-          <li
-            key={item.id}
-            aria-current={state === "current" ? "step" : undefined}
-            className={`relative min-w-0 border-r border-border px-4 last:border-r-0 sm:px-6 md:px-10 ${
-              state === "current" ? "after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:bg-brand" : ""
-            }`}
-          >
-            {state === "done" ? (
-              <Link
-                to={`/events/${slug}/register/${item.id}`}
-                className="-mx-4 block px-4 transition-colors duration-120 ease-standard hover:bg-card/50 sm:-mx-6 sm:px-6 md:-mx-10 md:px-10 motion-reduce:transition-none"
-              >
-                {body}
-              </Link>
-            ) : (
-              body
-            )}
-          </li>
-        );
-      })}
-    </ol>
-    </>
   );
 }
 
-/** The right-hand cell: what you are registering for, and what happens after. */
+/** Under the form: what you are registering for, and what happens after. Quiet words, no frame. */
 function Aside({ event, done = false }: { event: EventSummary; done?: boolean }) {
   return (
-    <aside
-      aria-label="About this registration"
-      className="border-t border-border px-4 py-10 sm:px-6 lg:border-t-0 lg:border-l lg:px-10 lg:py-12"
-    >
-      <p className="text-13 font-medium text-muted-foreground">{done ? "You're registered for" : "You're registering for"}</p>
-      <p className="mt-2 font-display text-21 leading-tight">{event.title}</p>
-      <p className="mt-2 text-15 text-muted-foreground">
-        {formatLongDay(event.startsAt, event.timezone)} · doors{" "}
-        <span className="font-mono">{formatTime(event.startsAt, event.timezone)}</span>
-        <br />
-        {event.venue}, {event.city}
-      </p>
-      <h2 className="mt-8 border-t border-border pt-6 text-15 font-medium">What happens next</h2>
+    <aside aria-label="About this registration" className="mx-auto mt-14 grid max-w-160 gap-10 text-15 sm:grid-cols-2">
+      <div>
+        <p className="text-13 text-muted-foreground">{done ? "You're registered for" : "You're registering for"}</p>
+        <p className="mt-2 font-display text-21 leading-tight font-medium">{event.title}</p>
+        <p className="mt-2 text-muted-foreground">
+          {formatLongDay(event.startsAt, event.timezone)} · doors <span className="font-mono">{formatTime(event.startsAt, event.timezone)}</span>
+          <br />
+          {event.venue}, {event.city}
+        </p>
+        <p className="mt-4 text-13 text-muted-foreground">Times are {zoneLabel(event.timezone, event.startsAt)}.</p>
+      </div>
+      <div>
+      <h2 className="text-15 font-medium">What happens next</h2>
       <ol className="mt-4 flex flex-col gap-4 text-15 text-muted-foreground">
         {[
           "We email you a link to your pass. Nothing to print.",
@@ -121,7 +120,7 @@ function Aside({ event, done = false }: { event: EventSummary; done?: boolean })
           </li>
         ))}
       </ol>
-      <p className="mt-8 text-13 text-muted-foreground">Times are {zoneLabel(event.timezone, event.startsAt)}.</p>
+      </div>
     </aside>
   );
 }
@@ -293,15 +292,15 @@ export default function Register({ step }: { step: Step }) {
     // Mock build only: no email is sent, so a button stands in for the link.
     const emailedLink = import.meta.env.DEV ? emailedLinkFor(sent.email, "/pass") : null;
     return (
-      <PageShell bleed>
+      <PageShell>
         <PageHeader label={`Registered · ${dateLine} · ${event.city}`} title="You're in.">
           <p className="text-15 font-medium text-success">
             <RewardMoment>Registered for {event.title}</RewardMoment>
           </p>
         </PageHeader>
-        <div className="grid lg:grid-cols-[minmax(0,1fr)_24rem]">
-          <section className="px-4 py-10 sm:px-6 md:px-10 lg:py-12" aria-labelledby="sent-title">
-            <h2 id="sent-title" className="font-display text-28 leading-tight">
+        <div>
+          <section className={`${PANEL} mx-auto mt-10 max-w-160 p-6 sm:p-10`} aria-labelledby="sent-title">
+            <h2 id="sent-title" className="font-display text-28 leading-tight font-medium">
               {signedInAsThem ? "Your pass is ready." : "Your pass is on its way."}
             </h2>
             <p className="mt-3 max-w-[52ch] text-17 leading-relaxed text-muted-foreground">
@@ -348,23 +347,25 @@ export default function Register({ step }: { step: Step }) {
   }
 
   return (
-    <PageShell bleed>
-      <PageHeader label={`Register · ${dateLine} · ${event.city}`} title={event.title}>
-        Three short steps. Your pass arrives by email when you're done.
-      </PageHeader>
+    <PageShell>
+      <PageHeader
+        label={
+          <>
+            {event.title} · {dateLine} · Step <span className="font-mono">{activeIndex + 1}</span> of <span className="font-mono">3</span>
+          </>
+        }
+        title={`${steps[activeIndex]?.label ?? ""}.`}
+        more={statements[step]}
+      />
+      <Stepper slug={slug} activeIndex={activeIndex} />
 
-      <div className="grid lg:grid-cols-[minmax(0,1fr)_24rem]">
-        <div className="min-w-0">
-          <Stepper slug={slug} activeIndex={activeIndex} />
-          <div className="max-w-2xl px-4 pt-8 pb-14 sm:px-6 md:px-10 lg:pt-12">
-            <p className="text-13 font-medium text-muted-foreground">
-              Step <span className="font-mono">{activeIndex + 1}</span> of <span className="font-mono">3</span>
-            </p>
-            <h2 className="mt-1 font-display text-28 leading-tight">{steps[activeIndex]?.label}</h2>
+      <div>
+        <div>
+          <div className={`${PANEL} mx-auto mt-10 max-w-160 px-5 py-8 sm:p-10`}>
 
             {step === "identity" ? (
               duplicate ? (
-                <section className="mt-6" aria-live="polite">
+                <section aria-live="polite">
                   <p className="text-17 font-medium">This email is already registered.</p>
                   <p className="mt-2 max-w-[52ch] text-15 leading-relaxed text-muted-foreground">
                     Sign in with {draft.email.trim()} and we'll take you straight to your pass. Nothing you entered
@@ -387,7 +388,7 @@ export default function Register({ step }: { step: Step }) {
                   </div>
                 </section>
               ) : (
-                <form noValidate onSubmit={submitIdentity} className="mt-6 flex flex-col gap-6">
+                <form noValidate onSubmit={submitIdentity} className="flex flex-col gap-8">
                   <Field id="name" label="Full name" hint="As it should appear on your pass." error={errors.name}>
                     <input
                       id="name"
@@ -447,7 +448,7 @@ export default function Register({ step }: { step: Step }) {
                     />
                   </Field>
 
-                  <div className="mt-2 flex flex-row-reverse items-center justify-between gap-4 border-t border-border pt-6">
+                  <div className="mt-2 flex flex-row-reverse items-center justify-between gap-4 pt-2">
                     <button type="submit" className={primaryButton}>
                       Continue
                     </button>
@@ -458,7 +459,7 @@ export default function Register({ step }: { step: Step }) {
                 </form>
               )
             ) : step === "profile" ? (
-              <form noValidate onSubmit={submitProfile} className="mt-6 flex flex-col gap-6">
+              <form noValidate onSubmit={submitProfile} className="flex flex-col gap-8">
                 {fields.length > 0 ? (
                   <p className="-mt-2 max-w-[52ch] text-15 text-muted-foreground">
                     The organisers ask these to plan the day. Each one says why.
@@ -477,7 +478,7 @@ export default function Register({ step }: { step: Step }) {
                   onChange={(checked) => setDraft((current) => ({ ...current, zoneConsent: checked }))}
                 />
 
-                <div className="flex flex-row-reverse items-center justify-between gap-4 border-t border-border pt-6">
+                <div className="flex flex-row-reverse items-center justify-between gap-4 pt-2">
                   <button type="submit" className={primaryButton}>
                     Continue
                   </button>
@@ -487,13 +488,13 @@ export default function Register({ step }: { step: Step }) {
                 </div>
               </form>
             ) : (
-              <form noValidate onSubmit={submitConfirm} className="mt-6 flex flex-col gap-8">
+              <form noValidate onSubmit={submitConfirm} className="flex flex-col gap-10">
                 {[
                   { title: "Your details", rows: detailRows, edit: "identity" as Step },
                   { title: "Your answers", rows: answerRows, edit: "profile" as Step },
                 ].map((group) => (
                   <section key={group.title} aria-label={group.title}>
-                    <div className="flex items-center justify-between gap-4 border-b border-border pb-2">
+                    <div className="flex items-center justify-between gap-4">
                       <h3 className="text-15 font-medium">{group.title}</h3>
                       <Link
                         to={`/events/${slug}/register/${group.edit}`}
@@ -502,9 +503,9 @@ export default function Register({ step }: { step: Step }) {
                         Change<span className="sr-only"> {group.title.toLowerCase()}</span>
                       </Link>
                     </div>
-                    <dl className="divide-y divide-border">
+                    <dl className="mt-2 flex flex-col gap-3">
                       {group.rows.map((row) => (
-                        <div key={row.label} className="grid gap-1 py-3 sm:grid-cols-[13rem_minmax(0,1fr)] sm:gap-4">
+                        <div key={row.label} className="grid gap-0.5 sm:grid-cols-[13rem_minmax(0,1fr)] sm:gap-4">
                           <dt className="text-15 text-muted-foreground">{row.label}</dt>
                           <dd className="text-15 wrap-break-word">{row.value}</dd>
                         </div>
@@ -514,8 +515,8 @@ export default function Register({ step }: { step: Step }) {
                 ))}
 
                 {failed ? (
-                  <div role="alert" className="border border-destructive/60 p-4">
-                    <p className="text-15 font-medium text-destructive">
+                  <div role="alert" className="bg-destructive/12 p-4">
+                    <p className="text-15 font-medium text-destructive-on-tint">
                       <span aria-hidden="true" className="mr-2 font-mono">✕</span>
                       {failed === "offline" ? "You're offline, so we couldn't send your pass." : "We couldn't send your pass."}
                     </p>
@@ -526,11 +527,11 @@ export default function Register({ step }: { step: Step }) {
                   </div>
                 ) : null}
 
-                <div className="flex flex-row-reverse flex-wrap items-center justify-between gap-4 border-t border-border pt-6">
+                <div className="flex flex-row-reverse flex-wrap items-center justify-between gap-4 pt-2">
                   <button type="submit" aria-busy={sending || undefined} className={`${primaryButton} ${sending ? "pointer-events-none" : ""}`}>
                     {sending ? "Sending your pass…" : "Send my pass"}
                     {sending ? (
-                      <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-px overflow-hidden">
+                      <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 overflow-hidden">
                         <span className="busy-rule absolute inset-y-0 left-0 w-1/3 bg-brand" />
                       </span>
                     ) : null}

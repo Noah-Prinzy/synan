@@ -7,7 +7,7 @@ import { dayKey, formatLongDay, formatTime } from "../data/format";
 import { now } from "../data/live";
 import { roomNow, useOccupancy, type OccupancyView } from "../data/occupancy";
 import { useResource } from "../data/resource";
-import { PageHeader, PageShell, RuledRow } from "../components/page";
+import { PANEL, PageHeader, PageShell } from "../components/page";
 import { ErrorState, OfflineState, SkeletonCells, StateBlock } from "../components/states";
 
 const groupLabel: Record<AgendaGroupItem["group"], string> = {
@@ -31,9 +31,9 @@ export default function Agenda() {
   const occupancy = useOccupancy(eventIds);
 
   return (
-    <PageShell bleed>
-      <PageHeader label="My schedule" title="My agenda">
-        The sessions on your pass, in the event's local time. Select one to see it in the programme.
+    <PageShell>
+      <PageHeader label="My schedule" title="My agenda." more="The sessions on your pass, in the event's local time.">
+        Select one to see it in the programme.
       </PageHeader>
 
       {agenda.status === "loading" ? (
@@ -47,7 +47,7 @@ export default function Agenda() {
           glyph="·"
           title="Nothing on your agenda yet."
           action={
-            <Link to="/" className={buttonClass("secondary", "sm")}>
+            <Link to="/" className={buttonClass("secondary", "md")}>
               Browse events
             </Link>
           }
@@ -75,16 +75,18 @@ function AgendaGroup({
   const today = group.sessions[0] ? dayKey(new Date(now()).toISOString(), group.sessions[0].timezone) : "";
   let lastDay = "";
   return (
-    <div className="enter" style={{ ["--i" as string]: index }}>
-      <RuledRow label={groupLabel[group.group]}>
-        <ul className="max-w-3xl">
+    <section aria-labelledby={`agenda-${group.group}`} className="enter mx-auto mt-16 max-w-3xl md:mt-20" style={{ ["--i" as string]: index }}>
+      <h2 id={`agenda-${group.group}`} className="mb-4 font-display text-21 font-medium">
+        {groupLabel[group.group]}
+      </h2>
+        <ul className="-mx-4 flex flex-col gap-1">
           {group.sessions.map((session) => {
             const dayChanged = session.day !== lastDay;
             lastDay = session.day;
             return (
               <li key={session.id}>
                 {dayChanged && session.day !== today ? (
-                  <p className="pt-6 pb-2 text-15 font-medium text-muted-foreground">
+                  <p className="px-4 pt-6 pb-2 text-15 text-muted-foreground">
                     {formatLongDay(session.startsAt, session.timezone)}
                   </p>
                 ) : null}
@@ -93,8 +95,7 @@ function AgendaGroup({
             );
           })}
         </ul>
-      </RuledRow>
-    </div>
+    </section>
   );
 }
 
@@ -113,24 +114,23 @@ function AgendaRow({
   return (
     <Link
       to={`/events/${session.eventSlug}#session-${session.id}`}
-      className={`relative -mt-px flex min-h-16 flex-col gap-1 border sm:flex-row sm:items-center sm:justify-between sm:gap-4 border-border px-4 py-3 transition-colors duration-120 ease-standard hover:bg-card/40 motion-reduce:transition-none ${
-        isNow ? "before:absolute before:-inset-y-px before:-left-px before:w-0.5 before:bg-foreground" : ""
+      className={`grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-4 gap-y-1 px-4 py-4 transition-colors duration-120 ease-standard hover:bg-surface-2 sm:grid-cols-[6rem_minmax(0,1fr)_auto] sm:items-center sm:gap-x-6 motion-reduce:transition-none ${
+        isNow ? PANEL : ""
       } ${muted ? "text-muted-foreground" : ""}`}
     >
+      <p className="row-span-2 font-mono text-15 sm:row-span-1">
+        {formatTime(session.startsAt, session.timezone)}
+        <span className="block text-13 text-muted-foreground">–{formatTime(session.endsAt, session.timezone)}</span>
+      </p>
       <div className="min-w-0">
-        <p className="text-15 text-muted-foreground">
-          <span className="font-mono">
-            {formatTime(session.startsAt, session.timezone)}–{formatTime(session.endsAt, session.timezone)}
-          </span>
-          {session.room ? <> · {session.room}</> : null}
-        </p>
-        <p className="mt-1 text-17 sm:truncate">{session.title}</p>
+        <p className="text-17 font-medium sm:truncate">{session.title}</p>
+        {session.room ? <p className="mt-0.5 text-15 text-muted-foreground">{session.room}</p> : null}
       </div>
       {muted ? (
-        <p className="shrink-0 text-13">Ended</p>
+        <p className="text-13">Ended</p>
       ) : (
         <p
-          className={`shrink-0 text-13 ${
+          className={`text-13 ${
             spaceLeft.tone === "destructive" ? "text-destructive" : spaceLeft.tone === "warning" ? "text-warning" : "text-muted-foreground"
           }`}
         >
