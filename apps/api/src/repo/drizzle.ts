@@ -1072,7 +1072,14 @@ export function createDrizzleRepos(conn: DrizzleConnections, opts: DrizzleReposO
         return (await db.select().from(credentials).where(inArray(credentials.registration_id, [...ids]))).map(toCredential);
       },
       async update(id, patch) {
-        const rows = await db.update(credentials).set(patch).where(eq(credentials.id, id)).returning();
+        // The type already says so; refused at run time too (a cast cannot write a state past the holder).
+        if ("state" in patch || "revoked_at" in patch) throw new Error("credentials.update does not write a state: use CredentialStates (domain/credential-state.ts)");
+        if (patch.zone_state === undefined) {
+          const cur = one((await db.select().from(credentials).where(eq(credentials.id, id)).limit(1)).map(toCredential));
+          if (!cur) throw new Error(`credential ${id} not found`);
+          return cur;
+        }
+        const rows = await db.update(credentials).set({ zone_state: patch.zone_state }).where(eq(credentials.id, id)).returning();
         if (!rows[0]) throw new Error(`credential ${id} not found`);
         return toCredential(rows[0]);
       },

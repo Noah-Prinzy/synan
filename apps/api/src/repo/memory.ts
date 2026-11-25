@@ -807,6 +807,8 @@ export function createMemoryRepos(t: MemoryTables = new MemoryTables()): Repos &
         return [...t.credentials.values()].filter((c) => c.registration_id !== null && scope.has(c.registration_id)).map(clone);
       },
       async update(id, patch) {
+        // The type already says so; refused at run time too (a cast cannot write a state past the holder).
+        if ("state" in patch || "revoked_at" in patch) throw new Error("credentials.update does not write a state: use CredentialStates (domain/credential-state.ts)");
         return credentialWrite(id, patch);
       },
       async setState(id, patch) {

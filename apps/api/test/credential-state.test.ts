@@ -168,8 +168,16 @@ describe("one write path", () => {
     walk(src);
     const callers = files.filter((f) => /credentials\.setState\(/.test(readFileSync(f, "utf8"))).map((f) => path.relative(src, f).replace(/\\/g, "/"));
     expect(callers).toEqual(["domain/credential-state.ts"]);
-    // And no other write names a state through the general update.
-    const stray = files.filter((f) => /credentials\.update\([^)]*\bstate:/.test(readFileSync(f, "utf8")));
-    expect(stray).toEqual([]);
+  });
+
+  it("the general update refuses a state at run time, not only in its type, and writes nothing", async () => {
+    const a = await addAttendee(h, "ORDINARY");
+    const update = h.app.ctx.repos.credentials.update as unknown as (id: string, patch: Record<string, unknown>) => Promise<unknown>;
+    await expect(update(a.credentialId, { state: "revoked" })).rejects.toThrow(/does not write a state/);
+    await expect(update(a.credentialId, { revoked_at: new Date(h.clock.now()) })).rejects.toThrow(/does not write a state/);
+    await expect(update(a.credentialId, { state: "active", zone_state: "OUTSIDE" })).rejects.toThrow(/does not write a state/);
+    expect((await h.app.ctx.repos.credentials.byId(a.credentialId))!).toMatchObject({ state: "issued", revoked_at: null });
+    // A zone write still works.
+    expect(await h.app.ctx.repos.credentials.update(a.credentialId, { zone_state: "OUTSIDE" })).toMatchObject({ state: "issued", zone_state: "OUTSIDE" });
   });
 });
