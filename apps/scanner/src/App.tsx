@@ -6,6 +6,7 @@ import Scan from "./screens/scan";
 import Recent from "./screens/recent";
 import Queue from "./screens/queue";
 import Help from "./screens/help";
+import Activate from "./screens/activate";
 import { gateById, useApi } from "./data/world";
 import { setForceOffline, useOnline, useScanner } from "./data/store";
 import { unlockAudio } from "./data/feedback";
@@ -48,16 +49,25 @@ export default function App() {
 
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-      <Shell>
-        <Routes>
-          <Route path="/" element={<RequireGate><Scan /></RequireGate>} />
-          <Route path="/pair" element={<Pair />} />
-          <Route path="/recent" element={<Recent />} />
-          <Route path="/queue" element={<Queue />} />
-          <Route path="/help" element={<Help />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Shell>
+      <Routes>
+        {/* Public, a page of its own (no gate bar or tabs): a new gate staff member sets a password. */}
+        <Route path="/activate" element={<Activate />} />
+        <Route
+          path="*"
+          element={
+            <Shell>
+              <Routes>
+                <Route path="/" element={<RequireGate><Scan /></RequireGate>} />
+                <Route path="/pair" element={<Pair />} />
+                <Route path="/recent" element={<Recent />} />
+                <Route path="/queue" element={<Queue />} />
+                <Route path="/help" element={<Help />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Shell>
+          }
+        />
+      </Routes>
     </BrowserRouter>
   );
 }

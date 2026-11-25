@@ -92,7 +92,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
 const RoleDock = DEV_TOOLS && mode === "mock" ? lazy(() => import("../dev/role-switcher")) : null;
 
 /** The standalone page frame: the wordmark once, one centred column, no chrome. */
-function Frame({ children }: { children: ReactNode }) {
+export function Frame({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-dvh bg-background text-foreground">
       <main className="mx-auto w-full max-w-160 px-4 pt-10 pb-16 sm:px-6 sm:pt-16">

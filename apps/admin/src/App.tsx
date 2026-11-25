@@ -1,5 +1,6 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
+import { AfterActivation } from "./access/after-activation";
 import { RequireCapability, SessionGate } from "./access/guard";
 import { SessionProvider, useSession } from "./access/session";
 import CommandCenter from "./command/command-center";
@@ -13,6 +14,8 @@ import { AdminShell } from "./shell/admin-shell";
 
 /* Configure screens load on first visit: the Command Center stays the smallest first paint. */
 const FirstRun = lazy(() => import("./setup/first-run"));
+/* Public: an invited staff member sets their password from the emailed link (no session needed). */
+const Activate = lazy(() => import("./access/activate"));
 const VenueList = lazy(() => import("./venues/venue-list"));
 const VenueNew = lazy(() => import("./venues/venue-new"));
 const VenueEditor = lazy(() => import("./venues/editor/venue-editor"));
@@ -78,10 +81,13 @@ export default function App() {
             <StepUpHost />
           </Suspense>
         ) : null}
+        {mode === "api" ? <AfterActivation /> : null}
         <CommandProvider>
           <Routes>
             {/* Signing in and out happens in the session gate; an old sign-in link lands home. */}
             <Route path={SCREENS.signIn.path} element={<Navigate to="/" replace />} />
+            {/* Public, outside the session gate (docs/06 §2: staff activation). */}
+            <Route path="/activate" element={<Lazy><Activate /></Lazy>} />
             <Route
               path={SCREENS.setup.path}
               element={
