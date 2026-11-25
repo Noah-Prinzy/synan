@@ -16,6 +16,7 @@
  * caller cannot write a state and forget the holder.
  */
 import { EventEmitter } from "node:events";
+import { describeError } from "@synan/db";
 import type { CredentialState } from "@synan/contracts/enums";
 import type { Clock } from "../lib/clock.js";
 import type { CredentialRow, Repos } from "../repo/types.js";
@@ -87,7 +88,7 @@ export class CredentialStates {
       this.events.emit("state", e);
     } catch (err) {
       // The state is written; a failed push leaves the pass to catch up on its next read.
-      console.error(`[credentials] state push failed: ${err instanceof Error ? err.message.slice(0, 120) : "error"}`);
+      console.error(`[credentials] state push failed: ${describeError(err)}`);
     }
   }
 }
