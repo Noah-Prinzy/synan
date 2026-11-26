@@ -74,7 +74,6 @@ Last updated: 2026-11-25, afternoon.
 | Branch | What it is |
 | --- | --- |
 | `build/synan-foundations` | The main line. Everything is here, including the confirmed design. Start from this branch. |
-| `design/rollout` | The branch the design was built on. Fully merged; delete it once its last report is in. |
 | `main` | The default branch, far behind. Nothing is pushed to it without the owner saying so. |
 
 **Roadmap step 5.1, "every change is checked automatically": done**
@@ -83,7 +82,7 @@ Last updated: 2026-11-25, afternoon.
   for every pull request: typecheck, seven test suites, the database and API suites on a real
   PostgreSQL 17, builds and size budgets, a dependency audit, a secret scan, a code scan, repository
   hygiene, a test-count guard, and the end-to-end journeys with accessibility checks. All 18 jobs
-  were green on the main line on 2026-11-25.
+  were green on the main line on 2026-11-25, including on the final commit of the day.
 - To check a branch that does not match those patterns, push it to a `ci/<name>` branch, read the
   run, then delete that branch.
 - The faults the end-to-end tests found are fixed and merged after an independent review: staff
@@ -168,5 +167,5 @@ then delete this section and mark O-56 settled in `docs/00-index.md`.
 
 These do not exist on a fresh clone: a PostgreSQL 17 server kept outside the repository
 (`corepack pnpm pg:start` and `pg:stop`), and extra working copies beside the main folder for
-agents (`synan-design`, removable now that the design is merged). On another device, clone the repository, check out
+agents, when any are in use (none at the moment). On another device, clone the repository, check out
 `build/synan-foundations`, run `corepack pnpm install`, and work from there.
